@@ -3,7 +3,7 @@ name: "Build Unsigned Kyomiru"
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: # Allows you to run it manually
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,14 +25,17 @@ jobs:
             -scheme Kyomiru \
             -configuration Release \
             -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -archivePath $PWD/Kyomiru.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-      - name: Prepare IPA (The Manual Way)
+      - name: Prepare IPA (Sideload Ready)
         run: |
           mkdir -p Payload
+          # Find the .app folder inside the archive and copy it
           cp -r Kyomiru.xcarchive/Products/Applications/*.app Payload/
           zip -r Kyomiru_Unsigned.ipa Payload
           
