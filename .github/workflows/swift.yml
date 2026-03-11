@@ -1,0 +1,43 @@
+name: "Build Unsigned Kyomiru"
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Allows you to run it manually
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+
+      - name: Build Archive (Unsigned)
+        run: |
+          xcodebuild archive \
+            -project Kyomiru.xcodeproj \
+            -scheme Kyomiru \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath $PWD/Kyomiru.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Prepare IPA (The Manual Way)
+        run: |
+          mkdir -p Payload
+          cp -r Kyomiru.xcarchive/Products/Applications/*.app Payload/
+          zip -r Kyomiru_Unsigned.ipa Payload
+          
+      - name: Upload Unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kyomiru-Sideload-Build
+          path: Kyomiru_Unsigned.ipa
