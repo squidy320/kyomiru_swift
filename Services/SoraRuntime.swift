@@ -22,7 +22,7 @@ final class SoraRuntime {
         let data = try await get(url: comps.url!)
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let list = root["data"] as? [[String: Any]] else { return [] }
-        let matches = list.compactMap { row in
+        let matches: [SoraAnimeMatch] = list.compactMap { (row: [String: Any]) -> SoraAnimeMatch? in
             let sessionId = (row["session"] as? String) ?? ""
             guard !sessionId.isEmpty else { return nil }
             let title = (row["title"] as? String) ?? "Unknown"
@@ -100,11 +100,12 @@ final class SoraRuntime {
         let rawLinks = extractLinks(from: html)
         var sources: [SoraSource] = []
         for link in rawLinks {
-            if link.lowercased().contains("kwik.") {
+            let linkString = link.absoluteString.lowercased()
+            if linkString.contains("kwik.") {
                 let kwikSources = try await sourcesFromKwik(url: link, referer: episode.playURL)
                 sources.append(contentsOf: kwikSources)
-            } else if link.lowercased().contains(".m3u8") || link.lowercased().contains(".mp4") {
-                let src = buildSource(urlString: link, referer: episode.playURL)
+            } else if linkString.contains(".m3u8") || linkString.contains(".mp4") {
+                let src = buildSource(urlString: link.absoluteString, referer: episode.playURL)
                 if let src { sources.append(src) }
             }
         }
@@ -119,8 +120,9 @@ final class SoraRuntime {
         let directLinks = extractLinks(from: html)
         var out: [SoraSource] = []
         for link in directLinks {
-            if link.lowercased().contains(".m3u8") || link.lowercased().contains(".mp4") {
-                if let src = buildSource(urlString: link, referer: url) {
+            let linkString = link.absoluteString.lowercased()
+            if linkString.contains(".m3u8") || linkString.contains(".mp4") {
+                if let src = buildSource(urlString: link.absoluteString, referer: url) {
                     out.append(src)
                 }
             }

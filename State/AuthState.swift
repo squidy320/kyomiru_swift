@@ -1,6 +1,5 @@
 import SwiftUI
 
-@MainActor
 final class AuthState: ObservableObject {
     @Published var isLoading = false
     @Published var token: String? = nil
@@ -24,7 +23,7 @@ final class AuthState: ObservableObject {
             token = saved
             await loadViewer()
         }
-        AppLog.auth.debug("auth bootstrap complete signedIn=\(isSignedIn)")
+        AppLog.auth.debug("auth bootstrap complete signedIn=\(self.isSignedIn)")
     }
 
     func signIn() async {
