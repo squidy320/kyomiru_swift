@@ -90,7 +90,7 @@ struct DetailsView: View {
             }
         }
         .task {
-            AppLog.ui.debug("details view load mediaId=\(media.id)")
+            AppLog.debug(.ui, "details view load mediaId=\(media.id)")
             await loadEpisodes()
             await loadTracking()
         }
@@ -186,7 +186,7 @@ struct DetailsView: View {
             episodes = result.1
         } catch {
             errorMessage = "Failed to load episodes."
-            AppLog.network.error("details episodes load failed mediaId=\(media.id) \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.network, "details episodes load failed mediaId=\(media.id) \(error.localizedDescription, privacy: .public)")
         }
         isLoading = false
     }
@@ -197,16 +197,16 @@ struct DetailsView: View {
         do {
             let tracking = try await appState.services.aniListClient.trackingEntry(token: token, mediaId: media.id)
             trackingProgress = tracking?.progress
-            AppLog.network.debug("details tracking loaded mediaId=\(media.id) progress=\(trackingProgress ?? 0)")
+            AppLog.debug(.network, "details tracking loaded mediaId=\(media.id) progress=\(trackingProgress ?? 0)")
         } catch {
             trackingProgress = nil
-            AppLog.network.error("details tracking failed mediaId=\(media.id) \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.network, "details tracking failed mediaId=\(media.id) \(error.localizedDescription, privacy: .public)")
         }
     }
 
     private func selectEpisode(_ episode: SoraEpisode) {
         selectedEpisode = episode
-        AppLog.ui.debug("episode selected ep=\(episode.number)")
+        AppLog.debug(.ui, "episode selected ep=\(episode.number)")
         Task {
             isLoadingSources = true
             do {
@@ -218,14 +218,14 @@ struct DetailsView: View {
                 }
             } catch {
                 errorMessage = "Failed to load streams."
-                AppLog.network.error("sources load failed ep=\(episode.number) \(error.localizedDescription, privacy: .public)")
+                AppLog.error(.network, "sources load failed ep=\(episode.number) \(error.localizedDescription, privacy: .public)")
             }
             isLoadingSources = false
         }
     }
 
     private func downloadAllEpisodes() {
-        AppLog.downloads.debug("download all start mediaId=\(media.id) count=\(episodes.count)")
+        AppLog.debug(.downloads, "download all start mediaId=\(media.id) count=\(episodes.count)")
         Task {
             for ep in episodes {
                 do {
@@ -280,7 +280,7 @@ private struct SourcePickerSheet: View {
                 }
                 ForEach(filteredSources()) { source in
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("\(source.quality) • \(source.subOrDub)")
+                        Text("\(source.quality) ??? \(source.subOrDub)")
                         Text(source.format.uppercased())
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
@@ -305,7 +305,7 @@ private struct SourcePickerSheet: View {
                     .padding(.vertical, 6)
                 }
             }
-            .navigationTitle("\(media.title.best) • Ep \(episode?.number ?? 0)")
+            .navigationTitle("\(media.title.best) ??? Ep \(episode?.number ?? 0)")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Close") { dismiss() }
@@ -361,3 +361,4 @@ private struct SourcePickerSheet: View {
         return Int(digits) ?? 0
     }
 }
+

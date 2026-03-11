@@ -27,7 +27,7 @@ struct DownloadsView: View {
                         ForEach(visible) { item in
                             GlassCard {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("\(item.title) • EP \(item.episode)")
+                                    Text("\(item.title) ??? EP \(item.episode)")
                                         .foregroundColor(.white)
                                     ProgressView(value: item.progress)
                                     Text(item.status)
@@ -35,14 +35,14 @@ struct DownloadsView: View {
                                         .font(.system(size: 12))
                                     if let _ = item.localFile {
                                         Button("Play Offline") {
-                                            AppLog.ui.debug("offline play tapped id=\(item.id, privacy: .public)")
+                                            AppLog.debug(.ui, "offline play tapped id=\(item.id, privacy: .public)")
                                             selectedItem = item
                                             showPlayer = true
                                         }
                                         .buttonStyle(.borderedProminent)
                                     }
                                     Button("Delete") {
-                                        AppLog.downloads.debug("download delete tapped id=\(item.id, privacy: .public)")
+                                        AppLog.debug(.downloads, "download delete tapped id=\(item.id, privacy: .public)")
                                         DownloadManager.shared.delete(itemId: item.id)
                                     }
                                     .buttonStyle(.bordered)
@@ -72,11 +72,12 @@ struct DownloadsView: View {
         }
         .onChange(of: showPlayer) { value in
             if value, let item = selectedItem {
-                AppLog.ui.debug("offline player present id=\(item.id, privacy: .public)")
+                AppLog.debug(.ui, "offline player present id=\(item.id, privacy: .public)")
             }
         }
         .onAppear {
-            AppLog.ui.debug("downloads view appear")
+            AppLog.debug(.ui, "downloads view appear")
         }
     }
 }
+

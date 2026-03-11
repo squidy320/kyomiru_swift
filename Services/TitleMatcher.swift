@@ -5,7 +5,7 @@ enum TitleMatcher {
         target: AniListMedia,
         candidates: [SoraAnimeMatch]
     ) -> SoraAnimeMatch? {
-        AppLog.matching.debug("best match start mediaId=\(target.id) candidates=\(candidates.count)")
+        AppLog.debug(.matching, "best match start mediaId=\(target.id) candidates=\(candidates.count)")
         let targetTitle = target.title.best
         let wantedSeason = extractSeasonNumber(from: targetTitle)
         let normalizedTarget = cleanTitle(stripSeasonMarkers(targetTitle))
@@ -18,7 +18,7 @@ enum TitleMatcher {
             < score(candidate: b, normalizedTarget: normalizedTarget, wantedSeason: wantedSeason,
                     targetYear: targetYear, targetFormat: targetFormat)
         }
-        AppLog.matching.debug("best match result mediaId=\(target.id) matched=\(best != nil)")
+        AppLog.debug(.matching, "best match result mediaId=\(target.id) matched=\(best != nil)")
         return best
     }
 
@@ -186,3 +186,4 @@ enum TitleMatcher {
         return out
     }
 }
+

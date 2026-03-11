@@ -40,9 +40,10 @@ struct RootView: View {
         .accentColor(Theme.accent)
         .background(Theme.baseBackground.ignoresSafeArea())
         .task {
-            AppLog.ui.debug("root view task start")
+            AppLog.debug(.ui, "root view task start")
             TrackingSyncService.shared.start(auth: appState.authState, client: appState.services.aniListClient)
-            AppLog.ui.debug("root view task complete")
+            AppLog.debug(.ui, "root view task complete")
         }
     }
 }
+

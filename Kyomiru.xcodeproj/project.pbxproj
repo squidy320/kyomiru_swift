@@ -7,79 +7,83 @@
     objects = {
 
 /* Begin PBXBuildFile section */
-        907C90B6C3FC41D3BD6805DC /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A341A8C111642A88D63DFCE /* RootView.swift */; };
-        9BFD57D1751044168C2995E5 /* AniListModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3939CA9CF8D34682B9B38613 /* AniListModels.swift */; };
-        0E6FDD3430AB49AD93A742CE /* SoraModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23990273959D42FC8972F718 /* SoraModels.swift */; };
-        4E0D657F549645C7AC9B0F33 /* AniListAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32DB384C51C4C8DA6932FDF /* AniListAuthService.swift */; };
-        68963C571C3D4D9AB76B699F /* AniListClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7547B1AE6BB242649DB5AD36 /* AniListClient.swift */; };
-        8DA3249012BF46A6B7160D44 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FF0A759C3D5413893DAE95E /* AppServices.swift */; };
-        393FF2FCB46C40FB84D554FE /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE698B9B507846979CC74C54 /* CacheService.swift */; };
-        8EFF09C338824605ACCB31A9 /* CacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F04A10B8688483CB4F06FC0 /* CacheStore.swift */; };
-        DED571E46D044680B174B3E8 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 822FE2CB55934802B300064F /* DownloadManager.swift */; };
-        9D237FC1428D4E34B2987F11 /* EpisodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78252F1777AD49E4BDEBBA6D /* EpisodeService.swift */; };
-        6D9DED15BE0644F9A5B5A108 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2022D0A191B4DCDB3894B3C /* KeychainService.swift */; };
-        DE083E18737A4958B4E3F998 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 286017740B854D0392E020C3 /* Logging.swift */; };
-        3546725574D5431C8ECA1D13 /* PlaybackHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 422654C85D55429A9E1217D3 /* PlaybackHistoryStore.swift */; };
-        812A33C634B44FDEA030A321 /* SoraRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1327CBD7467494DA5047128 /* SoraRuntime.swift */; };
-        C06FDF2635D7493B8A0F80C5 /* TitleMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C54694DED4404C13B410073E /* TitleMatcher.swift */; };
-        02B1F48C23794DAD83AF464A /* TrackingSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 533D4729BDB5449EBF796786 /* TrackingSyncService.swift */; };
-        EAD6E16FBB7249D882DAE4FD /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 865A25EE5333415B9E56B7A9 /* AppState.swift */; };
-        6540693D2ECC4BC2A1621529 /* AuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AD8FA3B6F447F19FC943A9 /* AuthState.swift */; };
-        2CE5AEAF8F9742F1A6EE8C93 /* SettingsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59CB4BE0DE214E1FA6BF9021 /* SettingsState.swift */; };
-        CBA237D8463C4438986397B0 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526B44EA956348E3856E8194 /* Glass.swift */; };
-        962355FFDC4047CF85FE4A45 /* RatingBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B53EA15CC5040C3A5CEF135 /* RatingBadge.swift */; };
-        781AF5408D444A48B1228AE5 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6E2C949D6B4CBFB77AFC03 /* Theme.swift */; };
-        C2672C9A2EB140F088E809A8 /* AlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8303B6E359E84A078DCA274F /* AlertsView.swift */; };
-        9AD6C635B6654848ADC0E9B6 /* DetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6574AD30BE134C1481B6F88C /* DetailsView.swift */; };
-        C2E79F08E61146E5AEB5830D /* DiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 781C12C2765F402A8CBF66C3 /* DiscoveryView.swift */; };
-        A3BBFA33D3E34E749AD5341E /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075AAC6D7B4D4CE3877C42E8 /* DownloadsView.swift */; };
-        12C4E09A11C6486188B28142 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08579549F9F241418E55AB3B /* LibraryView.swift */; };
-        3DD854CA55FF466CAF6BB88C /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C418D05B9B744788E0661B2 /* PlayerView.swift */; };
-        66100134207B4997B2099781 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27ADAF6C8FC8458697E92007 /* SettingsView.swift */; };
-        B1A835EFFE7041D4A0C95B42 /* UnwatchedBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 784D3D0E558445729F7C903A /* UnwatchedBadge.swift */; };
-        500DB97F4EC0404393BF3323 /* KyomiruApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0AE177D8E944BEF8D97935D /* KyomiruApp.swift */; };
-        DCC1BF116B2544DC83E97CCD /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 658F8D8560054B62A842E0D3 /* ContentView.swift */; };
+        9749FCDEB57240EABD536F98 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB03B22F525412691AD3912 /* RootView.swift */; };
+        57D7D511708747C286FA1D14 /* AniListModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A722697BFB5416EA44A529C /* AniListModels.swift */; };
+        0AD981C75D824CAB83424331 /* SoraModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C36726A901F4A6BA25B8FED /* SoraModels.swift */; };
+        2523BB6A1CCC401CB2F04C4E /* AniListAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */; };
+        7D6DD7FBD32C414EA5ABECFF /* AniListClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */; };
+        F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A834867881B451BADAD93AA /* AppServices.swift */; };
+        EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D61DF5D7C6F4CDAB259605A /* CacheService.swift */; };
+        A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */; };
+        314C57A12C82496CA605168E /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 161229ED682D48179B328B0A /* DownloadManager.swift */; };
+        AC09AF4D919E41E280CE52B0 /* EpisodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DBC32B3E0EE435FB94C4CA7 /* EpisodeService.swift */; };
+        0CE0DC714378445E8D425F8B /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25A95FA1C7124A04B870C47B /* KeychainService.swift */; };
+        8A78EA4EE58E445BB261744F /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9123772BA7C647A89887E9E2 /* Logging.swift */; };
+        0C7F8F4657434D42BFD5C9F9 /* LogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADD27E0F05DF470BA85DBC5B /* LogStore.swift */; };
+        384BD60D36CD438DA60949D8 /* PlaybackHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1063B41F91974C149ABDFDCD /* PlaybackHistoryStore.swift */; };
+        B54EC35066044FC8816A781C /* SoraRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DAFBC3D2A734B2A928E9ACB /* SoraRuntime.swift */; };
+        477FAB90D847485C96851E09 /* TitleMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52888B957D0B4BAD8988D80F /* TitleMatcher.swift */; };
+        970DFB54D0CF444BAAF3D99B /* TrackingSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A72C32B7EA8840CD9CFB80A1 /* TrackingSyncService.swift */; };
+        0C02BEE9ADE54332A9D8F2DF /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEFA766A7D86413E8D2E09A4 /* AppState.swift */; };
+        C4101F54869D49D8A0B4A425 /* AuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B889450D6A20487F833188E5 /* AuthState.swift */; };
+        7CF625CC580C4B3886797010 /* SettingsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3028F9F1B2AB4647891B467C /* SettingsState.swift */; };
+        69950056E20B4D91A5990BD6 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = A61733A6B24C482A972EBD23 /* Glass.swift */; };
+        9F9199A4F02B4E5092C147DB /* RatingBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDFF53C1D67465EB0681082 /* RatingBadge.swift */; };
+        66B4F54F865245C8B0391307 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4DB95DE3E04DFF877268BB /* Theme.swift */; };
+        67D14034D0CE4A10A7EE55F4 /* AlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 322049D9007F477FAF8D125F /* AlertsView.swift */; };
+        F08F4932645347648FEC250D /* DetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EF67EDF5267442199B09036 /* DetailsView.swift */; };
+        652C9F7BF8984ACB8656A97A /* DiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD884A3FD40D43EB9CC88CB5 /* DiscoveryView.swift */; };
+        11ECF2BA28E64FC48511905D /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240319EA3938479F9B029C6A /* DownloadsView.swift */; };
+        510D0F686D3B4D9D975CC4B8 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EF353E62D5546EE9E3AE4EF /* LibraryView.swift */; };
+        BCFACE101D36497780C276D3 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E6C6FE87AB947BE98547B90 /* LogsView.swift */; };
+        C6372A0E92E24F3A9427C2A4 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEA74C0C38214FBC986C9022 /* PlayerView.swift */; };
+        92401A9DC859426A8AF69DF2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0A90E57F6F44F0583A71822 /* SettingsView.swift */; };
+        F3F3C1E6A0A94E34A29B1DEB /* UnwatchedBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF49C70551B440FF9A686940 /* UnwatchedBadge.swift */; };
+        BD14A6AD0AE24C59ADB229A3 /* KyomiruApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2110ACC12DA4498F90623464 /* KyomiruApp.swift */; };
+        B9A3232611B34F8F9A1DD350 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9086C63B78104A0B85864ECF /* ContentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-        78AE41EABA974EF5A09CE91C /* Kyomiru.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Kyomiru.app; sourceTree = BUILT_PRODUCTS_DIR; };
-        9A341A8C111642A88D63DFCE /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
-        3939CA9CF8D34682B9B38613 /* AniListModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListModels.swift; sourceTree = "<group>"; };
-        23990273959D42FC8972F718 /* SoraModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoraModels.swift; sourceTree = "<group>"; };
-        A32DB384C51C4C8DA6932FDF /* AniListAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListAuthService.swift; sourceTree = "<group>"; };
-        7547B1AE6BB242649DB5AD36 /* AniListClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListClient.swift; sourceTree = "<group>"; };
-        9FF0A759C3D5413893DAE95E /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
-        FE698B9B507846979CC74C54 /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
-        3F04A10B8688483CB4F06FC0 /* CacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheStore.swift; sourceTree = "<group>"; };
-        822FE2CB55934802B300064F /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
-        78252F1777AD49E4BDEBBA6D /* EpisodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeService.swift; sourceTree = "<group>"; };
-        A2022D0A191B4DCDB3894B3C /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
-        286017740B854D0392E020C3 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
-        422654C85D55429A9E1217D3 /* PlaybackHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackHistoryStore.swift; sourceTree = "<group>"; };
-        A1327CBD7467494DA5047128 /* SoraRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoraRuntime.swift; sourceTree = "<group>"; };
-        C54694DED4404C13B410073E /* TitleMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleMatcher.swift; sourceTree = "<group>"; };
-        533D4729BDB5449EBF796786 /* TrackingSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingSyncService.swift; sourceTree = "<group>"; };
-        865A25EE5333415B9E56B7A9 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
-        D3AD8FA3B6F447F19FC943A9 /* AuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthState.swift; sourceTree = "<group>"; };
-        59CB4BE0DE214E1FA6BF9021 /* SettingsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsState.swift; sourceTree = "<group>"; };
-        526B44EA956348E3856E8194 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
-        6B53EA15CC5040C3A5CEF135 /* RatingBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingBadge.swift; sourceTree = "<group>"; };
-        4A6E2C949D6B4CBFB77AFC03 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
-        8303B6E359E84A078DCA274F /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
-        6574AD30BE134C1481B6F88C /* DetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsView.swift; sourceTree = "<group>"; };
-        781C12C2765F402A8CBF66C3 /* DiscoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryView.swift; sourceTree = "<group>"; };
-        075AAC6D7B4D4CE3877C42E8 /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
-        08579549F9F241418E55AB3B /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
-        5C418D05B9B744788E0661B2 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
-        27ADAF6C8FC8458697E92007 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-        784D3D0E558445729F7C903A /* UnwatchedBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnwatchedBadge.swift; sourceTree = "<group>"; };
-        D0AE177D8E944BEF8D97935D /* KyomiruApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KyomiruApp.swift; sourceTree = "<group>"; };
-        658F8D8560054B62A842E0D3 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-        16CC7EF41DEE4A1A9CA38E4B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+        72071117F02B492EA7D8D08E /* Kyomiru.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Kyomiru.app; sourceTree = BUILT_PRODUCTS_DIR; };
+        6AB03B22F525412691AD3912 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+        1A722697BFB5416EA44A529C /* AniListModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListModels.swift; sourceTree = "<group>"; };
+        8C36726A901F4A6BA25B8FED /* SoraModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoraModels.swift; sourceTree = "<group>"; };
+        8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListAuthService.swift; sourceTree = "<group>"; };
+        7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListClient.swift; sourceTree = "<group>"; };
+        5A834867881B451BADAD93AA /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
+        9D61DF5D7C6F4CDAB259605A /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
+        8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheStore.swift; sourceTree = "<group>"; };
+        161229ED682D48179B328B0A /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+        3DBC32B3E0EE435FB94C4CA7 /* EpisodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeService.swift; sourceTree = "<group>"; };
+        25A95FA1C7124A04B870C47B /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+        9123772BA7C647A89887E9E2 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
+        ADD27E0F05DF470BA85DBC5B /* LogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogStore.swift; sourceTree = "<group>"; };
+        1063B41F91974C149ABDFDCD /* PlaybackHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackHistoryStore.swift; sourceTree = "<group>"; };
+        4DAFBC3D2A734B2A928E9ACB /* SoraRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoraRuntime.swift; sourceTree = "<group>"; };
+        52888B957D0B4BAD8988D80F /* TitleMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleMatcher.swift; sourceTree = "<group>"; };
+        A72C32B7EA8840CD9CFB80A1 /* TrackingSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingSyncService.swift; sourceTree = "<group>"; };
+        FEFA766A7D86413E8D2E09A4 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+        B889450D6A20487F833188E5 /* AuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthState.swift; sourceTree = "<group>"; };
+        3028F9F1B2AB4647891B467C /* SettingsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsState.swift; sourceTree = "<group>"; };
+        A61733A6B24C482A972EBD23 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
+        4CDFF53C1D67465EB0681082 /* RatingBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingBadge.swift; sourceTree = "<group>"; };
+        4F4DB95DE3E04DFF877268BB /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+        322049D9007F477FAF8D125F /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
+        4EF67EDF5267442199B09036 /* DetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsView.swift; sourceTree = "<group>"; };
+        BD884A3FD40D43EB9CC88CB5 /* DiscoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryView.swift; sourceTree = "<group>"; };
+        240319EA3938479F9B029C6A /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
+        1EF353E62D5546EE9E3AE4EF /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+        2E6C6FE87AB947BE98547B90 /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
+        FEA74C0C38214FBC986C9022 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
+        E0A90E57F6F44F0583A71822 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+        CF49C70551B440FF9A686940 /* UnwatchedBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnwatchedBadge.swift; sourceTree = "<group>"; };
+        2110ACC12DA4498F90623464 /* KyomiruApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KyomiruApp.swift; sourceTree = "<group>"; };
+        9086C63B78104A0B85864ECF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+        38B34000AF8743898D5971C2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-        4325781FF67B492E99066EF1 /* Frameworks */ = {
+        61A1D0A9364F47778B137DBF /* Frameworks */ = {
             isa = PBXFrameworksBuildPhase;
             buildActionMask = 2147483647;
             files = (
@@ -89,91 +93,93 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-        794BCE46244545EDAE691807 = {
+        A1F6688393CD43E789FC9C3D = {
             isa = PBXGroup;
             children = (
-                D868934D9F0E4F55AD6BFA32 /* App */,                 F88E77636BE44FAA8EEFD607 /* Models */,                 827983C15FF94D4EAFA10520 /* Services */,                 EF41E3C3520543C090F30917 /* State */,                 F9A1BD09CD6A4BDCA1F85D8E /* UI */,                 5A4D994B6F244AB1AB7BF4B7 /* Views */,                 1223F877D9E84610985032DC /* Sources */,                 A250CF1088124F7AA7A1FBD2 /* Resources */,                 78AE41EABA974EF5A09CE91C /* Kyomiru.app */,
+                C591C82493CB4BA0B5125830 /* App */,                 1EE5CC4E90AD46AD84E284B2 /* Models */,                 A56FD437DEE6442B8A5604FA /* Services */,                 ECF9CF9AE044490489714400 /* State */,                 69CBAC85A6A842B8A3C969F4 /* UI */,                 07B7F45882C14BB0849DC0B7 /* Views */,                 9B3569C6E5B54AC38A5FC2DB /* Sources */,                 C3B872E7402442BEA5900710 /* Resources */,                 72071117F02B492EA7D8D08E /* Kyomiru.app */,
             );
             sourceTree = "<group>";
         };
-        D868934D9F0E4F55AD6BFA32 /* App */ = {
+        C591C82493CB4BA0B5125830 /* App */ = {
             isa = PBXGroup;
             children = (
-                9A341A8C111642A88D63DFCE /* RootView.swift */,
+                6AB03B22F525412691AD3912 /* RootView.swift */,
             );
             path = App;
             sourceTree = "<group>";
-        };        F88E77636BE44FAA8EEFD607 /* Models */ = {
+        };        1EE5CC4E90AD46AD84E284B2 /* Models */ = {
             isa = PBXGroup;
             children = (
-                3939CA9CF8D34682B9B38613 /* AniListModels.swift */,
-                23990273959D42FC8972F718 /* SoraModels.swift */,
+                1A722697BFB5416EA44A529C /* AniListModels.swift */,
+                8C36726A901F4A6BA25B8FED /* SoraModels.swift */,
             );
             path = Models;
             sourceTree = "<group>";
-        };        827983C15FF94D4EAFA10520 /* Services */ = {
+        };        A56FD437DEE6442B8A5604FA /* Services */ = {
             isa = PBXGroup;
             children = (
-                A32DB384C51C4C8DA6932FDF /* AniListAuthService.swift */,
-                7547B1AE6BB242649DB5AD36 /* AniListClient.swift */,
-                9FF0A759C3D5413893DAE95E /* AppServices.swift */,
-                FE698B9B507846979CC74C54 /* CacheService.swift */,
-                3F04A10B8688483CB4F06FC0 /* CacheStore.swift */,
-                822FE2CB55934802B300064F /* DownloadManager.swift */,
-                78252F1777AD49E4BDEBBA6D /* EpisodeService.swift */,
-                A2022D0A191B4DCDB3894B3C /* KeychainService.swift */,
-                286017740B854D0392E020C3 /* Logging.swift */,
-                422654C85D55429A9E1217D3 /* PlaybackHistoryStore.swift */,
-                A1327CBD7467494DA5047128 /* SoraRuntime.swift */,
-                C54694DED4404C13B410073E /* TitleMatcher.swift */,
-                533D4729BDB5449EBF796786 /* TrackingSyncService.swift */,
+                8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */,
+                7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */,
+                5A834867881B451BADAD93AA /* AppServices.swift */,
+                9D61DF5D7C6F4CDAB259605A /* CacheService.swift */,
+                8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */,
+                161229ED682D48179B328B0A /* DownloadManager.swift */,
+                3DBC32B3E0EE435FB94C4CA7 /* EpisodeService.swift */,
+                25A95FA1C7124A04B870C47B /* KeychainService.swift */,
+                9123772BA7C647A89887E9E2 /* Logging.swift */,
+                ADD27E0F05DF470BA85DBC5B /* LogStore.swift */,
+                1063B41F91974C149ABDFDCD /* PlaybackHistoryStore.swift */,
+                4DAFBC3D2A734B2A928E9ACB /* SoraRuntime.swift */,
+                52888B957D0B4BAD8988D80F /* TitleMatcher.swift */,
+                A72C32B7EA8840CD9CFB80A1 /* TrackingSyncService.swift */,
             );
             path = Services;
             sourceTree = "<group>";
-        };        EF41E3C3520543C090F30917 /* State */ = {
+        };        ECF9CF9AE044490489714400 /* State */ = {
             isa = PBXGroup;
             children = (
-                865A25EE5333415B9E56B7A9 /* AppState.swift */,
-                D3AD8FA3B6F447F19FC943A9 /* AuthState.swift */,
-                59CB4BE0DE214E1FA6BF9021 /* SettingsState.swift */,
+                FEFA766A7D86413E8D2E09A4 /* AppState.swift */,
+                B889450D6A20487F833188E5 /* AuthState.swift */,
+                3028F9F1B2AB4647891B467C /* SettingsState.swift */,
             );
             path = State;
             sourceTree = "<group>";
-        };        F9A1BD09CD6A4BDCA1F85D8E /* UI */ = {
+        };        69CBAC85A6A842B8A3C969F4 /* UI */ = {
             isa = PBXGroup;
             children = (
-                526B44EA956348E3856E8194 /* Glass.swift */,
-                6B53EA15CC5040C3A5CEF135 /* RatingBadge.swift */,
-                4A6E2C949D6B4CBFB77AFC03 /* Theme.swift */,
+                A61733A6B24C482A972EBD23 /* Glass.swift */,
+                4CDFF53C1D67465EB0681082 /* RatingBadge.swift */,
+                4F4DB95DE3E04DFF877268BB /* Theme.swift */,
             );
             path = UI;
             sourceTree = "<group>";
-        };        5A4D994B6F244AB1AB7BF4B7 /* Views */ = {
+        };        07B7F45882C14BB0849DC0B7 /* Views */ = {
             isa = PBXGroup;
             children = (
-                8303B6E359E84A078DCA274F /* AlertsView.swift */,
-                6574AD30BE134C1481B6F88C /* DetailsView.swift */,
-                781C12C2765F402A8CBF66C3 /* DiscoveryView.swift */,
-                075AAC6D7B4D4CE3877C42E8 /* DownloadsView.swift */,
-                08579549F9F241418E55AB3B /* LibraryView.swift */,
-                5C418D05B9B744788E0661B2 /* PlayerView.swift */,
-                27ADAF6C8FC8458697E92007 /* SettingsView.swift */,
-                784D3D0E558445729F7C903A /* UnwatchedBadge.swift */,
+                322049D9007F477FAF8D125F /* AlertsView.swift */,
+                4EF67EDF5267442199B09036 /* DetailsView.swift */,
+                BD884A3FD40D43EB9CC88CB5 /* DiscoveryView.swift */,
+                240319EA3938479F9B029C6A /* DownloadsView.swift */,
+                1EF353E62D5546EE9E3AE4EF /* LibraryView.swift */,
+                2E6C6FE87AB947BE98547B90 /* LogsView.swift */,
+                FEA74C0C38214FBC986C9022 /* PlayerView.swift */,
+                E0A90E57F6F44F0583A71822 /* SettingsView.swift */,
+                CF49C70551B440FF9A686940 /* UnwatchedBadge.swift */,
             );
             path = Views;
             sourceTree = "<group>";
-        };        1223F877D9E84610985032DC /* Sources */ = {
+        };        9B3569C6E5B54AC38A5FC2DB /* Sources */ = {
             isa = PBXGroup;
             children = (
-                D0AE177D8E944BEF8D97935D /* KyomiruApp.swift */,
-                658F8D8560054B62A842E0D3 /* ContentView.swift */,
+                2110ACC12DA4498F90623464 /* KyomiruApp.swift */,
+                9086C63B78104A0B85864ECF /* ContentView.swift */,
             );
             path = Sources;
             sourceTree = "<group>";
-        };        A250CF1088124F7AA7A1FBD2 /* Resources */ = {
+        };        C3B872E7402442BEA5900710 /* Resources */ = {
             isa = PBXGroup;
             children = (
-                16CC7EF41DEE4A1A9CA38E4B /* Info.plist */,
+                38B34000AF8743898D5971C2 /* Info.plist */,
             );
             path = Resources;
             sourceTree = "<group>";
@@ -181,13 +187,13 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-        99656E59D98041E9B2A4547A /* Kyomiru */ = {
+        7864ECBDBA1A47A195DD8A53 /* Kyomiru */ = {
             isa = PBXNativeTarget;
-            buildConfigurationList = E23C00B0F7C841929B580F4E /* Build configuration list for PBXNativeTarget "Kyomiru" */;
+            buildConfigurationList = 9BFF57C27A1648AF833FAB38 /* Build configuration list for PBXNativeTarget "Kyomiru" */;
             buildPhases = (
-                1BCA1FE188A441B79945C5A5 /* Sources */,
-                4325781FF67B492E99066EF1 /* Frameworks */,
-                782260ED662C4633A3A25300 /* Resources */,
+                0B91B2A9C00C4BCB8F83B690 /* Sources */,
+                61A1D0A9364F47778B137DBF /* Frameworks */,
+                35674947A872482CBA7B348E /* Resources */,
             );
             buildRules = (
             );
@@ -195,30 +201,30 @@
             );
             name = Kyomiru;
             productName = Kyomiru;
-            productReference = 78AE41EABA974EF5A09CE91C /* Kyomiru.app */;
+            productReference = 72071117F02B492EA7D8D08E /* Kyomiru.app */;
             productType = "com.apple.product-type.application";
         };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-        CEBA43CD5CED4B48B03BA7D5 /* Project object */ = {
+        E8295A472FC94C02B98D39A2 /* Project object */ = {
             isa = PBXProject;
-            buildConfigurationList = EF4A68132A2A450FBF15CDB3 /* Build configuration list for PBXProject "Kyomiru" */;
+            buildConfigurationList = 42F12BAB28224C8EAC562FCD /* Build configuration list for PBXProject "Kyomiru" */;
             compatibilityVersion = "Xcode 14.0";
             developmentRegion = en;
             hasScannedForEncodings = 0;
-            mainGroup = 794BCE46244545EDAE691807;
-            productRefGroup = 794BCE46244545EDAE691807;
+            mainGroup = A1F6688393CD43E789FC9C3D;
+            productRefGroup = A1F6688393CD43E789FC9C3D;
             projectDirPath = "";
             projectRoot = "";
             targets = (
-                99656E59D98041E9B2A4547A /* Kyomiru */,
+                7864ECBDBA1A47A195DD8A53 /* Kyomiru */,
             );
         };
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-        782260ED662C4633A3A25300 /* Resources */ = {
+        35674947A872482CBA7B348E /* Resources */ = {
             isa = PBXResourcesBuildPhase;
             buildActionMask = 2147483647;
             files = (
@@ -228,49 +234,51 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-        1BCA1FE188A441B79945C5A5 /* Sources */ = {
+        0B91B2A9C00C4BCB8F83B690 /* Sources */ = {
             isa = PBXSourcesBuildPhase;
             buildActionMask = 2147483647;
             files = (
-                907C90B6C3FC41D3BD6805DC /* RootView.swift in Sources */,
-                9BFD57D1751044168C2995E5 /* AniListModels.swift in Sources */,
-                0E6FDD3430AB49AD93A742CE /* SoraModels.swift in Sources */,
-                4E0D657F549645C7AC9B0F33 /* AniListAuthService.swift in Sources */,
-                68963C571C3D4D9AB76B699F /* AniListClient.swift in Sources */,
-                8DA3249012BF46A6B7160D44 /* AppServices.swift in Sources */,
-                393FF2FCB46C40FB84D554FE /* CacheService.swift in Sources */,
-                8EFF09C338824605ACCB31A9 /* CacheStore.swift in Sources */,
-                DED571E46D044680B174B3E8 /* DownloadManager.swift in Sources */,
-                9D237FC1428D4E34B2987F11 /* EpisodeService.swift in Sources */,
-                6D9DED15BE0644F9A5B5A108 /* KeychainService.swift in Sources */,
-                DE083E18737A4958B4E3F998 /* Logging.swift in Sources */,
-                3546725574D5431C8ECA1D13 /* PlaybackHistoryStore.swift in Sources */,
-                812A33C634B44FDEA030A321 /* SoraRuntime.swift in Sources */,
-                C06FDF2635D7493B8A0F80C5 /* TitleMatcher.swift in Sources */,
-                02B1F48C23794DAD83AF464A /* TrackingSyncService.swift in Sources */,
-                EAD6E16FBB7249D882DAE4FD /* AppState.swift in Sources */,
-                6540693D2ECC4BC2A1621529 /* AuthState.swift in Sources */,
-                2CE5AEAF8F9742F1A6EE8C93 /* SettingsState.swift in Sources */,
-                CBA237D8463C4438986397B0 /* Glass.swift in Sources */,
-                962355FFDC4047CF85FE4A45 /* RatingBadge.swift in Sources */,
-                781AF5408D444A48B1228AE5 /* Theme.swift in Sources */,
-                C2672C9A2EB140F088E809A8 /* AlertsView.swift in Sources */,
-                9AD6C635B6654848ADC0E9B6 /* DetailsView.swift in Sources */,
-                C2E79F08E61146E5AEB5830D /* DiscoveryView.swift in Sources */,
-                A3BBFA33D3E34E749AD5341E /* DownloadsView.swift in Sources */,
-                12C4E09A11C6486188B28142 /* LibraryView.swift in Sources */,
-                3DD854CA55FF466CAF6BB88C /* PlayerView.swift in Sources */,
-                66100134207B4997B2099781 /* SettingsView.swift in Sources */,
-                B1A835EFFE7041D4A0C95B42 /* UnwatchedBadge.swift in Sources */,
-                500DB97F4EC0404393BF3323 /* KyomiruApp.swift in Sources */,
-                DCC1BF116B2544DC83E97CCD /* ContentView.swift in Sources */,
+                9749FCDEB57240EABD536F98 /* RootView.swift in Sources */,
+                57D7D511708747C286FA1D14 /* AniListModels.swift in Sources */,
+                0AD981C75D824CAB83424331 /* SoraModels.swift in Sources */,
+                2523BB6A1CCC401CB2F04C4E /* AniListAuthService.swift in Sources */,
+                7D6DD7FBD32C414EA5ABECFF /* AniListClient.swift in Sources */,
+                F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */,
+                EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */,
+                A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */,
+                314C57A12C82496CA605168E /* DownloadManager.swift in Sources */,
+                AC09AF4D919E41E280CE52B0 /* EpisodeService.swift in Sources */,
+                0CE0DC714378445E8D425F8B /* KeychainService.swift in Sources */,
+                8A78EA4EE58E445BB261744F /* Logging.swift in Sources */,
+                0C7F8F4657434D42BFD5C9F9 /* LogStore.swift in Sources */,
+                384BD60D36CD438DA60949D8 /* PlaybackHistoryStore.swift in Sources */,
+                B54EC35066044FC8816A781C /* SoraRuntime.swift in Sources */,
+                477FAB90D847485C96851E09 /* TitleMatcher.swift in Sources */,
+                970DFB54D0CF444BAAF3D99B /* TrackingSyncService.swift in Sources */,
+                0C02BEE9ADE54332A9D8F2DF /* AppState.swift in Sources */,
+                C4101F54869D49D8A0B4A425 /* AuthState.swift in Sources */,
+                7CF625CC580C4B3886797010 /* SettingsState.swift in Sources */,
+                69950056E20B4D91A5990BD6 /* Glass.swift in Sources */,
+                9F9199A4F02B4E5092C147DB /* RatingBadge.swift in Sources */,
+                66B4F54F865245C8B0391307 /* Theme.swift in Sources */,
+                67D14034D0CE4A10A7EE55F4 /* AlertsView.swift in Sources */,
+                F08F4932645347648FEC250D /* DetailsView.swift in Sources */,
+                652C9F7BF8984ACB8656A97A /* DiscoveryView.swift in Sources */,
+                11ECF2BA28E64FC48511905D /* DownloadsView.swift in Sources */,
+                510D0F686D3B4D9D975CC4B8 /* LibraryView.swift in Sources */,
+                BCFACE101D36497780C276D3 /* LogsView.swift in Sources */,
+                C6372A0E92E24F3A9427C2A4 /* PlayerView.swift in Sources */,
+                92401A9DC859426A8AF69DF2 /* SettingsView.swift in Sources */,
+                F3F3C1E6A0A94E34A29B1DEB /* UnwatchedBadge.swift in Sources */,
+                BD14A6AD0AE24C59ADB229A3 /* KyomiruApp.swift in Sources */,
+                B9A3232611B34F8F9A1DD350 /* ContentView.swift in Sources */,
             );
             runOnlyForDeploymentPostprocessing = 0;
         };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-        BA9B1E09F42340CAB685FBE3 /* Debug */ = {
+        9352DCBE24924B6D87856072 /* Debug */ = {
             isa = XCBuildConfiguration;
             buildSettings = {
                 PRODUCT_BUNDLE_IDENTIFIER = com.samysamy.kyomiru;
@@ -287,7 +295,7 @@
             };
             name = Debug;
         };
-        FB498E97821C414ABA72FFA6 /* Release */ = {
+        D9A5E64ED3734BF79E8E5B06 /* Release */ = {
             isa = XCBuildConfiguration;
             buildSettings = {
                 PRODUCT_BUNDLE_IDENTIFIER = com.samysamy.kyomiru;
@@ -305,7 +313,7 @@
             };
             name = Release;
         };
-        5CA6DE7DD97044C3AB336AE9 /* Debug */ = {
+        F3E6902E8C954BFB8E9365F6 /* Debug */ = {
             isa = XCBuildConfiguration;
             buildSettings = {
                 CODE_SIGNING_ALLOWED = NO;
@@ -318,7 +326,7 @@
             };
             name = Debug;
         };
-        93FFD64D8D1B49778BE3800F /* Release */ = {
+        F5BA1041123F4C5DA0DE1B6F /* Release */ = {
             isa = XCBuildConfiguration;
             buildSettings = {
                 CODE_SIGNING_ALLOWED = NO;
@@ -334,25 +342,25 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-        E23C00B0F7C841929B580F4E /* Build configuration list for PBXNativeTarget "Kyomiru" */ = {
+        9BFF57C27A1648AF833FAB38 /* Build configuration list for PBXNativeTarget "Kyomiru" */ = {
             isa = XCConfigurationList;
             buildConfigurations = (
-                BA9B1E09F42340CAB685FBE3 /* Debug */,
-                FB498E97821C414ABA72FFA6 /* Release */,
+                9352DCBE24924B6D87856072 /* Debug */,
+                D9A5E64ED3734BF79E8E5B06 /* Release */,
             );
             defaultConfigurationIsVisible = 0;
             defaultConfigurationName = Release;
         };
-        EF4A68132A2A450FBF15CDB3 /* Build configuration list for PBXProject "Kyomiru" */ = {
+        42F12BAB28224C8EAC562FCD /* Build configuration list for PBXProject "Kyomiru" */ = {
             isa = XCConfigurationList;
             buildConfigurations = (
-                5CA6DE7DD97044C3AB336AE9 /* Debug */,
-                93FFD64D8D1B49778BE3800F /* Release */,
+                F3E6902E8C954BFB8E9365F6 /* Debug */,
+                F5BA1041123F4C5DA0DE1B6F /* Release */,
             );
             defaultConfigurationIsVisible = 0;
             defaultConfigurationName = Release;
         };
 /* End XCConfigurationList section */
     };
-    rootObject = CEBA43CD5CED4B48B03BA7D5 /* Project object */;
+    rootObject = E8295A472FC94C02B98D39A2 /* Project object */;
 }

@@ -18,12 +18,12 @@ final class AuthState: ObservableObject {
     }
 
     func bootstrap() async {
-        AppLog.auth.debug("auth bootstrap start")
+        AppLog.debug(.auth, "auth bootstrap start")
         if let saved = services.keychain.readToken(key: tokenKey) {
             token = saved
             await loadViewer()
         }
-        AppLog.auth.debug("auth bootstrap complete signedIn=\(self.isSignedIn)")
+        AppLog.debug(.auth, "auth bootstrap complete signedIn=\(self.isSignedIn)")
     }
 
     func signIn() async {
@@ -31,21 +31,21 @@ final class AuthState: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            AppLog.auth.debug("auth sign in start")
+            AppLog.debug(.auth, "auth sign in start")
             let newToken = try await services.aniListAuth.signIn()
             token = newToken
             services.keychain.saveToken(newToken, key: tokenKey)
             await loadViewer()
-            AppLog.auth.debug("auth sign in success")
+            AppLog.debug(.auth, "auth sign in success")
         } catch {
-            AppLog.auth.error("auth sign in failed \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.auth, "auth sign in failed \(error.localizedDescription, privacy: .public)")
             token = nil
             user = nil
         }
     }
 
     func signOut() {
-        AppLog.auth.debug("auth sign out")
+        AppLog.debug(.auth, "auth sign out")
         token = nil
         user = nil
         services.keychain.deleteToken(key: tokenKey)
@@ -54,13 +54,14 @@ final class AuthState: ObservableObject {
     func loadViewer() async {
         guard let token else { return }
         do {
-            AppLog.auth.debug("auth viewer load start")
+            AppLog.debug(.auth, "auth viewer load start")
             let viewer = try await services.aniListClient.viewer(token: token)
             user = viewer
-            AppLog.auth.debug("auth viewer load success")
+            AppLog.debug(.auth, "auth viewer load success")
         } catch {
-            AppLog.auth.error("auth viewer load failed \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.auth, "auth viewer load failed \(error.localizedDescription, privacy: .public)")
             user = nil
         }
     }
 }
+

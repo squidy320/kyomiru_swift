@@ -11,7 +11,7 @@ final class SoraRuntime {
     func searchAnime(query: String) async throws -> [SoraAnimeMatch] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        AppLog.network.debug("animepahe search start query=\(trimmed, privacy: .public)")
+        AppLog.debug(.network, "animepahe search start query=\(trimmed, privacy: .public)")
         let url = baseURL.appendingPathComponent("api")
         var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)!
         comps.queryItems = [
@@ -40,12 +40,12 @@ final class SoraRuntime {
                 episodeCount: eps
             )
         }
-        AppLog.network.debug("animepahe search success count=\(matches.count)")
+        AppLog.debug(.network, "animepahe search success count=\(matches.count)")
         return matches
     }
 
     func autoMatch(media: AniListMedia) async throws -> SoraAnimeMatch? {
-        AppLog.matching.debug("auto match start mediaId=\(media.id)")
+        AppLog.debug(.matching, "auto match start mediaId=\(media.id)")
         let queries = TitleMatcher.buildQueries(for: media)
         var all: [SoraAnimeMatch] = []
         for q in queries {
@@ -56,12 +56,12 @@ final class SoraRuntime {
         let deduped = Dictionary(grouping: all, by: { $0.session })
             .compactMap { $0.value.first }
         let best = TitleMatcher.bestMatch(target: media, candidates: deduped)
-        AppLog.matching.debug("auto match result mediaId=\(media.id) matched=\(best != nil)")
+        AppLog.debug(.matching, "auto match result mediaId=\(media.id) matched=\(best != nil)")
         return best
     }
 
     func episodes(for match: SoraAnimeMatch) async throws -> [SoraEpisode] {
-        AppLog.network.debug("episodes list start session=\(match.session, privacy: .public)")
+        AppLog.debug(.network, "episodes list start session=\(match.session, privacy: .public)")
         let url = baseURL.appendingPathComponent("api")
         var page = 1
         var out: [SoraEpisode] = []
@@ -90,12 +90,12 @@ final class SoraRuntime {
             page += 1
         } while page <= lastPage
         let sorted = out.sorted { $0.number < $1.number }
-        AppLog.network.debug("episodes list success count=\(sorted.count)")
+        AppLog.debug(.network, "episodes list success count=\(sorted.count)")
         return sorted
     }
 
     func sources(for episode: SoraEpisode) async throws -> [SoraSource] {
-        AppLog.network.debug("sources scrape start episode=\(episode.number)")
+        AppLog.debug(.network, "sources scrape start episode=\(episode.number)")
         let html = try await getText(url: episode.playURL)
         let rawLinks = extractLinks(from: html)
         var sources: [SoraSource] = []
@@ -110,12 +110,12 @@ final class SoraRuntime {
             }
         }
         let deduped = dedupe(sources)
-        AppLog.network.debug("sources scrape success count=\(deduped.count)")
+        AppLog.debug(.network, "sources scrape success count=\(deduped.count)")
         return deduped
     }
 
     private func sourcesFromKwik(url: URL, referer: URL) async throws -> [SoraSource] {
-        AppLog.network.debug("kwik scrape start url=\(url.absoluteString, privacy: .public)")
+        AppLog.debug(.network, "kwik scrape start url=\(url.absoluteString, privacy: .public)")
         let html = try await getText(url: url, referer: referer)
         let directLinks = extractLinks(from: html)
         var out: [SoraSource] = []
@@ -127,7 +127,7 @@ final class SoraRuntime {
                 }
             }
         }
-        AppLog.network.debug("kwik scrape success count=\(out.count)")
+        AppLog.debug(.network, "kwik scrape success count=\(out.count)")
         return out
     }
 
@@ -207,7 +207,7 @@ final class SoraRuntime {
         if let referer {
             request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
         }
-        AppLog.network.debug("http get \(url.absoluteString, privacy: .public)")
+        AppLog.debug(.network, "http get \(url.absoluteString, privacy: .public)")
         let (data, _) = try await session.data(for: request)
         return data
     }
@@ -217,3 +217,4 @@ final class SoraRuntime {
         return String(data: data, encoding: .utf8) ?? ""
     }
 }
+

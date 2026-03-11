@@ -1,13 +1,35 @@
 import Foundation
 import os
 
+enum LogCategory: String {
+    case auth
+    case network
+    case cache
+    case downloads
+    case player
+    case ui
+    case matching
+}
+
 enum AppLog {
     static let subsystem = "com.kyomiru.app"
-    static let auth = Logger(subsystem: subsystem, category: "auth")
-    static let network = Logger(subsystem: subsystem, category: "network")
-    static let cache = Logger(subsystem: subsystem, category: "cache")
-    static let downloads = Logger(subsystem: subsystem, category: "downloads")
-    static let player = Logger(subsystem: subsystem, category: "player")
-    static let ui = Logger(subsystem: subsystem, category: "ui")
-    static let matching = Logger(subsystem: subsystem, category: "matching")
+    static let store = LogStore.shared
+
+    static func debug(_ category: LogCategory, _ message: String) {
+        logger(for: category).debug("\(message, privacy: .public)")
+        Task { @MainActor in
+            store.append(level: "DEBUG", category: category, message: message)
+        }
+    }
+
+    static func error(_ category: LogCategory, _ message: String) {
+        logger(for: category).error("\(message, privacy: .public)")
+        Task { @MainActor in
+            store.append(level: "ERROR", category: category, message: message)
+        }
+    }
+
+    private static func logger(for category: LogCategory) -> Logger {
+        Logger(subsystem: subsystem, category: category.rawValue)
+    }
 }

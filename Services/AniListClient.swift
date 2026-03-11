@@ -22,10 +22,10 @@ final class AniListClient {
         let cacheKey = "viewer:\(token.prefix(8))"
         if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 10),
            let user = decodeViewer(data: data) {
-            AppLog.cache.debug("viewer cache hit")
+            AppLog.debug(.cache, "viewer cache hit")
             return user
         }
-        AppLog.network.debug("viewer request start")
+        AppLog.debug(.network, "viewer request start")
         let query = """
         query Viewer {
           Viewer {
@@ -39,19 +39,19 @@ final class AniListClient {
         let data = try await graphql(query: query, token: token)
         cacheStore.writeJSON(data, forKey: cacheKey)
         guard let user = decodeViewer(data: data) else {
-            AppLog.network.error("viewer decode failed")
+            AppLog.error(.network, "viewer decode failed")
             throw AniListError.invalidResponse
         }
-        AppLog.network.debug("viewer request success")
+        AppLog.debug(.network, "viewer request success")
         return user
     }
 
     func discoveryTrending() async throws -> [AniListMedia] {
         if let cached = cachedTrending, cached.expires > Date() {
-            AppLog.cache.debug("trending cache hit")
+            AppLog.debug(.cache, "trending cache hit")
             return cached.items
         }
-        AppLog.network.debug("trending request start")
+        AppLog.debug(.network, "trending request start")
         let query = """
         query Trending {
           Page(page: 1, perPage: 20) {
@@ -74,16 +74,16 @@ final class AniListClient {
         let data = try await graphql(query: query)
         let items = decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
         cachedTrending = (items, Date().addingTimeInterval(60 * 10))
-        AppLog.network.debug("trending request success count=\(items.count)")
+        AppLog.debug(.network, "trending request success count=\(items.count)")
         return items
     }
 
     func discoverySections() async throws -> [AniListDiscoverySection] {
         if let cached = cachedDiscoverySections, cached.expires > Date() {
-            AppLog.cache.debug("discovery sections cache hit")
+            AppLog.debug(.cache, "discovery sections cache hit")
             return cached.items
         }
-        AppLog.network.debug("discovery sections request start")
+        AppLog.debug(.network, "discovery sections request start")
         let query = """
         query Discovery {
           trending: Page(page: 1, perPage: 12) {
@@ -152,16 +152,16 @@ final class AniListClient {
             )
         ]
         cachedDiscoverySections = (sections, Date().addingTimeInterval(60 * 10))
-        AppLog.network.debug("discovery sections request success count=\(sections.count)")
+        AppLog.debug(.network, "discovery sections request success count=\(sections.count)")
         return sections
     }
 
     func librarySections(token: String) async throws -> [AniListLibrarySection] {
         if let cached = cachedLibrarySections, cached.expires > Date() {
-            AppLog.cache.debug("library cache hit")
+            AppLog.debug(.cache, "library cache hit")
             return cached.items
         }
-        AppLog.network.debug("library request start")
+        AppLog.debug(.network, "library request start")
         let viewer = try await viewer(token: token)
         let query = """
         query Library($userId: Int) {
@@ -192,12 +192,12 @@ final class AniListClient {
         let data = try await graphql(query: query, variables: ["userId": viewer.id], token: token)
         let sections = decodeLibrarySections(data: data)
         cachedLibrarySections = (sections, Date().addingTimeInterval(60 * 5))
-        AppLog.network.debug("library request success count=\(sections.count)")
+        AppLog.debug(.network, "library request success count=\(sections.count)")
         return sections
     }
 
     func searchAnime(query: String) async throws -> [AniListMedia] {
-        AppLog.network.debug("search request start query=\(query, privacy: .public)")
+        AppLog.debug(.network, "search request start query=\(query, privacy: .public)")
         let q = """
         query Search($search: String) {
           Page(page: 1, perPage: 10) {
@@ -219,12 +219,12 @@ final class AniListClient {
         """
         let data = try await graphql(query: q, variables: ["search": query])
         let items = decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
-        AppLog.network.debug("search request success count=\(items.count)")
+        AppLog.debug(.network, "search request success count=\(items.count)")
         return items
     }
 
     func saveTrackingEntry(token: String, mediaId: Int, progress: Int) async throws -> Bool {
-        AppLog.network.debug("save tracking start mediaId=\(mediaId) progress=\(progress)")
+        AppLog.debug(.network, "save tracking start mediaId=\(mediaId) progress=\(progress)")
         let q = """
         mutation SaveProgress($mediaId: Int, $progress: Int) {
           SaveMediaListEntry(mediaId: $mediaId, progress: $progress) {
@@ -236,15 +236,15 @@ final class AniListClient {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dataMap = root["data"] as? [String: Any],
               let _ = dataMap["SaveMediaListEntry"] as? [String: Any] else {
-            AppLog.network.error("save tracking failed mediaId=\(mediaId)")
+            AppLog.error(.network, "save tracking failed mediaId=\(mediaId)")
             return false
         }
-        AppLog.network.debug("save tracking success mediaId=\(mediaId)")
+        AppLog.debug(.network, "save tracking success mediaId=\(mediaId)")
         return true
     }
 
     func notifications(token: String) async throws -> [AniListNotificationItem] {
-        AppLog.network.debug("notifications request start")
+        AppLog.debug(.network, "notifications request start")
         let q = """
         query Notifications {
           Page(page: 1, perPage: 30) {
@@ -276,7 +276,7 @@ final class AniListClient {
         let data = try await graphql(query: q, token: token)
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let page = traverse(root, keyPath: ["data", "Page", "notifications"]) as? [[String: Any]] else {
-            AppLog.network.error("notifications decode failed")
+            AppLog.error(.network, "notifications decode failed")
             return []
         }
         let items = page.compactMap { row in
@@ -287,12 +287,12 @@ final class AniListClient {
             let media = (row["media"] as? [String: Any]).flatMap(decodeMedia)
             return AniListNotificationItem(id: id, type: type, createdAt: createdAt, context: context, media: media)
         }
-        AppLog.network.debug("notifications request success count=\(items.count)")
+        AppLog.debug(.network, "notifications request success count=\(items.count)")
         return items
     }
 
     func trackingEntry(token: String, mediaId: Int) async throws -> AniListTrackingEntry? {
-        AppLog.network.debug("tracking entry start mediaId=\(mediaId)")
+        AppLog.debug(.network, "tracking entry start mediaId=\(mediaId)")
         let viewer = try await viewer(token: token)
         let query = """
         query TrackingEntry($mediaId: Int, $userId: Int) {
@@ -308,7 +308,7 @@ final class AniListClient {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dataMap = root["data"] as? [String: Any],
               let row = dataMap["MediaList"] as? [String: Any] else {
-            AppLog.network.error("tracking entry decode failed mediaId=\(mediaId)")
+            AppLog.error(.network, "tracking entry decode failed mediaId=\(mediaId)")
             return nil
         }
         let id = row["id"] as? Int ?? 0
@@ -316,12 +316,12 @@ final class AniListClient {
         let progress = row["progress"] as? Int
         let score = row["score"] as? Double ?? (row["score"] as? Int).map(Double.init)
         let entry = AniListTrackingEntry(id: id, status: status, progress: progress, score: score)
-        AppLog.network.debug("tracking entry success mediaId=\(mediaId)")
+        AppLog.debug(.network, "tracking entry success mediaId=\(mediaId)")
         return entry
     }
 
     func episodeAvailability(token: String, mediaId: Int) async throws -> AniListEpisodeAvailability? {
-        AppLog.network.debug("episode availability start mediaId=\(mediaId)")
+        AppLog.debug(.network, "episode availability start mediaId=\(mediaId)")
         let query = """
         query Availability($id: Int) {
           Media(id: $id, type: ANIME) {
@@ -335,14 +335,14 @@ final class AniListClient {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dataMap = root["data"] as? [String: Any],
               let media = dataMap["Media"] as? [String: Any] else {
-            AppLog.network.error("episode availability decode failed mediaId=\(mediaId)")
+            AppLog.error(.network, "episode availability decode failed mediaId=\(mediaId)")
             return nil
         }
         let total = media["episodes"] as? Int ?? 0
         let status = media["status"] as? String
         let nextEpisode = (media["nextAiringEpisode"] as? [String: Any])?["episode"] as? Int
         let availability = AniListEpisodeAvailability(totalEpisodes: total, nextAiringEpisode: nextEpisode, status: status)
-        AppLog.network.debug("episode availability success mediaId=\(mediaId)")
+        AppLog.debug(.network, "episode availability success mediaId=\(mediaId)")
         return availability
     }
 
@@ -371,22 +371,22 @@ final class AniListClient {
         if let token, !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        AppLog.network.debug("graphql request start")
+        AppLog.debug(.network, "graphql request start")
         let body: [String: Any] = ["query": query, "variables": variables]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode < 500 else {
-            AppLog.network.error("graphql invalid response")
+            AppLog.error(.network, "graphql invalid response")
             throw AniListError.invalidResponse
         }
         if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let errors = root["errors"] as? [[String: Any]],
            let message = errors.first?["message"] as? String {
-            AppLog.network.error("graphql error \(message, privacy: .public)")
+            AppLog.error(.network, "graphql error \(message, privacy: .public)")
             throw AniListError.graphQLError(message)
         }
-        AppLog.network.debug("graphql request success status=\(http.statusCode)")
+        AppLog.debug(.network, "graphql request success status=\(http.statusCode)")
         return data
     }
 
@@ -461,3 +461,4 @@ final class AniListClient {
         return current
     }
 }
+

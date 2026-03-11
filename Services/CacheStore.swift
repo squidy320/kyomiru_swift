@@ -14,21 +14,21 @@ final class CacheStore {
         let url = fileURL(forKey: key)
         guard let attrs = try? fm.attributesOfItem(atPath: url.path),
               let modified = attrs[.modificationDate] as? Date else {
-            AppLog.cache.debug("cache miss key=\(key, privacy: .public)")
+            AppLog.debug(.cache, "cache miss key=\(key, privacy: .public)")
             return nil
         }
         if let maxAge, Date().timeIntervalSince(modified) > maxAge {
-            AppLog.cache.debug("cache expired key=\(key, privacy: .public)")
+            AppLog.debug(.cache, "cache expired key=\(key, privacy: .public)")
             return nil
         }
-        AppLog.cache.debug("cache hit key=\(key, privacy: .public)")
+        AppLog.debug(.cache, "cache hit key=\(key, privacy: .public)")
         return try? Data(contentsOf: url)
     }
 
     func writeJSON(_ data: Data, forKey key: String) {
         let url = fileURL(forKey: key)
         try? data.write(to: url, options: .atomic)
-        AppLog.cache.debug("cache write key=\(key, privacy: .public)")
+        AppLog.debug(.cache, "cache write key=\(key, privacy: .public)")
     }
 
     private func fileURL(forKey key: String) -> URL {
@@ -36,3 +36,4 @@ final class CacheStore {
         return dirURL.appendingPathComponent(safe).appendingPathExtension("json")
     }
 }
+

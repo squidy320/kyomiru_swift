@@ -16,7 +16,7 @@ struct PlayerView: View {
             PlayerContainer(player: $player)
                 .ignoresSafeArea()
                 .onAppear {
-                    AppLog.player.debug("player appear episode=\(episode.id, privacy: .public)")
+                    AppLog.debug(.player, "player appear episode=\(episode.id, privacy: .public)")
                     let initial = pickSource(audio: selectedAudio, quality: selectedQuality) ?? sources.first
                     selectedSource = initial
                     if let src = initial {
@@ -35,7 +35,7 @@ struct PlayerView: View {
                         PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
                     }
                     player.pause()
-                    AppLog.player.debug("player disappear episode=\(episode.id, privacy: .public)")
+                    AppLog.debug(.player, "player disappear episode=\(episode.id, privacy: .public)")
                 }
 
             HStack(spacing: 12) {
@@ -106,7 +106,7 @@ struct PlayerView: View {
     }
 
     private func setSpeed(_ speed: Double) {
-        AppLog.player.debug("player speed change \(speed)")
+        AppLog.debug(.player, "player speed change \(speed)")
         playbackSpeed = Float(speed)
         let currentTime = player.currentTime()
         player.rate = playbackSpeed
@@ -152,7 +152,7 @@ struct PlayerView: View {
 
     private func switchSource(audio: String, quality: String) {
         guard let target = pickSource(audio: audio, quality: quality) else { return }
-        AppLog.player.debug("player source switch audio=\(audio, privacy: .public) quality=\(quality, privacy: .public)")
+        AppLog.debug(.player, "player source switch audio=\(audio, privacy: .public) quality=\(quality, privacy: .public)")
         selectedSource = target
         let currentTime = player.currentTime()
         let item = AVPlayerItem(url: target.url)
@@ -181,3 +181,4 @@ final class PlayerHostController: AVPlayerViewController {
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
     override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation { .fade }
 }
+

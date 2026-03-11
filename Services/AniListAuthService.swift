@@ -9,15 +9,15 @@ final class AniListAuthService: NSObject {
     func signIn() async throws -> String {
         guard let clientId = Bundle.main.object(forInfoDictionaryKey: "ANILIST_CLIENT_ID") as? String,
               !clientId.isEmpty else {
-            AppLog.auth.error("missing AniList client id")
+            AppLog.error(.auth, "missing AniList client id")
             throw AniListError.invalidResponse
         }
-        AppLog.auth.debug("auth start")
+        AppLog.debug(.auth, "auth start")
         let url = URL(string: "https://anilist.co/api/v2/oauth/authorize?client_id=\(clientId)&response_type=token&redirect_uri=\(redirectURI)")!
         return try await withCheckedThrowingContinuation { continuation in
             let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "kyomiru") { callbackURL, error in
                 if let error {
-                    AppLog.auth.error("auth failed \(error.localizedDescription, privacy: .public)")
+                    AppLog.error(.auth, "auth failed \(error.localizedDescription, privacy: .public)")
                     continuation.resume(throwing: error)
                     return
                 }
@@ -26,11 +26,11 @@ final class AniListAuthService: NSObject {
                       let token = fragment.split(separator: "&")
                         .map({ $0.split(separator: "=") })
                         .first(where: { $0.first == "access_token" })?.last else {
-                    AppLog.auth.error("auth token parse failed")
+                    AppLog.error(.auth, "auth token parse failed")
                     continuation.resume(throwing: AniListError.invalidResponse)
                     return
                 }
-                AppLog.auth.debug("auth success")
+                AppLog.debug(.auth, "auth success")
                 continuation.resume(returning: String(token))
             }
             session.presentationContextProvider = self
@@ -48,3 +48,4 @@ extension AniListAuthService: ASWebAuthenticationPresentationContextProviding {
             .first { $0.isKeyWindow } ?? UIWindow()
     }
 }
+

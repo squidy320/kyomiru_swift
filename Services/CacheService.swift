@@ -6,17 +6,17 @@ final class CacheService {
     private init() {}
 
     func clearAll() async {
-        AppLog.cache.debug("clear all start")
+        AppLog.debug(.cache, "clear all start")
         URLCache.shared.removeAllCachedResponses()
         await clearTemporaryFiles()
         await clearDownloads()
-        AppLog.cache.debug("clear all complete")
+        AppLog.debug(.cache, "clear all complete")
     }
 
     func clearDownloadsOnly() async {
-        AppLog.cache.debug("clear downloads only start")
+        AppLog.debug(.cache, "clear downloads only start")
         await clearDownloads()
-        AppLog.cache.debug("clear downloads only complete")
+        AppLog.debug(.cache, "clear downloads only complete")
     }
 
     private func clearTemporaryFiles() async {
@@ -38,7 +38,7 @@ final class CacheService {
                 cleared += 1
             }
         }
-        AppLog.cache.debug("cleared temp files count=\(cleared)")
+        AppLog.debug(.cache, "cleared temp files count=\(cleared)")
     }
 
     private func clearDownloads() async {
@@ -46,6 +46,7 @@ final class CacheService {
         let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let folder = base.appendingPathComponent("KyomiruDownloads", isDirectory: true)
         try? fm.removeItem(at: folder)
-        AppLog.cache.debug("downloads folder cleared")
+        AppLog.debug(.cache, "downloads folder cleared")
     }
 }
+

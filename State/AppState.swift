@@ -22,8 +22,9 @@ final class AppState: ObservableObject {
 
     @MainActor
     func bootstrap() async {
-        AppLog.ui.debug("app bootstrap start")
+        AppLog.debug(.ui, "app bootstrap start")
         await authState.bootstrap()
-        AppLog.ui.debug("app bootstrap complete")
+        AppLog.debug(.ui, "app bootstrap complete")
     }
 }
+

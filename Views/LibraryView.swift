@@ -89,7 +89,7 @@ struct LibraryView: View {
             }
         }
         .task {
-            AppLog.ui.debug("library view load")
+            AppLog.debug(.ui, "library view load")
             await appState.bootstrap()
             await loadLibrary()
         }
@@ -116,7 +116,7 @@ struct LibraryView: View {
     private func loadLibrary() async {
         guard appState.authState.isSignedIn,
               let token = appState.authState.token else { return }
-        AppLog.network.debug("library load start")
+        AppLog.debug(.network, "library load start")
         isLoading = true
         errorMessage = nil
         do {
@@ -124,10 +124,10 @@ struct LibraryView: View {
             sections = items
         } catch {
             errorMessage = "Failed to load AniList library."
-            AppLog.network.error("library load failed \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.network, "library load failed \(error.localizedDescription, privacy: .public)")
         }
         isLoading = false
-        AppLog.network.debug("library load complete sections=\(sections.count)")
+        AppLog.debug(.network, "library load complete sections=\(sections.count)")
     }
 }
 
@@ -256,23 +256,37 @@ private struct AnimeCard: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-                .frame(height: 232)
-                .overlay(
-                    VStack(alignment: .leading, spacing: 6) {
-                        Spacer()
-                        Text(media.title.best)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(2)
-                        Text(subtitle)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(Theme.textSecondary)
+            ZStack(alignment: .bottomLeading) {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 232)
+                if let coverURL = media.coverURL {
+                    AsyncImage(url: coverURL) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Color.white.opacity(0.08)
                     }
-                    .padding(12),
-                    alignment: .bottomLeading
+                    .frame(height: 232)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                LinearGradient(
+                    colors: [Color.black.opacity(0.85), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
                 )
+                .frame(height: 120)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(media.title.best)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .padding(12)
+            }
 
             RatingBadge(rating: media.averageScore.map { Double($0) / 10.0 })
                 .padding(10)
@@ -283,3 +297,4 @@ private struct AnimeCard: View {
         }
     }
 }
+

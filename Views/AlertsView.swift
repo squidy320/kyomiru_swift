@@ -53,7 +53,7 @@ struct AlertsView: View {
             }
         }
         .task {
-            AppLog.ui.debug("alerts view load")
+            AppLog.debug(.ui, "alerts view load")
             await appState.bootstrap()
             await loadNotifications()
         }
@@ -62,17 +62,17 @@ struct AlertsView: View {
     private func loadNotifications() async {
         guard appState.authState.isSignedIn,
               let token = appState.authState.token else { return }
-        AppLog.network.debug("alerts load start")
+        AppLog.debug(.network, "alerts load start")
         isLoading = true
         errorMessage = nil
         do {
             notifications = try await appState.services.aniListClient.notifications(token: token)
         } catch {
             errorMessage = "Failed to load AniList alerts."
-            AppLog.network.error("alerts load failed \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.network, "alerts load failed \(error.localizedDescription, privacy: .public)")
         }
         isLoading = false
-        AppLog.network.debug("alerts load complete count=\(notifications.count)")
+        AppLog.debug(.network, "alerts load complete count=\(notifications.count)")
     }
 }
 
@@ -122,3 +122,4 @@ private struct AlertRow: View {
         return formatter.string(from: date)
     }
 }
+

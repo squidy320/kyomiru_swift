@@ -4,21 +4,21 @@ final class EpisodeService {
     private let runtime = SoraRuntime()
 
     func loadEpisodes(media: AniListMedia) async throws -> (SoraAnimeMatch, [SoraEpisode]) {
-        AppLog.network.debug("episodes load start mediaId=\(media.id)")
+        AppLog.debug(.network, "episodes load start mediaId=\(media.id)")
         guard let match = try await runtime.autoMatch(media: media) else {
-            AppLog.network.error("episodes auto match failed mediaId=\(media.id)")
+            AppLog.error(.network, "episodes auto match failed mediaId=\(media.id)")
             throw AniListError.invalidResponse
         }
         let episodes = try await runtime.episodes(for: match)
         let adjusted = applySeasonOffsetIfNeeded(episodes: episodes, media: media)
-        AppLog.network.debug("episodes load success mediaId=\(media.id) count=\(adjusted.count)")
+        AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
         return (match, adjusted)
     }
 
     func loadSources(for episode: SoraEpisode) async throws -> [SoraSource] {
-        AppLog.network.debug("sources load start episode=\(episode.number)")
+        AppLog.debug(.network, "sources load start episode=\(episode.number)")
         let sources = try await runtime.sources(for: episode)
-        AppLog.network.debug("sources load success count=\(sources.count)")
+        AppLog.debug(.network, "sources load success count=\(sources.count)")
         return sources
     }
 
@@ -31,9 +31,10 @@ final class EpisodeService {
         let offset = expected * (season - 1)
         let slice = Array(episodes.dropFirst(offset).prefix(expected))
         if slice.isEmpty { return episodes }
-        AppLog.matching.debug("season offset applied mediaId=\(media.id) season=\(season) offset=\(offset)")
+        AppLog.debug(.matching, "season offset applied mediaId=\(media.id) season=\(season) offset=\(offset)")
         return slice.enumerated().map { idx, ep in
             SoraEpisode(id: ep.id, number: idx + 1, playURL: ep.playURL)
         }
     }
 }
+

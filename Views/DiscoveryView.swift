@@ -45,7 +45,8 @@ struct DiscoveryView: View {
                                                 DiscoveryCard(
                                                     title: media.title.best,
                                                     rating: media.averageScore.map { Double($0) / 10.0 },
-                                                    mediaId: media.id
+                                                    mediaId: media.id,
+                                                    coverURL: media.coverURL
                                                 )
                                             }
                                             .buttonStyle(.plain)
@@ -62,7 +63,7 @@ struct DiscoveryView: View {
             }
         }
         .task {
-            AppLog.ui.debug("discovery view load")
+            AppLog.debug(.ui, "discovery view load")
             await loadDiscovery()
         }
     }
@@ -127,16 +128,16 @@ struct DiscoveryView: View {
 
 private extension DiscoveryView {
     func loadDiscovery() async {
-        AppLog.network.debug("discovery load start")
+        AppLog.debug(.network, "discovery load start")
         isLoading = true
         do {
             sections = try await appState.services.aniListClient.discoverySections()
         } catch {
             sections = []
-            AppLog.network.error("discovery load failed \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.network, "discovery load failed \(error.localizedDescription, privacy: .public)")
         }
         isLoading = false
-        AppLog.network.debug("discovery load complete sections=\(sections.count)")
+        AppLog.debug(.network, "discovery load complete sections=\(sections.count)")
     }
 }
 
@@ -144,26 +145,41 @@ private struct DiscoveryCard: View {
     let title: String
     let rating: Double?
     let mediaId: Int
+    let coverURL: URL?
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-                .frame(height: 232)
-                .overlay(
-                    VStack(alignment: .leading, spacing: 6) {
-                        Spacer()
-                        Text(title)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(2)
-                        Text("Unwatched: 2")
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundColor(Theme.textSecondary)
+            ZStack(alignment: .bottomLeading) {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 232)
+                if let coverURL {
+                    AsyncImage(url: coverURL) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Color.white.opacity(0.08)
                     }
-                    .padding(12),
-                    alignment: .bottomLeading
+                    .frame(height: 232)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                LinearGradient(
+                    colors: [Color.black.opacity(0.85), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
                 )
+                .frame(height: 120)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                    Text("Unwatched: 2")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .padding(12)
+            }
 
             RatingBadge(rating: rating)
                 .padding(10)
@@ -174,3 +190,4 @@ private struct DiscoveryCard: View {
         }
     }
 }
+
