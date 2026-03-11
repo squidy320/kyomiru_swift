@@ -1,9 +1,9 @@
 import SwiftUI
+import UIKit
 
 struct LogsView: View {
     @StateObject private var store = LogStore.shared
-    @State private var showShare = false
-    @State private var exportURL: URL?
+    @State private var sharePayload: SharePayload?
 
     var body: some View {
         ZStack {
@@ -30,8 +30,7 @@ struct LogsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Share .txt") {
-                    exportURL = store.exportURL()
-                    showShare = true
+                    sharePayload = SharePayload(items: [store.exportURL()])
                 }
             }
             ToolbarItem(placement: .topBarLeading) {
@@ -41,19 +40,31 @@ struct LogsView: View {
                 .foregroundColor(.red)
             }
         }
-        .sheet(isPresented: $showShare) {
-            if let exportURL {
-                ShareSheet(items: [exportURL])
-            }
+        .sheet(item: $sharePayload) { payload in
+            ShareSheet(items: payload.items)
         }
     }
+}
+
+struct SharePayload: Identifiable {
+    let id = UUID()
+    let items: [Any]
 }
 
 struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .first { $0.isKeyWindow }
+            popover.sourceRect = popover.sourceView?.bounds ?? .zero
+            popover.permittedArrowDirections = []
+        }
+        return controller
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
