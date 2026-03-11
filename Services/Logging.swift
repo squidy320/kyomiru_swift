@@ -13,19 +13,18 @@ enum LogCategory: String {
 
 enum AppLog {
     static let subsystem = "com.kyomiru.app"
-    static let store = LogStore.shared
 
     static func debug(_ category: LogCategory, _ message: String) {
         logger(for: category).debug("\(message)")
         Task { @MainActor in
-            store.append(level: "DEBUG", category: category, message: message)
+            LogStore.shared.append(level: "DEBUG", category: category, message: message)
         }
     }
 
     static func error(_ category: LogCategory, _ message: String) {
         logger(for: category).error("\(message)")
         Task { @MainActor in
-            store.append(level: "ERROR", category: category, message: message)
+            LogStore.shared.append(level: "ERROR", category: category, message: message)
         }
     }
 
