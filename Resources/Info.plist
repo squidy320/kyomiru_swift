@@ -29,6 +29,8 @@
     </array>
     <key>ANILIST_CLIENT_ID</key>
     <string>CHANGE_ME</string>
+    <key>ANILIST_CLIENT_SECRET</key>
+    <string>CHANGE_ME</string>
     <key>UILaunchScreen</key>
     <dict/>
 </dict>

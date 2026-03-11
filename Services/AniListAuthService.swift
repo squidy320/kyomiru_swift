@@ -13,8 +13,13 @@ final class AniListAuthService: NSObject {
             AppLog.error(.auth, "missing AniList client id")
             throw AniListError.invalidResponse
         }
+        guard let clientSecret = Bundle.main.object(forInfoDictionaryKey: "ANILIST_CLIENT_SECRET") as? String,
+              !clientSecret.isEmpty else {
+            AppLog.error(.auth, "missing AniList client secret")
+            throw AniListError.invalidResponse
+        }
         AppLog.debug(.auth, "auth start")
-        let url = URL(string: "https://anilist.co/api/v2/oauth/authorize?client_id=\(clientId)&response_type=token&redirect_uri=\(redirectURI)")!
+        let url = URL(string: "https://anilist.co/api/v2/oauth/authorize?client_id=\(clientId)&response_type=code&redirect_uri=\(redirectURI)")!
         return try await withCheckedThrowingContinuation { continuation in
             let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "kyomiru") { [weak self] callbackURL, error in
                 defer { self?.currentSession = nil }
@@ -24,22 +29,70 @@ final class AniListAuthService: NSObject {
                     return
                 }
                 guard let callbackURL,
-                      let fragment = callbackURL.fragment,
-                      let token = fragment.split(separator: "&")
-                        .map({ $0.split(separator: "=") })
-                        .first(where: { $0.first == "access_token" })?.last else {
-                    AppLog.error(.auth, "auth token parse failed")
+                      let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
+                      let code = components.queryItems?.first(where: { $0.name == "code" })?.value else {
+                    AppLog.error(.auth, "auth code parse failed")
                     continuation.resume(throwing: AniListError.invalidResponse)
                     return
                 }
-                AppLog.debug(.auth, "auth success")
-                continuation.resume(returning: String(token))
+                Task {
+                    do {
+                        let token = try await exchangeCodeForToken(
+                            code: code,
+                            clientId: clientId,
+                            clientSecret: clientSecret,
+                            redirectURI: redirectURI
+                        )
+                        AppLog.debug(.auth, "auth success")
+                        continuation.resume(returning: token)
+                    } catch {
+                        AppLog.error(.auth, "auth token exchange failed \(error.localizedDescription)")
+                        continuation.resume(throwing: error)
+                    }
+                }
             }
             session.presentationContextProvider = self
             session.prefersEphemeralWebBrowserSession = true
             self.currentSession = session
             session.start()
         }
+    }
+
+    private func exchangeCodeForToken(
+        code: String,
+        clientId: String,
+        clientSecret: String,
+        redirectURI: String
+    ) async throws -> String {
+        let url = URL(string: "https://anilist.co/api/v2/oauth/token")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let body: [String: Any] = [
+            "grant_type": "authorization_code",
+            "client_id": clientId,
+            "client_secret": clientSecret,
+            "redirect_uri": redirectURI,
+            "code": code,
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let payload = String(data: data, encoding: .utf8) ?? "no response body"
+            AppLog.error(.auth, "auth token exchange http error \(payload)")
+            throw AniListError.invalidResponse
+        }
+        let json = try JSONSerialization.jsonObject(with: data, options: [])
+        guard let dict = json as? [String: Any],
+              let token = dict["access_token"] as? String else {
+            AppLog.error(.auth, "auth token exchange parse failed")
+            throw AniListError.invalidResponse
+        }
+        return token
     }
 }
 
