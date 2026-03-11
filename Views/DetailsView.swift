@@ -268,12 +268,12 @@ private struct SourcePickerSheet: View {
             List {
                 Section {
                     Picker("Audio", selection: $selectedAudio) {
-                        ForEach(audioOptions(), id: \\.self) { a in
+                        ForEach(audioOptions(), id: \.self) { a in
                             Text(a).tag(a)
                         }
                     }
                     Picker("Quality", selection: $selectedQuality) {
-                        ForEach(qualityOptions(), id: \\.self) { q in
+                        ForEach(qualityOptions(), id: \.self) { q in
                             Text(q).tag(q)
                         }
                     }

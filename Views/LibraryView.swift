@@ -61,7 +61,7 @@ struct LibraryView: View {
                                                 ],
                                                 spacing: 12
                                             ) {
-                                                ForEach(visible, id: \\.id) { entry in
+                                                ForEach(visible, id: \.id) { entry in
                                                     NavigationLink {
                                                         DetailsView(media: entry.media)
                                                     } label: {

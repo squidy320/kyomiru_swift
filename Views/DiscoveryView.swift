@@ -16,45 +16,44 @@ struct DiscoveryView: View {
                             .font(.system(size: 28, weight: .heavy))
                             .foregroundColor(.white)
 
-                    hero
+                        hero
 
-                    searchBar
+                        searchBar
 
-                    if isLoading {
-                        GlassCard {
-                            Text("Loading discovery...")
-                                .foregroundColor(Theme.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    } else {
-                        ForEach(sections) { section in
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text(section.title)
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(.white)
-                                LazyVGrid(
-                                    columns: [
-                                        GridItem(.adaptive(minimum: 152), spacing: 12),
-                                    ],
-                                    spacing: 12
-                                ) {
-                                    ForEach(section.items, id: \\.id) { media in
-                                        NavigationLink {
-                                            DetailsView(media: media)
-                                        } label: {
-                                            DiscoveryCard(
-                                                title: media.title.best,
-                                                rating: media.averageScore.map { Double($0) / 10.0 },
-                                                mediaId: media.id
-                                            )
+                        if isLoading {
+                            GlassCard {
+                                Text("Loading discovery...")
+                                    .foregroundColor(Theme.textSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else {
+                            ForEach(sections) { section in
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text(section.title)
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundColor(.white)
+                                    LazyVGrid(
+                                        columns: [
+                                            GridItem(.adaptive(minimum: 152), spacing: 12),
+                                        ],
+                                        spacing: 12
+                                    ) {
+                                        ForEach(section.items, id: \.id) { media in
+                                            NavigationLink {
+                                                DetailsView(media: media)
+                                            } label: {
+                                                DiscoveryCard(
+                                                    title: media.title.best,
+                                                    rating: media.averageScore.map { Double($0) / 10.0 },
+                                                    mediaId: media.id
+                                                )
+                                            }
+                                            .buttonStyle(.plain)
                                         }
-                                        .buttonStyle(.plain)
                                     }
                                 }
                             }
                         }
-                    }
-                }
                     }
                     .padding(.horizontal, 14)
                     .padding(.top, 14)

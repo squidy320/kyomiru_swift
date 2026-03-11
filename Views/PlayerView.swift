@@ -48,7 +48,7 @@ struct PlayerView: View {
                 }
 
                 Menu {
-                    ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \\.self) { speed in
+                    ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { speed in
                         Button("\(String(format: "%.2gx", speed))") {
                             setSpeed(speed)
                         }
@@ -63,7 +63,7 @@ struct PlayerView: View {
                 }
 
                 Menu {
-                    ForEach(audioOptions(), id: \\.self) { audio in
+                    ForEach(audioOptions(), id: \.self) { audio in
                         Button(audio) {
                             selectedAudio = audio
                             switchSource(audio: audio, quality: selectedQuality)
@@ -79,7 +79,7 @@ struct PlayerView: View {
                 }
 
                 Menu {
-                    ForEach(qualityOptions(for: selectedAudio), id: \\.self) { q in
+                    ForEach(qualityOptions(for: selectedAudio), id: \.self) { q in
                         Button(q) {
                             selectedQuality = q
                             switchSource(audio: selectedAudio, quality: q)
