@@ -12,7 +12,7 @@ struct DownloadItem: Identifiable, Equatable {
 }
 
 @MainActor
-final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
+final class DownloadManager: NSObject, ObservableObject {
     static let shared = DownloadManager()
     @Published private(set) var items: [DownloadItem] = []
 
@@ -186,8 +186,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
     }
 
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        guard let id = downloadTask.taskDescription,
+    private func handleDidFinishDownload(task: URLSessionDownloadTask, location: URL) {
+        guard let id = task.taskDescription,
               let item = items.first(where: { $0.id == id }) else { return }
         let target = localFileURL(for: item.title, episode: item.episode)
         try? fm.removeItem(at: target)
@@ -202,12 +202,11 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
     }
 
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
-                    didWriteData bytesWritten: Int64,
-                    totalBytesWritten: Int64,
-                    totalBytesExpectedToWrite: Int64) {
+    private func handleDidWriteData(task: URLSessionDownloadTask,
+                                    totalBytesWritten: Int64,
+                                    totalBytesExpectedToWrite: Int64) {
         guard totalBytesExpectedToWrite > 0,
-              let id = downloadTask.taskDescription else { return }
+              let id = task.taskDescription else { return }
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
         updateProgress(id: id, progress: progress)
     }
@@ -239,7 +238,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         guard let data = try? Data(contentsOf: url) else { return }
         guard let decoded = try? JSONDecoder().decode([PersistedDownload].self, from: data) else { return }
         items = decoded.map { $0.asItem() }
-        AppLog.downloads.debug("download index loaded count=\(items.count)")
+        AppLog.downloads.debug("download index loaded count=\(self.items.count)")
     }
 
     private func saveIndex() {
@@ -288,5 +287,24 @@ private struct PersistedDownload: Codable {
             status: status,
             isHls: isHls
         )
+    }
+}
+
+extension DownloadManager: @preconcurrency URLSessionDownloadDelegate {
+    nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        Task { @MainActor in
+            self.handleDidFinishDownload(task: downloadTask, location: location)
+        }
+    }
+
+    nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                                didWriteData bytesWritten: Int64,
+                                totalBytesWritten: Int64,
+                                totalBytesExpectedToWrite: Int64) {
+        Task { @MainActor in
+            self.handleDidWriteData(task: downloadTask,
+                                    totalBytesWritten: totalBytesWritten,
+                                    totalBytesExpectedToWrite: totalBytesExpectedToWrite)
+        }
     }
 }
