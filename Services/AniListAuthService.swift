@@ -35,13 +35,14 @@ final class AniListAuthService: NSObject {
                     continuation.resume(throwing: AniListError.invalidResponse)
                     return
                 }
-                Task {
+                Task { [weak self] in
                     do {
-                        let token = try await exchangeCodeForToken(
+                        guard let self else { return }
+                        let token = try await self.exchangeCodeForToken(
                             code: code,
                             clientId: clientId,
                             clientSecret: clientSecret,
-                            redirectURI: redirectURI
+                            redirectURI: self.redirectURI
                         )
                         AppLog.debug(.auth, "auth success")
                         continuation.resume(returning: token)
