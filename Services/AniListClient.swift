@@ -197,7 +197,7 @@ final class AniListClient {
     }
 
     func searchAnime(query: String) async throws -> [AniListMedia] {
-        AppLog.debug(.network, "search request start query=\(query, privacy: .public)")
+        AppLog.debug(.network, "search request start query=\(query)")
         let q = """
         query Search($search: String) {
           Page(page: 1, perPage: 10) {
@@ -383,7 +383,7 @@ final class AniListClient {
         if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let errors = root["errors"] as? [[String: Any]],
            let message = errors.first?["message"] as? String {
-            AppLog.error(.network, "graphql error \(message, privacy: .public)")
+            AppLog.error(.network, "graphql error \(message)")
             throw AniListError.graphQLError(message)
         }
         AppLog.debug(.network, "graphql request success status=\(http.statusCode)")

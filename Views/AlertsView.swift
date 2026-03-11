@@ -69,7 +69,7 @@ struct AlertsView: View {
             notifications = try await appState.services.aniListClient.notifications(token: token)
         } catch {
             errorMessage = "Failed to load AniList alerts."
-            AppLog.error(.network, "alerts load failed \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.network, "alerts load failed \(error.localizedDescription)")
         }
         isLoading = false
         AppLog.debug(.network, "alerts load complete count=\(notifications.count)")

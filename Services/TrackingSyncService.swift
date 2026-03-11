@@ -13,7 +13,7 @@ final class TrackingSyncService {
         ) { notif in
             guard let title = notif.userInfo?["title"] as? String,
                   let episode = notif.userInfo?["episode"] as? Int else { return }
-            AppLog.debug(.network, "tracking sync event title=\(title, privacy: .public) ep=\(episode)")
+            AppLog.debug(.network, "tracking sync event title=\(title) ep=\(episode)")
             Task {
                 await self.updateProgress(auth: auth, client: client, title: title, episode: episode)
             }
@@ -29,7 +29,7 @@ final class TrackingSyncService {
                 AppLog.debug(.network, "tracking sync save mediaId=\(media.id) success=\(success)")
             }
         } catch {
-            AppLog.error(.network, "tracking sync failed \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.network, "tracking sync failed \(error.localizedDescription)")
             return
         }
     }

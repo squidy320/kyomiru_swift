@@ -16,7 +16,7 @@ struct PlayerView: View {
             PlayerContainer(player: $player)
                 .ignoresSafeArea()
                 .onAppear {
-                    AppLog.debug(.player, "player appear episode=\(episode.id, privacy: .public)")
+                    AppLog.debug(.player, "player appear episode=\(episode.id)")
                     let initial = pickSource(audio: selectedAudio, quality: selectedQuality) ?? sources.first
                     selectedSource = initial
                     if let src = initial {
@@ -35,7 +35,7 @@ struct PlayerView: View {
                         PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
                     }
                     player.pause()
-                    AppLog.debug(.player, "player disappear episode=\(episode.id, privacy: .public)")
+                    AppLog.debug(.player, "player disappear episode=\(episode.id)")
                 }
 
             HStack(spacing: 12) {
@@ -152,7 +152,7 @@ struct PlayerView: View {
 
     private func switchSource(audio: String, quality: String) {
         guard let target = pickSource(audio: audio, quality: quality) else { return }
-        AppLog.debug(.player, "player source switch audio=\(audio, privacy: .public) quality=\(quality, privacy: .public)")
+        AppLog.debug(.player, "player source switch audio=\(audio) quality=\(quality)")
         selectedSource = target
         let currentTime = player.currentTime()
         let item = AVPlayerItem(url: target.url)

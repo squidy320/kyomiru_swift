@@ -9,13 +9,13 @@ final class PlaybackHistoryStore {
         var map = defaults.dictionary(forKey: key) as? [String: Double] ?? [:]
         map[episodeId] = position
         defaults.set(map, forKey: key)
-        AppLog.debug(.player, "playback saved episode=\(episodeId, privacy: .public) pos=\(position)")
+        AppLog.debug(.player, "playback saved episode=\(episodeId) pos=\(position)")
     }
 
     func position(for episodeId: String) -> Double? {
         let map = defaults.dictionary(forKey: key) as? [String: Double]
         let value = map?[episodeId]
-        AppLog.debug(.player, "playback lookup episode=\(episodeId, privacy: .public) found=\(value != nil)")
+        AppLog.debug(.player, "playback lookup episode=\(episodeId) found=\(value != nil)")
         return value
     }
 }

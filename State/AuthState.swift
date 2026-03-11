@@ -38,7 +38,7 @@ final class AuthState: ObservableObject {
             await loadViewer()
             AppLog.debug(.auth, "auth sign in success")
         } catch {
-            AppLog.error(.auth, "auth sign in failed \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.auth, "auth sign in failed \(error.localizedDescription)")
             token = nil
             user = nil
         }
@@ -59,7 +59,7 @@ final class AuthState: ObservableObject {
             user = viewer
             AppLog.debug(.auth, "auth viewer load success")
         } catch {
-            AppLog.error(.auth, "auth viewer load failed \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.auth, "auth viewer load failed \(error.localizedDescription)")
             user = nil
         }
     }

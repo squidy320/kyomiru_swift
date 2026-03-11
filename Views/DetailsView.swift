@@ -186,7 +186,7 @@ struct DetailsView: View {
             episodes = result.1
         } catch {
             errorMessage = "Failed to load episodes."
-            AppLog.error(.network, "details episodes load failed mediaId=\(media.id) \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.network, "details episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
         }
         isLoading = false
     }
@@ -200,7 +200,7 @@ struct DetailsView: View {
             AppLog.debug(.network, "details tracking loaded mediaId=\(media.id) progress=\(trackingProgress ?? 0)")
         } catch {
             trackingProgress = nil
-            AppLog.error(.network, "details tracking failed mediaId=\(media.id) \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.network, "details tracking failed mediaId=\(media.id) \(error.localizedDescription)")
         }
     }
 
@@ -218,7 +218,7 @@ struct DetailsView: View {
                 }
             } catch {
                 errorMessage = "Failed to load streams."
-                AppLog.error(.network, "sources load failed ep=\(episode.number) \(error.localizedDescription, privacy: .public)")
+                AppLog.error(.network, "sources load failed ep=\(episode.number) \(error.localizedDescription)")
             }
             isLoadingSources = false
         }

@@ -11,7 +11,7 @@ final class KeychainService {
         ]
         SecItemDelete(query as CFDictionary)
         SecItemAdd(query as CFDictionary, nil)
-        AppLog.debug(.auth, "keychain save key=\(key, privacy: .public)")
+        AppLog.debug(.auth, "keychain save key=\(key)")
     }
 
     func readToken(key: String) -> String? {
@@ -24,11 +24,11 @@ final class KeychainService {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status != errSecSuccess {
-            AppLog.debug(.auth, "keychain read miss key=\(key, privacy: .public)")
+            AppLog.debug(.auth, "keychain read miss key=\(key)")
             return nil
         }
         guard let data = item as? Data else { return nil }
-        AppLog.debug(.auth, "keychain read hit key=\(key, privacy: .public)")
+        AppLog.debug(.auth, "keychain read hit key=\(key)")
         return String(data: data, encoding: .utf8)
     }
 
@@ -38,7 +38,7 @@ final class KeychainService {
             kSecAttrAccount as String: key
         ]
         SecItemDelete(query as CFDictionary)
-        AppLog.debug(.auth, "keychain delete key=\(key, privacy: .public)")
+        AppLog.debug(.auth, "keychain delete key=\(key)")
     }
 }
 

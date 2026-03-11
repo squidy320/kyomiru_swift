@@ -16,14 +16,14 @@ enum AppLog {
     static let store = LogStore.shared
 
     static func debug(_ category: LogCategory, _ message: String) {
-        logger(for: category).debug("\(message, privacy: .public)")
+        logger(for: category).debug("\(message)")
         Task { @MainActor in
             store.append(level: "DEBUG", category: category, message: message)
         }
     }
 
     static func error(_ category: LogCategory, _ message: String) {
-        logger(for: category).error("\(message, privacy: .public)")
+        logger(for: category).error("\(message)")
         Task { @MainActor in
             store.append(level: "ERROR", category: category, message: message)
         }

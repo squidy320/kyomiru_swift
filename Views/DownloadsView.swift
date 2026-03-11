@@ -35,14 +35,14 @@ struct DownloadsView: View {
                                         .font(.system(size: 12))
                                     if let _ = item.localFile {
                                         Button("Play Offline") {
-                                            AppLog.debug(.ui, "offline play tapped id=\(item.id, privacy: .public)")
+                                            AppLog.debug(.ui, "offline play tapped id=\(item.id)")
                                             selectedItem = item
                                             showPlayer = true
                                         }
                                         .buttonStyle(.borderedProminent)
                                     }
                                     Button("Delete") {
-                                        AppLog.debug(.downloads, "download delete tapped id=\(item.id, privacy: .public)")
+                                        AppLog.debug(.downloads, "download delete tapped id=\(item.id)")
                                         DownloadManager.shared.delete(itemId: item.id)
                                     }
                                     .buttonStyle(.bordered)
@@ -72,7 +72,7 @@ struct DownloadsView: View {
         }
         .onChange(of: showPlayer) { value in
             if value, let item = selectedItem {
-                AppLog.debug(.ui, "offline player present id=\(item.id, privacy: .public)")
+                AppLog.debug(.ui, "offline player present id=\(item.id)")
             }
         }
         .onAppear {

@@ -134,7 +134,7 @@ private extension DiscoveryView {
             sections = try await appState.services.aniListClient.discoverySections()
         } catch {
             sections = []
-            AppLog.error(.network, "discovery load failed \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.network, "discovery load failed \(error.localizedDescription)")
         }
         isLoading = false
         AppLog.debug(.network, "discovery load complete sections=\(sections.count)")

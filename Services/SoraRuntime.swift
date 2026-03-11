@@ -11,7 +11,7 @@ final class SoraRuntime {
     func searchAnime(query: String) async throws -> [SoraAnimeMatch] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        AppLog.debug(.network, "animepahe search start query=\(trimmed, privacy: .public)")
+        AppLog.debug(.network, "animepahe search start query=\(trimmed)")
         let url = baseURL.appendingPathComponent("api")
         var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)!
         comps.queryItems = [
@@ -61,7 +61,7 @@ final class SoraRuntime {
     }
 
     func episodes(for match: SoraAnimeMatch) async throws -> [SoraEpisode] {
-        AppLog.debug(.network, "episodes list start session=\(match.session, privacy: .public)")
+        AppLog.debug(.network, "episodes list start session=\(match.session)")
         let url = baseURL.appendingPathComponent("api")
         var page = 1
         var out: [SoraEpisode] = []
@@ -115,7 +115,7 @@ final class SoraRuntime {
     }
 
     private func sourcesFromKwik(url: URL, referer: URL) async throws -> [SoraSource] {
-        AppLog.debug(.network, "kwik scrape start url=\(url.absoluteString, privacy: .public)")
+        AppLog.debug(.network, "kwik scrape start url=\(url.absoluteString)")
         let html = try await getText(url: url, referer: referer)
         let directLinks = extractLinks(from: html)
         var out: [SoraSource] = []
@@ -207,7 +207,7 @@ final class SoraRuntime {
         if let referer {
             request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
         }
-        AppLog.debug(.network, "http get \(url.absoluteString, privacy: .public)")
+        AppLog.debug(.network, "http get \(url.absoluteString)")
         let (data, _) = try await session.data(for: request)
         return data
     }

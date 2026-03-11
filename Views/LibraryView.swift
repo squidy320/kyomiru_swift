@@ -124,7 +124,7 @@ struct LibraryView: View {
             sections = items
         } catch {
             errorMessage = "Failed to load AniList library."
-            AppLog.error(.network, "library load failed \(error.localizedDescription, privacy: .public)")
+            AppLog.error(.network, "library load failed \(error.localizedDescription)")
         }
         isLoading = false
         AppLog.debug(.network, "library load complete sections=\(sections.count)")

@@ -17,7 +17,7 @@ final class AniListAuthService: NSObject {
         return try await withCheckedThrowingContinuation { continuation in
             let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "kyomiru") { callbackURL, error in
                 if let error {
-                    AppLog.error(.auth, "auth failed \(error.localizedDescription, privacy: .public)")
+                    AppLog.error(.auth, "auth failed \(error.localizedDescription)")
                     continuation.resume(throwing: error)
                     return
                 }

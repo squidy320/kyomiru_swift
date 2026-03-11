@@ -32,13 +32,13 @@ final class DownloadManager: NSObject, ObservableObject {
     func enqueue(title: String, episode: Int, url: URL) {
         let id = "\(title)|\(episode)|\(url.absoluteString)"
         if items.contains(where: { $0.id == id }) {
-            AppLog.debug(.downloads, "download already queued id=\(id, privacy: .public)")
+            AppLog.debug(.downloads, "download already queued id=\(id)")
             return
         }
         let item = DownloadItem(id: id, title: title, episode: episode, url: url, progress: 0, localFile: nil, status: "Queued", isHls: false)
         items.append(item)
         saveIndex()
-        AppLog.debug(.downloads, "download enqueue id=\(id, privacy: .public)")
+        AppLog.debug(.downloads, "download enqueue id=\(id)")
         let task = session.downloadTask(with: url)
         task.taskDescription = id
         task.resume()
@@ -48,14 +48,14 @@ final class DownloadManager: NSObject, ObservableObject {
     func enqueueHLS(title: String, episode: Int, url: URL, headers: [String: String]) {
         let id = "\(title)|\(episode)|\(url.absoluteString)"
         if items.contains(where: { $0.id == id }) {
-            AppLog.debug(.downloads, "hls already queued id=\(id, privacy: .public)")
+            AppLog.debug(.downloads, "hls already queued id=\(id)")
             return
         }
         let item = DownloadItem(id: id, title: title, episode: episode, url: url, progress: 0, localFile: nil, status: "Queued", isHls: true)
         items.append(item)
         saveIndex()
         updateStatus(id: id, status: "Downloading HLS")
-        AppLog.debug(.downloads, "hls enqueue id=\(id, privacy: .public)")
+        AppLog.debug(.downloads, "hls enqueue id=\(id)")
         Task { await downloadHLS(id: id, url: url, headers: headers) }
     }
 
@@ -89,13 +89,13 @@ final class DownloadManager: NSObject, ObservableObject {
             items[idx].status = status
             if let localFile { items[idx].localFile = localFile }
             saveIndex()
-            AppLog.debug(.downloads, "download status id=\(id, privacy: .public) status=\(status, privacy: .public)")
+            AppLog.debug(.downloads, "download status id=\(id) status=\(status)")
         }
     }
 
     private func downloadHLS(id: String, url: URL, headers: [String: String]) async {
         do {
-            AppLog.debug(.downloads, "hls download start id=\(id, privacy: .public)")
+            AppLog.debug(.downloads, "hls download start id=\(id)")
             var request = URLRequest(url: url)
             for (k, v) in headers {
                 request.setValue(v, forHTTPHeaderField: k)
@@ -103,7 +103,7 @@ final class DownloadManager: NSObject, ObservableObject {
             let (data, _) = try await URLSession.shared.data(for: request)
             guard let playlist = String(data: data, encoding: .utf8) else {
                 updateStatus(id: id, status: "Failed")
-                AppLog.error(.downloads, "hls playlist decode failed id=\(id, privacy: .public)")
+                AppLog.error(.downloads, "hls playlist decode failed id=\(id)")
                 return
             }
             let lines = playlist.split(separator: "\n", omittingEmptySubsequences: false)
@@ -176,13 +176,13 @@ final class DownloadManager: NSObject, ObservableObject {
             let playlistURL = folder.appendingPathComponent("index.m3u8")
             try localPlaylist.data(using: .utf8)?.write(to: playlistURL, options: .atomic)
             updateStatus(id: id, status: "Completed", localFile: playlistURL)
-            AppLog.debug(.downloads, "hls download complete id=\(id, privacy: .public)")
+            AppLog.debug(.downloads, "hls download complete id=\(id)")
             if let item = items.first(where: { $0.id == id }) {
                 markWatched(mediaTitle: item.title, episode: item.episode)
             }
         } catch {
             updateStatus(id: id, status: "Failed")
-            AppLog.error(.downloads, "hls download failed id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            AppLog.error(.downloads, "hls download failed id=\(id) error=\(error.localizedDescription)")
         }
     }
 
@@ -194,11 +194,11 @@ final class DownloadManager: NSObject, ObservableObject {
         do {
             try fm.moveItem(at: location, to: target)
             updateStatus(id: id, status: "Completed", localFile: target)
-            AppLog.debug(.downloads, "download complete id=\(id, privacy: .public)")
+            AppLog.debug(.downloads, "download complete id=\(id)")
             markWatched(mediaTitle: item.title, episode: item.episode)
         } catch {
             updateStatus(id: id, status: "Failed")
-            AppLog.error(.downloads, "download failed id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            AppLog.error(.downloads, "download failed id=\(id) error=\(error.localizedDescription)")
         }
     }
 
@@ -220,12 +220,12 @@ final class DownloadManager: NSObject, ObservableObject {
             }
             items.remove(at: idx)
             saveIndex()
-            AppLog.debug(.downloads, "download delete id=\(itemId, privacy: .public)")
+            AppLog.debug(.downloads, "download delete id=\(itemId)")
         }
     }
 
     func markWatched(mediaTitle: String, episode: Int) {
-        AppLog.debug(.downloads, "mark watched title=\(mediaTitle, privacy: .public) ep=\(episode)")
+        AppLog.debug(.downloads, "mark watched title=\(mediaTitle) ep=\(episode)")
         NotificationCenter.default.post(
             name: .downloadCompleted,
             object: nil,
