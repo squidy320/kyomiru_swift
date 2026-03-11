@@ -58,7 +58,6 @@ struct DownloadsView: View {
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let item = selectedItem, let fileURL = item.localFile {
-                AppLog.ui.debug("offline player present id=\(item.id, privacy: .public)")
                 let source = SoraSource(
                     id: "local|\(item.id)",
                     url: fileURL,
@@ -69,6 +68,11 @@ struct DownloadsView: View {
                 )
                 let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
                 PlayerView(episode: episode, sources: [source])
+            }
+        }
+        .onChange(of: showPlayer) { value in
+            if value, let item = selectedItem {
+                AppLog.ui.debug("offline player present id=\(item.id, privacy: .public)")
             }
         }
         .onAppear {
