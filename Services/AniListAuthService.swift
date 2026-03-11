@@ -4,6 +4,7 @@ import UIKit
 
 final class AniListAuthService: NSObject {
     private let redirectURI = "kyomiru://auth"
+    private var currentSession: ASWebAuthenticationSession?
 
     @MainActor
     func signIn() async throws -> String {
@@ -15,7 +16,8 @@ final class AniListAuthService: NSObject {
         AppLog.debug(.auth, "auth start")
         let url = URL(string: "https://anilist.co/api/v2/oauth/authorize?client_id=\(clientId)&response_type=token&redirect_uri=\(redirectURI)")!
         return try await withCheckedThrowingContinuation { continuation in
-            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "kyomiru") { callbackURL, error in
+            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "kyomiru") { [weak self] callbackURL, error in
+                defer { self?.currentSession = nil }
                 if let error {
                     AppLog.error(.auth, "auth failed \(error.localizedDescription)")
                     continuation.resume(throwing: error)
@@ -35,6 +37,7 @@ final class AniListAuthService: NSObject {
             }
             session.presentationContextProvider = self
             session.prefersEphemeralWebBrowserSession = true
+            self.currentSession = session
             session.start()
         }
     }
