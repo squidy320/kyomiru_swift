@@ -16,6 +16,19 @@
     <string>1</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.samysamy.kyomiru</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>kyomiru</string>
+            </array>
+        </dict>
+    </array>
+    <key>ANILIST_CLIENT_ID</key>
+    <string>CHANGE_ME</string>
     <key>UILaunchScreen</key>
     <dict/>
 </dict>
