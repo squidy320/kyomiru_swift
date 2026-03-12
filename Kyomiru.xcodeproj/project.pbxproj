@@ -18,8 +18,10 @@
         F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A834867881B451BADAD93AA /* AppServices.swift */; };
         EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D61DF5D7C6F4CDAB259605A /* CacheService.swift */; };
         A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */; };
-        314C57A12C82496CA605168E /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 161229ED682D48179B328B0A /* DownloadManager.swift */; };
-        E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */; };
+		314C57A12C82496CA605168E /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 161229ED682D48179B328B0A /* DownloadManager.swift */; };
+		1C8D9E8A5B544EAA8D7083E1 /* MPVSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D7C4F7B1B4C8EA2B3D4E5 /* MPVSupport.swift */; };
+		8E7C6B5A4D3C2B1A0F9E8D7C /* MPVPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C6B5A4D3C2B1A0F9E8D7C6B /* MPVPlayer.swift */; };
+		E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */; };
         01A2B3C4D5E6F708192A3B4C /* OfflineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */; };
         12B3C4D5E6F708192A3B4C5D /* MetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */; };
         AC09AF4D919E41E280CE52B0 /* EpisodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DBC32B3E0EE435FB94C4CA7 /* EpisodeService.swift */; };
@@ -34,8 +36,9 @@
         0C02BEE9ADE54332A9D8F2DF /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEFA766A7D86413E8D2E09A4 /* AppState.swift */; };
         C4101F54869D49D8A0B4A425 /* AuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B889450D6A20487F833188E5 /* AuthState.swift */; };
         7CF625CC580C4B3886797010 /* SettingsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3028F9F1B2AB4647891B467C /* SettingsState.swift */; };
-        69950056E20B4D91A5990BD6 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = A61733A6B24C482A972EBD23 /* Glass.swift */; };
-        9F9199A4F02B4E5092C147DB /* RatingBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDFF53C1D67465EB0681082 /* RatingBadge.swift */; };
+		69950056E20B4D91A5990BD6 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = A61733A6B24C482A972EBD23 /* Glass.swift */; };
+		3A4B5C6D7E8F901A2B3C4D5E /* SampleBufferDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7E8F901A2B3C4D5E6F7081 /* SampleBufferDisplayView.swift */; };
+		9F9199A4F02B4E5092C147DB /* RatingBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDFF53C1D67465EB0681082 /* RatingBadge.swift */; };
         66B4F54F865245C8B0391307 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4DB95DE3E04DFF877268BB /* Theme.swift */; };
         23C4D5E6F708192A3B4C5D6E /* HeroHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */; };
         34D5E6F708192A3B4C5D6E7F /* Chips.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D4E5F60718293A4B5C6D7E8 /* Chips.swift */; };
@@ -73,9 +76,11 @@
         7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListClient.swift; sourceTree = "<group>"; };
         5A834867881B451BADAD93AA /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
         9D61DF5D7C6F4CDAB259605A /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
-        8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheStore.swift; sourceTree = "<group>"; };
-        161229ED682D48179B328B0A /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
-        F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackEngine.swift; sourceTree = "<group>"; };
+		8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheStore.swift; sourceTree = "<group>"; };
+		161229ED682D48179B328B0A /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+		8B2D7C4F7B1B4C8EA2B3D4E5 /* MPVSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPVSupport.swift; sourceTree = "<group>"; };
+		7C6B5A4D3C2B1A0F9E8D7C6B /* MPVPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPVPlayer.swift; sourceTree = "<group>"; };
+		F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackEngine.swift; sourceTree = "<group>"; };
         0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineManager.swift; sourceTree = "<group>"; };
         1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataService.swift; sourceTree = "<group>"; };
         3DBC32B3E0EE435FB94C4CA7 /* EpisodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeService.swift; sourceTree = "<group>"; };
@@ -90,8 +95,9 @@
         FEFA766A7D86413E8D2E09A4 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
         B889450D6A20487F833188E5 /* AuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthState.swift; sourceTree = "<group>"; };
         3028F9F1B2AB4647891B467C /* SettingsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsState.swift; sourceTree = "<group>"; };
-        A61733A6B24C482A972EBD23 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
-        4CDFF53C1D67465EB0681082 /* RatingBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingBadge.swift; sourceTree = "<group>"; };
+		A61733A6B24C482A972EBD23 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
+		6D7E8F901A2B3C4D5E6F7081 /* SampleBufferDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleBufferDisplayView.swift; sourceTree = "<group>"; };
+		4CDFF53C1D67465EB0681082 /* RatingBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingBadge.swift; sourceTree = "<group>"; };
         4F4DB95DE3E04DFF877268BB /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
         2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroHeader.swift; sourceTree = "<group>"; };
         3D4E5F60718293A4B5C6D7E8 /* Chips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Chips.swift; sourceTree = "<group>"; };
@@ -166,7 +172,9 @@
                 5A834867881B451BADAD93AA /* AppServices.swift */,
                 9D61DF5D7C6F4CDAB259605A /* CacheService.swift */,
                 8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */,
-                161229ED682D48179B328B0A /* DownloadManager.swift */,
+				161229ED682D48179B328B0A /* DownloadManager.swift */,
+				8B2D7C4F7B1B4C8EA2B3D4E5 /* MPVSupport.swift */,
+				7C6B5A4D3C2B1A0F9E8D7C6B /* MPVPlayer.swift */,
                 F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */,
                 0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */,
                 1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */,
@@ -195,7 +203,8 @@
         };        69CBAC85A6A842B8A3C969F4 /* UI */ = {
             isa = PBXGroup;
             children = (
-                A61733A6B24C482A972EBD23 /* Glass.swift */,
+				A61733A6B24C482A972EBD23 /* Glass.swift */,
+				6D7E8F901A2B3C4D5E6F7081 /* SampleBufferDisplayView.swift */,
                 4CDFF53C1D67465EB0681082 /* RatingBadge.swift */,
                 4F4DB95DE3E04DFF877268BB /* Theme.swift */,
                 2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */,
@@ -325,9 +334,11 @@
                 7D6DD7FBD32C414EA5ABECFF /* AniListClient.swift in Sources */,
                 F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */,
                 EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */,
-                A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */,
-                314C57A12C82496CA605168E /* DownloadManager.swift in Sources */,
-                E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */,
+				A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */,
+				314C57A12C82496CA605168E /* DownloadManager.swift in Sources */,
+				1C8D9E8A5B544EAA8D7083E1 /* MPVSupport.swift in Sources */,
+				8E7C6B5A4D3C2B1A0F9E8D7C /* MPVPlayer.swift in Sources */,
+				E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */,
                 01A2B3C4D5E6F708192A3B4C /* OfflineManager.swift in Sources */,
                 12B3C4D5E6F708192A3B4C5D /* MetadataService.swift in Sources */,
                 AC09AF4D919E41E280CE52B0 /* EpisodeService.swift in Sources */,
@@ -341,9 +352,10 @@
                 970DFB54D0CF444BAAF3D99B /* TrackingSyncService.swift in Sources */,
                 0C02BEE9ADE54332A9D8F2DF /* AppState.swift in Sources */,
                 C4101F54869D49D8A0B4A425 /* AuthState.swift in Sources */,
-                7CF625CC580C4B3886797010 /* SettingsState.swift in Sources */,
-                69950056E20B4D91A5990BD6 /* Glass.swift in Sources */,
-                9F9199A4F02B4E5092C147DB /* RatingBadge.swift in Sources */,
+				7CF625CC580C4B3886797010 /* SettingsState.swift in Sources */,
+				69950056E20B4D91A5990BD6 /* Glass.swift in Sources */,
+				3A4B5C6D7E8F901A2B3C4D5E /* SampleBufferDisplayView.swift in Sources */,
+				9F9199A4F02B4E5092C147DB /* RatingBadge.swift in Sources */,
                 66B4F54F865245C8B0391307 /* Theme.swift in Sources */,
                 23C4D5E6F708192A3B4C5D6E /* HeroHeader.swift in Sources */,
                 34D5E6F708192A3B4C5D6E7F /* Chips.swift in Sources */,
@@ -383,6 +395,7 @@
                 TARGETED_DEVICE_FAMILY = "1,2";
                 SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
                 SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = YES;
                 LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
                 CODE_SIGNING_ALLOWED = NO;
                 CODE_SIGNING_REQUIRED = NO;
@@ -400,6 +413,7 @@
                 TARGETED_DEVICE_FAMILY = "1,2";
                 SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
                 SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = YES;
                 LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
                 CODE_SIGNING_ALLOWED = NO;
                 CODE_SIGNING_REQUIRED = NO;
@@ -415,6 +429,7 @@
                 IPHONEOS_DEPLOYMENT_TARGET = 17.0;
                 SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
                 SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = YES;
                 LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
                 TARGETED_DEVICE_FAMILY = "1,2";
             };
@@ -428,6 +443,7 @@
                 IPHONEOS_DEPLOYMENT_TARGET = 17.0;
                 SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
                 SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = YES;
                 LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
                 TARGETED_DEVICE_FAMILY = "1,2";
             };

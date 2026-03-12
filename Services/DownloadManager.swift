@@ -233,10 +233,15 @@ final class DownloadManager: NSObject, ObservableObject {
                     self?.updateProgress(id: id, progress: value)
                 }
             }
-            updateStatus(id: id, status: "Remuxing", localFile: localFile)
-            AppLog.debug(.downloads, "hls download complete id=\(id) starting remux")
-            Task { @MainActor in
-                await remuxIfNeeded(id: id, localFile: localFile)
+            if MPVSupport.isAvailable {
+                updateStatus(id: id, status: "Completed", localFile: localFile)
+                AppLog.debug(.downloads, "hls download complete id=\(id) (mpv)")
+            } else {
+                updateStatus(id: id, status: "Remuxing", localFile: localFile)
+                AppLog.debug(.downloads, "hls download complete id=\(id) starting remux")
+                Task { @MainActor in
+                    await remuxIfNeeded(id: id, localFile: localFile)
+                }
             }
             markWatched(mediaTitle: item.title, episode: item.episode)
         } catch {
@@ -246,6 +251,10 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func remuxIfNeeded(id: String, localFile: URL) async {
+        if MPVSupport.isAvailable {
+            updateStatus(id: id, status: "Completed", localFile: localFile)
+            return
+        }
         guard localFile.pathExtension.lowercased() == "ts" else {
             updateStatus(id: id, status: "Completed", localFile: localFile)
             return
@@ -272,6 +281,13 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func resumePendingRemuxes() {
+        if MPVSupport.isAvailable {
+            for item in items {
+                guard let local = item.localFile, fm.fileExists(atPath: local.path) else { continue }
+                updateStatus(id: item.id, status: "Completed", localFile: local)
+            }
+            return
+        }
         let pending = items.filter { item in
             guard let local = item.localFile else { return false }
             if !fm.fileExists(atPath: local.path) { return false }
@@ -290,6 +306,10 @@ final class DownloadManager: NSObject, ObservableObject {
     func retryRemux(itemId: String) {
         guard let item = items.first(where: { $0.id == itemId }),
               let local = item.localFile else { return }
+        if MPVSupport.isAvailable {
+            updateStatus(id: itemId, status: "Completed", localFile: local)
+            return
+        }
         updateStatus(id: itemId, status: "Remuxing", localFile: local)
         Task { @MainActor in
             await remuxIfNeeded(id: itemId, localFile: local)
