@@ -26,14 +26,9 @@ struct NavigationShell: View {
                         .padding(.vertical, 12)
                 }
             } else {
-                ZStack(alignment: .bottom) {
-                    contentView
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                    FloatingTabBar(selectedTab: $appState.selectedTab)
-                        .padding(.bottom, 10)
-                }
-                .padding(.horizontal, 10)
+                contentView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, 10)
             }
         }
     }
@@ -96,44 +91,6 @@ private struct SidebarNavigation: View {
                         .stroke(Color.white.opacity(0.12), lineWidth: 1)
                 )
         )
-    }
-}
-
-private struct FloatingTabBar: View {
-    @Binding var selectedTab: AppTab
-
-    private let items: [NavigationItem] = AppTab.navigationItems
-
-    var body: some View {
-        HStack(spacing: 26) {
-            ForEach(items) { item in
-                Button {
-                    selectedTab = item.tab
-                } label: {
-                    Image(systemName: item.systemImage)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(selectedTab == item.tab ? Theme.accent : Theme.textSecondary)
-                        .frame(width: 34, height: 34)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .background(
-            Capsule(style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .fill(Color.black.opacity(0.45))
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
-        )
-        .shadow(color: Color.black.opacity(0.45), radius: 18, x: 0, y: 8)
     }
 }
 

@@ -12,12 +12,16 @@
         57D7D511708747C286FA1D14 /* AniListModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A722697BFB5416EA44A529C /* AniListModels.swift */; };
         0AD981C75D824CAB83424331 /* SoraModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C36726A901F4A6BA25B8FED /* SoraModels.swift */; };
         E5F60718293A4B5C6D7E8F90 /* MediaItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A4B5C6D /* MediaItem.swift */; };
+        C6D7E8F901A2B3C4D5E6F708 /* MediaTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7E8F901A2B3C4D5E6F70819 /* MediaTracker.swift */; };
         2523BB6A1CCC401CB2F04C4E /* AniListAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */; };
         7D6DD7FBD32C414EA5ABECFF /* AniListClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */; };
         F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A834867881B451BADAD93AA /* AppServices.swift */; };
         EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D61DF5D7C6F4CDAB259605A /* CacheService.swift */; };
         A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */; };
         314C57A12C82496CA605168E /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 161229ED682D48179B328B0A /* DownloadManager.swift */; };
+        E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */; };
+        01A2B3C4D5E6F708192A3B4C /* OfflineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */; };
+        12B3C4D5E6F708192A3B4C5D /* MetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */; };
         AC09AF4D919E41E280CE52B0 /* EpisodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DBC32B3E0EE435FB94C4CA7 /* EpisodeService.swift */; };
         0CE0DC714378445E8D425F8B /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25A95FA1C7124A04B870C47B /* KeychainService.swift */; };
         8A78EA4EE58E445BB261744F /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9123772BA7C647A89887E9E2 /* Logging.swift */; };
@@ -33,6 +37,9 @@
         69950056E20B4D91A5990BD6 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = A61733A6B24C482A972EBD23 /* Glass.swift */; };
         9F9199A4F02B4E5092C147DB /* RatingBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDFF53C1D67465EB0681082 /* RatingBadge.swift */; };
         66B4F54F865245C8B0391307 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4DB95DE3E04DFF877268BB /* Theme.swift */; };
+        23C4D5E6F708192A3B4C5D6E /* HeroHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */; };
+        34D5E6F708192A3B4C5D6E7F /* Chips.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D4E5F60718293A4B5C6D7E8 /* Chips.swift */; };
+        45E6F708192A3B4C5D6E7F80 /* MediaCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E5F60718293A4B5C6D7E8F9 /* MediaCards.swift */; };
         67D14034D0CE4A10A7EE55F4 /* AlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 322049D9007F477FAF8D125F /* AlertsView.swift */; };
         F08F4932645347648FEC250D /* DetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EF67EDF5267442199B09036 /* DetailsView.swift */; };
         652C9F7BF8984ACB8656A97A /* DiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD884A3FD40D43EB9CC88CB5 /* DiscoveryView.swift */; };
@@ -61,12 +68,16 @@
         1A722697BFB5416EA44A529C /* AniListModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListModels.swift; sourceTree = "<group>"; };
         8C36726A901F4A6BA25B8FED /* SoraModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoraModels.swift; sourceTree = "<group>"; };
         B2C3D4E5F60718293A4B5C6D /* MediaItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaItem.swift; sourceTree = "<group>"; };
+        D7E8F901A2B3C4D5E6F70819 /* MediaTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaTracker.swift; sourceTree = "<group>"; };
         8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListAuthService.swift; sourceTree = "<group>"; };
         7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListClient.swift; sourceTree = "<group>"; };
         5A834867881B451BADAD93AA /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
         9D61DF5D7C6F4CDAB259605A /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
         8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheStore.swift; sourceTree = "<group>"; };
         161229ED682D48179B328B0A /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+        F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackEngine.swift; sourceTree = "<group>"; };
+        0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineManager.swift; sourceTree = "<group>"; };
+        1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataService.swift; sourceTree = "<group>"; };
         3DBC32B3E0EE435FB94C4CA7 /* EpisodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeService.swift; sourceTree = "<group>"; };
         25A95FA1C7124A04B870C47B /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
         9123772BA7C647A89887E9E2 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
@@ -82,6 +93,9 @@
         A61733A6B24C482A972EBD23 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
         4CDFF53C1D67465EB0681082 /* RatingBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingBadge.swift; sourceTree = "<group>"; };
         4F4DB95DE3E04DFF877268BB /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+        2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroHeader.swift; sourceTree = "<group>"; };
+        3D4E5F60718293A4B5C6D7E8 /* Chips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Chips.swift; sourceTree = "<group>"; };
+        4E5F60718293A4B5C6D7E8F9 /* MediaCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaCards.swift; sourceTree = "<group>"; };
         322049D9007F477FAF8D125F /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
         4EF67EDF5267442199B09036 /* DetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsView.swift; sourceTree = "<group>"; };
         BD884A3FD40D43EB9CC88CB5 /* DiscoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryView.swift; sourceTree = "<group>"; };
@@ -153,6 +167,9 @@
                 9D61DF5D7C6F4CDAB259605A /* CacheService.swift */,
                 8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */,
                 161229ED682D48179B328B0A /* DownloadManager.swift */,
+                F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */,
+                0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */,
+                1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */,
                 3DBC32B3E0EE435FB94C4CA7 /* EpisodeService.swift */,
                 25A95FA1C7124A04B870C47B /* KeychainService.swift */,
                 9123772BA7C647A89887E9E2 /* Logging.swift */,
@@ -171,6 +188,7 @@
                 FEFA766A7D86413E8D2E09A4 /* AppState.swift */,
                 B889450D6A20487F833188E5 /* AuthState.swift */,
                 3028F9F1B2AB4647891B467C /* SettingsState.swift */,
+                D7E8F901A2B3C4D5E6F70819 /* MediaTracker.swift */,
             );
             path = State;
             sourceTree = "<group>";
@@ -180,6 +198,9 @@
                 A61733A6B24C482A972EBD23 /* Glass.swift */,
                 4CDFF53C1D67465EB0681082 /* RatingBadge.swift */,
                 4F4DB95DE3E04DFF877268BB /* Theme.swift */,
+                2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */,
+                3D4E5F60718293A4B5C6D7E8 /* Chips.swift */,
+                4E5F60718293A4B5C6D7E8F9 /* MediaCards.swift */,
             );
             path = UI;
             sourceTree = "<group>";
@@ -299,12 +320,16 @@
                 57D7D511708747C286FA1D14 /* AniListModels.swift in Sources */,
                 0AD981C75D824CAB83424331 /* SoraModels.swift in Sources */,
                 E5F60718293A4B5C6D7E8F90 /* MediaItem.swift in Sources */,
+                C6D7E8F901A2B3C4D5E6F708 /* MediaTracker.swift in Sources */,
                 2523BB6A1CCC401CB2F04C4E /* AniListAuthService.swift in Sources */,
                 7D6DD7FBD32C414EA5ABECFF /* AniListClient.swift in Sources */,
                 F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */,
                 EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */,
                 A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */,
                 314C57A12C82496CA605168E /* DownloadManager.swift in Sources */,
+                E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */,
+                01A2B3C4D5E6F708192A3B4C /* OfflineManager.swift in Sources */,
+                12B3C4D5E6F708192A3B4C5D /* MetadataService.swift in Sources */,
                 AC09AF4D919E41E280CE52B0 /* EpisodeService.swift in Sources */,
                 0CE0DC714378445E8D425F8B /* KeychainService.swift in Sources */,
                 8A78EA4EE58E445BB261744F /* Logging.swift in Sources */,
@@ -320,6 +345,9 @@
                 69950056E20B4D91A5990BD6 /* Glass.swift in Sources */,
                 9F9199A4F02B4E5092C147DB /* RatingBadge.swift in Sources */,
                 66B4F54F865245C8B0391307 /* Theme.swift in Sources */,
+                23C4D5E6F708192A3B4C5D6E /* HeroHeader.swift in Sources */,
+                34D5E6F708192A3B4C5D6E7F /* Chips.swift in Sources */,
+                45E6F708192A3B4C5D6E7F80 /* MediaCards.swift in Sources */,
                 67D14034D0CE4A10A7EE55F4 /* AlertsView.swift in Sources */,
                 F08F4932645347648FEC250D /* DetailsView.swift in Sources */,
                 652C9F7BF8984ACB8656A97A /* DiscoveryView.swift in Sources */,

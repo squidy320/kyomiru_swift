@@ -5,6 +5,7 @@ struct DiscoveryView: View {
     @EnvironmentObject private var appState: AppState
     @State private var sections: [AniListDiscoverySection] = []
     @State private var isLoading = false
+    @State private var selectedFilter: DiscoveryFilter = .all
 
     var body: some View {
         ZStack {
@@ -16,9 +17,22 @@ struct DiscoveryView: View {
                             .font(.system(size: 28, weight: .heavy))
                             .foregroundColor(.white)
 
-                        hero
+                        heroHeader
 
-                        searchBar
+                        SearchField(placeholder: "Search anime...", text: $query)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(DiscoveryFilter.allCases) { filter in
+                                    FilterChip(
+                                        title: filter.title,
+                                        isSelected: selectedFilter == filter,
+                                        action: { selectedFilter = filter }
+                                    )
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
 
                         if isLoading {
                             GlassCard {
@@ -42,11 +56,11 @@ struct DiscoveryView: View {
                                             NavigationLink {
                                                 DetailsView(media: media)
                                             } label: {
-                                                DiscoveryCard(
+                                                MediaPosterCard(
                                                     title: media.title.best,
-                                                    rating: media.averageScore.map { Double($0) / 10.0 },
-                                                    mediaId: media.id,
-                                                    coverURL: media.coverURL
+                                                    subtitle: "New release",
+                                                    imageURL: media.coverURL,
+                                                    score: media.averageScore
                                                 )
                                             }
                                             .buttonStyle(.plain)
@@ -68,62 +82,36 @@ struct DiscoveryView: View {
         }
     }
 
-    private var hero: some View {
-        ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.12, green: 0.14, blue: 0.24),
-                            Color(red: 0.05, green: 0.07, blue: 0.12),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(height: 240)
+    private var heroHeader: some View {
+        let heroMedia = sections.first?.items.first
+        let match = heroMedia?.averageScore ?? 91
+        let rating = heroMedia?.averageScore ?? 83
+        let contentRating = (heroMedia?.isAdult ?? false) ? "TV-MA" : "TV-14"
+        let pills = [
+            HeroPill(icon: "hand.thumbsup.fill", text: "\(match)% Match"),
+            HeroPill(icon: "star.fill", text: "Score \(rating)%"),
+            HeroPill(icon: "shield.fill", text: contentRating),
+        ]
+        let tags = Array(heroMedia?.genres.prefix(2) ?? [])
 
-            // Scrim
-            LinearGradient(
-                colors: [Color.black.opacity(0.8), Color.clear],
-                startPoint: .bottom,
-                endPoint: .top
-            )
-            .frame(height: 100)
-            .frame(maxWidth: .infinity, alignment: .bottom)
-            .cornerRadius(22)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("There was a Cute Girl...")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white)
-                Text("Featured Hero")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Theme.textSecondary)
-            }
-            .padding(16)
-        }
-    }
-
-    private var searchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.white.opacity(0.7))
-            TextField("Search anime...", text: $query)
-                .foregroundColor(.white)
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
-                )
+        return HeroHeader(
+            title: heroMedia?.title.best ?? "Easygoing Territory Defense",
+            subtitle: "Top rated, new releases, and hot anime",
+            imageURL: heroMedia?.bannerURL ?? heroMedia?.coverURL,
+            pills: pills,
+            tags: tags
         )
-        .frame(maxWidth: 600)
-        .frame(maxWidth: .infinity, alignment: .center)
     }
+}
+
+private enum DiscoveryFilter: String, CaseIterable, Identifiable {
+    case all
+    case watching
+    case planning
+    case completed
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
 }
 
 private extension DiscoveryView {
@@ -141,53 +129,5 @@ private extension DiscoveryView {
     }
 }
 
-private struct DiscoveryCard: View {
-    let title: String
-    let rating: Double?
-    let mediaId: Int
-    let coverURL: URL?
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-                    .frame(height: 232)
-                if let coverURL {
-                    AsyncImage(url: coverURL) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Color.white.opacity(0.08)
-                    }
-                    .frame(height: 232)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                LinearGradient(
-                    colors: [Color.black.opacity(0.85), Color.clear],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-                .frame(height: 120)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-                    Text("Unwatched: 2")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Theme.textSecondary)
-                }
-                .padding(12)
-            }
-
-            RatingBadge(rating: rating)
-                .padding(10)
-        }
-        .overlay(alignment: .topLeading) {
-            UnwatchedBadge(mediaId: mediaId)
-                .padding(10)
-        }
-    }
-}
+// Card components moved to UI/MediaCards.swift
 

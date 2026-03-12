@@ -70,6 +70,7 @@ final class AniListClient {
               status
               isAdult
               genres
+              studios(isMain: true) { nodes { name } }
             }
           }
         }
@@ -102,6 +103,7 @@ final class AniListClient {
               status
               isAdult
               genres
+              studios(isMain: true) { nodes { name } }
             }
           }
           topRated: Page(page: 1, perPage: 12) {
@@ -117,6 +119,7 @@ final class AniListClient {
               status
               isAdult
               genres
+              studios(isMain: true) { nodes { name } }
             }
           }
           hotNow: Page(page: 1, perPage: 12) {
@@ -132,6 +135,7 @@ final class AniListClient {
               status
               isAdult
               genres
+              studios(isMain: true) { nodes { name } }
             }
           }
         }
@@ -168,7 +172,7 @@ final class AniListClient {
         let viewer = try await viewer(token: token)
         let query = """
         query Library($userId: Int) {
-          MediaListCollection(userId: $userId, type: ANIME) {
+              MediaListCollection(userId: $userId, type: ANIME) {
             lists {
               name
               entries {
@@ -186,6 +190,7 @@ final class AniListClient {
                   status
                   isAdult
                   genres
+                  studios(isMain: true) { nodes { name } }
                 }
               }
             }
@@ -216,6 +221,7 @@ final class AniListClient {
               status
               isAdult
               genres
+              studios(isMain: true) { nodes { name } }
             }
           }
         }
@@ -364,6 +370,57 @@ final class AniListClient {
         return availability
     }
 
+    func relatedSections(mediaId: Int) async throws -> [AniListRelatedSection] {
+        AppLog.debug(.network, "related sections request start mediaId=\(mediaId)")
+        let query = """
+        query Related($id: Int) {
+          Media(id: $id, type: ANIME) {
+            relations {
+              edges {
+                relationType
+                node {
+                  id
+                  title { romaji english native }
+                  coverImage { extraLarge large }
+                  bannerImage
+                  averageScore
+                  episodes
+                  seasonYear
+                  format
+                  status
+                  isAdult
+                  genres
+                  studios(isMain: true) { nodes { name } }
+                }
+              }
+            }
+          }
+        }
+        """
+        let data = try await graphql(query: query, variables: ["id": mediaId])
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let edges = traverse(root, keyPath: ["data", "Media", "relations", "edges"]) as? [[String: Any]] else {
+            AppLog.error(.network, "related sections decode failed mediaId=\(mediaId)")
+            return []
+        }
+        var map: [String: [AniListMedia]] = [:]
+        for edge in edges {
+            guard let relation = edge["relationType"] as? String,
+                  let node = edge["node"] as? [String: Any],
+                  let media = decodeMedia(node) else { continue }
+            map[relation, default: []].append(media)
+        }
+        let sections = map.map { relation, items in
+            AniListRelatedSection(
+                id: relation.lowercased(),
+                title: relation.replacingOccurrences(of: "_", with: " ").capitalized,
+                items: items
+            )
+        }
+        AppLog.debug(.network, "related sections request success mediaId=\(mediaId) count=\(sections.count)")
+        return sections
+    }
+
     private func decodeViewer(data: Data) -> AniListUser? {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dataMap = root["data"] as? [String: Any],
@@ -454,6 +511,8 @@ final class AniListClient {
         let status = media["status"] as? String
         let isAdult = media["isAdult"] as? Bool ?? false
         let genres = media["genres"] as? [String] ?? []
+        let studios = ((media["studios"] as? [String: Any])?["nodes"] as? [[String: Any]] ?? [])
+            .compactMap { $0["name"] as? String }
         return AniListMedia(
             id: id,
             title: title,
@@ -465,7 +524,8 @@ final class AniListClient {
             format: format,
             status: status,
             isAdult: isAdult,
-            genres: genres
+            genres: genres,
+            studios: studios
         )
     }
 

@@ -29,6 +29,7 @@ struct AniListMedia: Identifiable, Equatable {
     let status: String?
     let isAdult: Bool
     let genres: [String]
+    let studios: [String]
 }
 
 struct AniListLibraryEntry: Identifiable, Equatable {
@@ -57,6 +58,12 @@ struct AniListEpisodeAvailability: Equatable {
 }
 
 struct AniListDiscoverySection: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let items: [AniListMedia]
+}
+
+struct AniListRelatedSection: Identifiable, Equatable {
     let id: String
     let title: String
     let items: [AniListMedia]

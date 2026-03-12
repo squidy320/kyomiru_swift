@@ -67,11 +67,11 @@ struct DownloadsView: View {
                     headers: [:]
                 )
                 let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
-                PlayerView(episode: episode, sources: [source])
+                PlayerView(episode: episode, sources: [source], mediaId: item.id)
             }
         }
-        .onChange(of: showPlayer) { value in
-            if value, let item = selectedItem {
+        .onChange(of: showPlayer) {
+            if showPlayer, let item = selectedItem {
                 AppLog.debug(.ui, "offline player present id=\(item.id)")
             }
         }

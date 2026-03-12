@@ -4,11 +4,13 @@ import AVKit
 struct PlayerView: View {
     let episode: SoraEpisode
     let sources: [SoraSource]
+    let mediaId: Int
     @EnvironmentObject private var appState: AppState
     @State private var player: AVPlayer?
     @State private var selectedSource: SoraSource?
     @State private var selectedAudio: String = "Sub"
     @State private var selectedQuality: String = "Auto"
+    @State private var timeObserverToken: Any?
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -22,11 +24,17 @@ struct PlayerView: View {
                     if let src = initial {
                         startPlayback(source: src, seekToSaved: true)
                     }
+                    seedProgressFromHistory()
+                    attachProgressObserver()
                     UIApplication.shared.isIdleTimerDisabled = true
                 }
                 .onDisappear {
+                    detachProgressObserver()
                     if let seconds = player?.currentTime().seconds, seconds.isFinite {
                         PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
+                    }
+                    if let duration = player?.currentItem?.duration.seconds, duration.isFinite {
+                        PlaybackHistoryStore.shared.saveDuration(duration, for: episode.id)
                     }
                     player?.pause()
                     player = nil
@@ -83,6 +91,47 @@ struct PlayerView: View {
             player?.seek(to: CMTime(seconds: saved, preferredTimescale: 600))
         }
         player?.play()
+    }
+
+    private func attachProgressObserver() {
+        guard timeObserverToken == nil, let player else { return }
+        let interval = CMTime(seconds: 1, preferredTimescale: 2)
+        timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
+            guard let duration = player.currentItem?.duration.seconds, duration.isFinite else { return }
+            let current = time.seconds
+            if current.isFinite {
+                appState.services.playbackEngine.updateProgress(
+                    for: String(mediaId),
+                    currentTime: current,
+                    duration: duration
+                )
+                appState.services.playbackEngine.updateProgress(
+                    for: "episode:\(episode.id)",
+                    currentTime: current,
+                    duration: duration
+                )
+                PlaybackHistoryStore.shared.saveDuration(duration, for: episode.id)
+            }
+        }
+    }
+
+    private func detachProgressObserver() {
+        if let token = timeObserverToken, let player {
+            player.removeTimeObserver(token)
+        }
+        timeObserverToken = nil
+    }
+
+    private func seedProgressFromHistory() {
+        if let position = PlaybackHistoryStore.shared.position(for: episode.id),
+           let duration = PlaybackHistoryStore.shared.duration(for: episode.id),
+           duration.isFinite, position.isFinite {
+            appState.services.playbackEngine.updateProgress(
+                for: "episode:\(episode.id)",
+                currentTime: position,
+                duration: duration
+            )
+        }
     }
 
     private func makePlayerItem(source: SoraSource) -> AVPlayerItem {

@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct RatingBadge: View {
-    let rating: Double?
+    let score: Int?
 
     var body: some View {
-        let text = rating == nil ? "NR" : String(format: "%.1f", rating ?? 0)
+        let text = score == nil ? "NR" : "\(score ?? 0)"
         HStack(spacing: 4) {
             Image(systemName: "star.fill")
                 .font(.system(size: 10, weight: .semibold))

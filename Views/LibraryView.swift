@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
@@ -6,7 +6,7 @@ struct LibraryView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var filterText: String = ""
-    @State private var sortMode: LibrarySort = .anilist
+    @State private var selectedFilter: LibraryFilter = .all
 
     var body: some View {
         ZStack {
@@ -25,8 +25,43 @@ struct LibraryView: View {
                             }
                         )
 
-                        LibraryHero()
-                        LibraryControls(filterText: $filterText, sortMode: $sortMode)
+                        libraryHero
+
+                        SearchField(placeholder: "Search in library...", text: $filterText)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(LibraryFilter.allCases) { filter in
+                                    FilterChip(
+                                        title: filterTitle(filter),
+                                        isSelected: selectedFilter == filter,
+                                        action: { selectedFilter = filter }
+                                    )
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+
+                        if !continueWatchingItems().isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Continue Watching")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundColor(.white)
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 12) {
+                                        ForEach(continueWatchingItems()) { item in
+                                            ContinueWatchingCard(
+                                                title: item.title,
+                                                episodeText: item.episodeText,
+                                                progress: item.progressFraction,
+                                                timeRemainingText: item.timeRemainingText,
+                                                imageURL: item.imageURL
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         if appState.authState.isSignedIn {
                             if isLoading {
@@ -42,36 +77,8 @@ struct LibraryView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             } else {
-                                ForEach(sections) { section in
-                                    VStack(alignment: .leading, spacing: 10) {
-                                        Text(section.title)
-                                            .font(.system(size: 18, weight: .bold))
-                                            .foregroundColor(.white)
-                                        let visible = filteredItems(for: section)
-                                        if visible.isEmpty, !filterText.isEmpty {
-                                            GlassCard {
-                                                Text("No matches in this list.")
-                                                    .foregroundColor(Theme.textSecondary)
-                                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                            }
-                                        } else {
-                                            LazyVGrid(
-                                                columns: [
-                                                    GridItem(.adaptive(minimum: 152), spacing: 12),
-                                                ],
-                                                spacing: 12
-                                            ) {
-                                                ForEach(visible, id: \.id) { entry in
-                                                    NavigationLink {
-                                                        DetailsView(media: entry.media)
-                                                    } label: {
-                                                        AnimeCard(media: entry.media, subtitle: "Ep \(entry.progress)")
-                                                    }
-                                                    .buttonStyle(.plain)
-                                                }
-                                            }
-                                        }
-                                    }
+                                ForEach(filteredSections()) { section in
+                                    LibrarySection(section: section, filterText: filterText)
                                 }
                             }
                         } else {
@@ -95,21 +102,71 @@ struct LibraryView: View {
         }
     }
 
-    private func filteredItems(for section: AniListLibrarySection) -> [AniListLibraryEntry] {
-        var items = section.items
-        if !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let query = filterText.lowercased()
-            items = items.filter { $0.media.title.best.lowercased().contains(query) }
+    private func filteredSections() -> [AniListLibrarySection] {
+        let trimmed = filterText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let byChip = sections.filter { section in
+            guard selectedFilter != .all else { return true }
+            return section.title.lowercased().contains(selectedFilter.rawValue)
         }
-        switch sortMode {
-        case .anilist:
-            return items
-        case .title:
-            return items.sorted { $0.media.title.best.lowercased() < $1.media.title.best.lowercased() }
-        case .score:
-            return items.sorted { ($0.media.averageScore ?? 0) > ($1.media.averageScore ?? 0) }
-        case .progress:
-            return items.sorted { $0.progress > $1.progress }
+        if trimmed.isEmpty { return byChip }
+        return byChip.map { section in
+            let items = section.items.filter { $0.media.title.best.lowercased().contains(trimmed) }
+            return AniListLibrarySection(id: section.id, title: section.title, items: items)
+        }
+    }
+
+    private var libraryHero: some View {
+        let heroMedia = sections.first?.items.first?.media
+        let score = heroMedia?.averageScore ?? 91
+        let pills = [
+            HeroPill(icon: "hand.thumbsup.fill", text: "\(score)% Match"),
+            HeroPill(icon: "star.fill", text: "Score \(score)%"),
+            HeroPill(icon: "shield.fill", text: (heroMedia?.isAdult ?? false) ? "TV-MA" : "TV-14"),
+        ]
+        let tags = Array(heroMedia?.genres.prefix(2) ?? ["Action", "Drama"])
+        return HeroHeader(
+            title: heroMedia?.title.best ?? "86 EIGHTY-SIX",
+            subtitle: "Continue watching your synced lists",
+            imageURL: heroMedia?.bannerURL ?? heroMedia?.coverURL,
+            pills: pills,
+            tags: tags,
+            height: 240
+        )
+    }
+
+    private func filterTitle(_ filter: LibraryFilter) -> String {
+        guard filter != .all else { return filter.title }
+        let status: MediaStatus
+        switch filter {
+        case .watching:
+            status = .watching
+        case .planning:
+            status = .planning
+        case .completed:
+            status = .completed
+        case .all:
+            status = .planning
+        }
+        let count = appState.services.mediaTracker.count(for: status)
+        return "\(filter.title) (\(count))"
+    }
+
+    private func continueWatchingItems() -> [ContinueItem] {
+        guard let section = sections.first(where: { $0.title.lowercased().contains("watching") }) else {
+            return []
+        }
+        return section.items.prefix(6).map { entry in
+            let idKey = String(entry.media.id)
+            let progress = appState.services.playbackEngine.progressFraction(for: idKey)
+            let remaining = appState.services.playbackEngine.timeRemaining(for: idKey) ?? 0
+            return ContinueItem(
+                id: entry.media.id,
+                title: entry.media.title.best,
+                episodeText: "Episode \(entry.progress + 1)",
+                progressFraction: progress,
+                timeRemainingText: formatRemaining(remaining),
+                imageURL: entry.media.bannerURL ?? entry.media.coverURL
+            )
         }
     }
 
@@ -122,6 +179,38 @@ struct LibraryView: View {
         do {
             let items = try await appState.services.aniListClient.librarySections(token: token)
             sections = items
+            for section in items {
+                for entry in section.items {
+                    let totalEpisodes = Double(max(entry.media.episodes ?? 12, 1))
+                    let currentEpisodes = Double(entry.progress)
+                    let duration = totalEpisodes * 24.0 * 60.0
+                    let current = currentEpisodes * 24.0 * 60.0
+                    appState.services.playbackEngine.updateProgress(
+                        for: String(entry.media.id),
+                        currentTime: current,
+                        duration: duration
+                    )
+                }
+            }
+            let mediaItems = items.flatMap { section -> [MediaItem] in
+                let status = statusForSection(section.title)
+                return section.items.map { entry in
+                    MediaItem(
+                        title: entry.media.title.best,
+                        subtitle: entry.media.format,
+                        posterImageURL: entry.media.coverURL,
+                        heroImageURL: entry.media.bannerURL ?? entry.media.coverURL,
+                        ratingScore: entry.media.averageScore,
+                        matchPercent: entry.media.averageScore,
+                        contentRating: entry.media.isAdult ? "TV-MA" : "TV-14",
+                        genres: entry.media.genres,
+                        totalEpisodes: entry.media.episodes,
+                        studio: entry.media.studios.first,
+                        status: status
+                    )
+                }
+            }
+            appState.services.mediaTracker.setItems(mediaItems)
         } catch {
             errorMessage = "Failed to load AniList library."
             AppLog.error(.network, "library load failed \(error.localizedDescription)")
@@ -129,54 +218,44 @@ struct LibraryView: View {
         isLoading = false
         AppLog.debug(.network, "library load complete sections=\(sections.count)")
     }
+
+    private func statusForSection(_ title: String) -> MediaStatus {
+        let lower = title.lowercased()
+        if lower.contains("watching") || lower.contains("current") {
+            return .watching
+        }
+        if lower.contains("planning") {
+            return .planning
+        }
+        if lower.contains("completed") {
+            return .completed
+        }
+        if lower.contains("paused") {
+            return .paused
+        }
+        return .planning
+    }
+
+    private func formatRemaining(_ seconds: TimeInterval) -> String {
+        guard seconds.isFinite else { return "0 min left" }
+        let totalMinutes = max(Int(seconds / 60), 0)
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m left"
+        }
+        return "\(minutes)m left"
+    }
 }
 
-private enum LibrarySort: String, CaseIterable, Identifiable {
-    case anilist = "AniList Order"
-    case title = "Title A-Z"
-    case score = "Score High -> Low"
-    case progress = "Progress High -> Low"
+private enum LibraryFilter: String, CaseIterable, Identifiable {
+    case all
+    case watching
+    case planning
+    case completed
 
     var id: String { rawValue }
-}
-
-private struct LibraryControls: View {
-    @Binding var filterText: String
-    @Binding var sortMode: LibrarySort
-
-    var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(Theme.textSecondary)
-                    TextField("Filter library titles...", text: $filterText)
-                        .textInputAutocapitalization(.words)
-                        .disableAutocorrection(true)
-                }
-                Divider().background(Color.white.opacity(0.12))
-                HStack {
-                    Text("Sort")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textSecondary)
-                    Spacer()
-                    Menu {
-                        ForEach(LibrarySort.allCases) { mode in
-                            Button(mode.rawValue) { sortMode = mode }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(sortMode.rawValue)
-                                .foregroundColor(.white)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(Theme.textSecondary)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    var title: String { rawValue.capitalized }
 }
 
 private struct LibraryTopBar: View {
@@ -221,80 +300,52 @@ private struct LibraryTopBar: View {
     }
 }
 
-private struct LibraryHero: View {
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.12, green: 0.15, blue: 0.24),
-                            Color(red: 0.05, green: 0.07, blue: 0.12),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(height: 220)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Hero Spotlight")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.85))
-                Text("Current highlights will appear here.")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundColor(Theme.textSecondary)
-            }
-            .padding(16)
-        }
-    }
-}
-
-private struct AnimeCard: View {
-    let media: AniListMedia
-    let subtitle: String
+private struct LibrarySection: View {
+    let section: AniListLibrarySection
+    let filterText: String
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-                    .frame(height: 232)
-                if let coverURL = media.coverURL {
-                    AsyncImage(url: coverURL) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Color.white.opacity(0.08)
-                    }
-                    .frame(height: 232)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                LinearGradient(
-                    colors: [Color.black.opacity(0.85), Color.clear],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-                .frame(height: 120)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(media.title.best)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(2)
-                    Text(subtitle)
-                        .font(.system(size: 12, weight: .regular))
+        VStack(alignment: .leading, spacing: 10) {
+            Text(section.title)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.white)
+            if section.items.isEmpty, !filterText.isEmpty {
+                GlassCard {
+                    Text("No matches in this list.")
                         .foregroundColor(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(12)
+            } else {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.adaptive(minimum: 152), spacing: 12),
+                    ],
+                    spacing: 12
+                ) {
+                    ForEach(section.items, id: \.id) { entry in
+                        NavigationLink {
+                            DetailsView(media: entry.media)
+                        } label: {
+                            MediaPosterCard(
+                                title: entry.media.title.best,
+                                subtitle: "Ep \(entry.progress)",
+                                imageURL: entry.media.coverURL,
+                                score: entry.media.averageScore
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
-
-            RatingBadge(rating: media.averageScore.map { Double($0) / 10.0 })
-                .padding(10)
-        }
-        .overlay(alignment: .topLeading) {
-            UnwatchedBadge(mediaId: media.id)
-                .padding(10)
         }
     }
 }
 
+private struct ContinueItem: Identifiable {
+    let id: Int
+    let title: String
+    let episodeText: String
+    let progressFraction: Double
+    let timeRemainingText: String
+    let imageURL: URL?
+}
