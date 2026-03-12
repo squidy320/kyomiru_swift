@@ -2,7 +2,7 @@ import Foundation
 
 enum MPVSupport {
     static let isAvailable: Bool = {
-#if canImport(mpv)
+#if canImport(Libmpv)
         return true
 #else
         return false

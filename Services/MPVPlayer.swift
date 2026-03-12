@@ -2,8 +2,8 @@ import AVFoundation
 import Foundation
 import SwiftUI
 
-#if canImport(mpv)
-import mpv
+#if canImport(Libmpv)
+import Libmpv
 
 @MainActor
 final class MPVPlayerModel: ObservableObject {
