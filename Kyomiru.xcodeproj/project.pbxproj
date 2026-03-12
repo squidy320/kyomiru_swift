@@ -38,6 +38,7 @@
         7CF625CC580C4B3886797010 /* SettingsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3028F9F1B2AB4647891B467C /* SettingsState.swift */; };
 		69950056E20B4D91A5990BD6 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = A61733A6B24C482A972EBD23 /* Glass.swift */; };
 		3A4B5C6D7E8F901A2B3C4D5E /* SampleBufferDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7E8F901A2B3C4D5E6F7081 /* SampleBufferDisplayView.swift */; };
+		8B7A6C5D4E3F2A1B0C9D8E7F /* PiPController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C1D2E3F4A5B6C7D8E9F0A1B /* PiPController.swift */; };
 		9F9199A4F02B4E5092C147DB /* RatingBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDFF53C1D67465EB0681082 /* RatingBadge.swift */; };
         66B4F54F865245C8B0391307 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4DB95DE3E04DFF877268BB /* Theme.swift */; };
         23C4D5E6F708192A3B4C5D6E /* HeroHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */; };
@@ -98,6 +99,7 @@
         3028F9F1B2AB4647891B467C /* SettingsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsState.swift; sourceTree = "<group>"; };
 		A61733A6B24C482A972EBD23 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
 		6D7E8F901A2B3C4D5E6F7081 /* SampleBufferDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleBufferDisplayView.swift; sourceTree = "<group>"; };
+		9C1D2E3F4A5B6C7D8E9F0A1B /* PiPController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiPController.swift; sourceTree = "<group>"; };
 		4CDFF53C1D67465EB0681082 /* RatingBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingBadge.swift; sourceTree = "<group>"; };
         4F4DB95DE3E04DFF877268BB /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
         2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroHeader.swift; sourceTree = "<group>"; };
@@ -207,6 +209,7 @@
             children = (
 				A61733A6B24C482A972EBD23 /* Glass.swift */,
 				6D7E8F901A2B3C4D5E6F7081 /* SampleBufferDisplayView.swift */,
+				9C1D2E3F4A5B6C7D8E9F0A1B /* PiPController.swift */,
                 4CDFF53C1D67465EB0681082 /* RatingBadge.swift */,
                 4F4DB95DE3E04DFF877268BB /* Theme.swift */,
                 2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */,
@@ -359,6 +362,7 @@
 				7CF625CC580C4B3886797010 /* SettingsState.swift in Sources */,
 				69950056E20B4D91A5990BD6 /* Glass.swift in Sources */,
 				3A4B5C6D7E8F901A2B3C4D5E /* SampleBufferDisplayView.swift in Sources */,
+				8B7A6C5D4E3F2A1B0C9D8E7F /* PiPController.swift in Sources */,
 				9F9199A4F02B4E5092C147DB /* RatingBadge.swift in Sources */,
                 66B4F54F865245C8B0391307 /* Theme.swift in Sources */,
                 23C4D5E6F708192A3B4C5D6E /* HeroHeader.swift in Sources */,
