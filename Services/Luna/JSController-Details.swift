@@ -7,7 +7,7 @@
 
 import JavaScriptCore
 
-struct MediaItem: Identifiable {
+struct LunaDetailsItem: Identifiable {
     let id = UUID()
     let description: String
     let aliases: String
@@ -23,7 +23,7 @@ struct EpisodeLink: Identifiable {
 }
 
 extension JSController {
-    func fetchDetailsJS(url: String, completion: @escaping ([MediaItem], [EpisodeLink]) -> Void) {
+    func fetchDetailsJS(url: String, completion: @escaping ([LunaDetailsItem], [EpisodeLink]) -> Void) {
         guard let url = URL(string: url) else {
             LunaLogger.shared.log("Invalid URL in fetchDetailsJS: \(url)", type: "Error")
             completion([], [])
@@ -48,7 +48,7 @@ extension JSController {
             return
         }
         
-        var resultItems: [MediaItem] = []
+        var resultItems: [LunaDetailsItem] = []
         var episodeLinks: [EpisodeLink] = []
         
         let dispatchGroup = DispatchGroup()
@@ -81,8 +81,8 @@ extension JSController {
                    let dataDetails = jsonOfDetails.data(using: .utf8) {
                     do {
                         if let array = try JSONSerialization.jsonObject(with: dataDetails, options: []) as? [[String: Any]] {
-                            resultItems = array.map { item -> MediaItem in
-                                MediaItem(
+                            resultItems = array.map { item -> LunaDetailsItem in
+                                LunaDetailsItem(
                                     description: item["description"] as? String ?? "",
                                     aliases: item["aliases"] as? String ?? "",
                                     airdate: item["airdate"] as? String ?? ""
