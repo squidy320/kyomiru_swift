@@ -21,6 +21,7 @@
         8A78EA4EE58E445BB261744F /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9123772BA7C647A89887E9E2 /* Logging.swift */; };
         0C7F8F4657434D42BFD5C9F9 /* LogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADD27E0F05DF470BA85DBC5B /* LogStore.swift */; };
         384BD60D36CD438DA60949D8 /* PlaybackHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1063B41F91974C149ABDFDCD /* PlaybackHistoryStore.swift */; };
+        A1F2B3C4D5E6F708192A3B4C /* MatchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5061728394A5B6C /* MatchStore.swift */; };
         B54EC35066044FC8816A781C /* SoraRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DAFBC3D2A734B2A928E9ACB /* SoraRuntime.swift */; };
         477FAB90D847485C96851E09 /* TitleMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52888B957D0B4BAD8988D80F /* TitleMatcher.swift */; };
         970DFB54D0CF444BAAF3D99B /* TrackingSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A72C32B7EA8840CD9CFB80A1 /* TrackingSyncService.swift */; };
@@ -66,6 +67,7 @@
         9123772BA7C647A89887E9E2 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
         ADD27E0F05DF470BA85DBC5B /* LogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogStore.swift; sourceTree = "<group>"; };
         1063B41F91974C149ABDFDCD /* PlaybackHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackHistoryStore.swift; sourceTree = "<group>"; };
+        B1C2D3E4F5061728394A5B6C /* MatchStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchStore.swift; sourceTree = "<group>"; };
         4DAFBC3D2A734B2A928E9ACB /* SoraRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoraRuntime.swift; sourceTree = "<group>"; };
         52888B957D0B4BAD8988D80F /* TitleMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleMatcher.swift; sourceTree = "<group>"; };
         A72C32B7EA8840CD9CFB80A1 /* TrackingSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingSyncService.swift; sourceTree = "<group>"; };
@@ -148,6 +150,7 @@
                 9123772BA7C647A89887E9E2 /* Logging.swift */,
                 ADD27E0F05DF470BA85DBC5B /* LogStore.swift */,
                 1063B41F91974C149ABDFDCD /* PlaybackHistoryStore.swift */,
+                B1C2D3E4F5061728394A5B6C /* MatchStore.swift */,
                 4DAFBC3D2A734B2A928E9ACB /* SoraRuntime.swift */,
                 52888B957D0B4BAD8988D80F /* TitleMatcher.swift */,
                 A72C32B7EA8840CD9CFB80A1 /* TrackingSyncService.swift */,
@@ -292,6 +295,7 @@
                 8A78EA4EE58E445BB261744F /* Logging.swift in Sources */,
                 0C7F8F4657434D42BFD5C9F9 /* LogStore.swift in Sources */,
                 384BD60D36CD438DA60949D8 /* PlaybackHistoryStore.swift in Sources */,
+                A1F2B3C4D5E6F708192A3B4C /* MatchStore.swift in Sources */,
                 B54EC35066044FC8816A781C /* SoraRuntime.swift in Sources */,
                 477FAB90D847485C96851E09 /* TitleMatcher.swift in Sources */,
                 970DFB54D0CF444BAAF3D99B /* TrackingSyncService.swift in Sources */,

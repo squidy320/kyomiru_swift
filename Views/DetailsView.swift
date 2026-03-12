@@ -12,6 +12,12 @@ struct DetailsView: View {
     @State private var isLoadingSources = false
     @State private var showSourceSheet = false
     @State private var trackingProgress: Int?
+    @State private var currentMatch: SoraAnimeMatch?
+    @State private var matchIsManual = false
+    @State private var showMatchSheet = false
+    @State private var isLoadingMatch = false
+    @State private var matchCandidates: [SoraAnimeMatch] = []
+    @State private var matchError: String?
     private let episodeService = EpisodeService()
 
     var body: some View {
@@ -32,6 +38,47 @@ struct DetailsView: View {
                             Text(status)
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(Theme.textSecondary)
+                        }
+                    }
+
+                    GlassCard {
+                        HStack(alignment: .center, spacing: 12) {
+                            if let url = currentMatch?.imageURL {
+                                AsyncImage(url: url) { img in
+                                    img.resizable().scaledToFill()
+                                } placeholder: {
+                                    Color.white.opacity(0.1)
+                                }
+                                .frame(width: 42, height: 56)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Source Match")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(Theme.textSecondary)
+                                Text(currentMatch?.title ?? "Not matched yet")
+                                    .foregroundColor(.white)
+                                    .font(.system(size: 16, weight: .semibold))
+                                if matchIsManual {
+                                    Text("Manual")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.orange)
+                                }
+                            }
+                            Spacer()
+                            Button("Change") {
+                                openMatchPicker()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        if matchIsManual {
+                            Button("Reset to Auto") {
+                                episodeService.clearManualMatch(media: media)
+                                AppLog.debug(.matching, "manual match cleared mediaId=\(media.id)")
+                                Task { await loadEpisodes() }
+                            }
+                            .buttonStyle(.bordered)
+                            .padding(.top, 8)
                         }
                     }
 
@@ -128,6 +175,19 @@ struct DetailsView: View {
                 }
             )
         }
+        .sheet(isPresented: $showMatchSheet) {
+            MatchPickerSheet(
+                media: media,
+                candidates: matchCandidates,
+                isLoading: isLoadingMatch,
+                errorMessage: matchError,
+                onSelect: { match in
+                    episodeService.setManualMatch(media: media, match: match)
+                    AppLog.debug(.matching, "manual match selected mediaId=\(media.id) session=\(match.session)")
+                    Task { await loadEpisodes() }
+                }
+            )
+        }
         .overlay(alignment: .bottom) {
             if isLoadingSources {
                 GlassCard {
@@ -183,12 +243,34 @@ struct DetailsView: View {
         errorMessage = nil
         do {
             let result = try await episodeService.loadEpisodes(media: media)
-            episodes = result.1
+            currentMatch = result.match
+            matchIsManual = result.isManual
+            episodes = result.episodes
         } catch {
             errorMessage = "Failed to load episodes."
             AppLog.error(.network, "details episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
         }
         isLoading = false
+    }
+
+    private func openMatchPicker() {
+        showMatchSheet = true
+        isLoadingMatch = true
+        matchError = nil
+        matchCandidates = []
+        Task {
+            do {
+                let candidates = try await episodeService.searchCandidates(media: media)
+                matchCandidates = candidates
+                if candidates.isEmpty {
+                    matchError = "No matches found."
+                }
+            } catch {
+                matchError = "Failed to search matches."
+                AppLog.error(.matching, "manual match search failed mediaId=\(media.id) \(error.localizedDescription)")
+            }
+            isLoadingMatch = false
+        }
     }
 
     private func loadTracking() async {
@@ -359,6 +441,65 @@ private struct SourcePickerSheet: View {
     private func qualityRank(_ q: String) -> Int {
         let digits = q.filter { $0.isNumber }
         return Int(digits) ?? 0
+    }
+}
+
+private struct MatchPickerSheet: View {
+    let media: AniListMedia
+    let candidates: [SoraAnimeMatch]
+    let isLoading: Bool
+    let errorMessage: String?
+    let onSelect: (SoraAnimeMatch) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if isLoading {
+                    Text("Searching matches...")
+                        .foregroundColor(.secondary)
+                } else if let errorMessage {
+                    Text(errorMessage)
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(candidates) { match in
+                        HStack(spacing: 12) {
+                            if let url = match.imageURL {
+                                AsyncImage(url: url) { img in
+                                    img.resizable().scaledToFill()
+                                } placeholder: {
+                                    Color.white.opacity(0.1)
+                                }
+                                .frame(width: 42, height: 56)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(match.title)
+                                    .font(.system(size: 16, weight: .semibold))
+                                if let year = match.year {
+                                    Text("\(year)")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Button("Use") {
+                                dismiss()
+                                onSelect(match)
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .padding(.vertical, 6)
+                    }
+                }
+            }
+            .navigationTitle("Match for \(media.title.best)")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
     }
 }
 

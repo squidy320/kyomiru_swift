@@ -17,7 +17,9 @@ final class SoraRuntime {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         AppLog.debug(.network, "animepahe search start query=\(trimmed)")
-        if let service = try? await loadServiceIfNeeded() {
+        do {
+            let service = try await loadServiceIfNeeded()
+            AppLog.debug(.network, "animepahe search using luna manifest=\(manifestURL.absoluteString)")
             let items: [SearchItem] = await withCheckedContinuation { cont in
                 js.fetchJsSearchResults(keyword: trimmed, module: service) { results in
                     cont.resume(returning: results)
@@ -36,13 +38,17 @@ final class SoraRuntime {
                     episodeCount: nil
                 )
             }
+            AppLog.debug(.network, "animepahe luna search results count=\(matches.count)")
             if !matches.isEmpty {
                 AppLog.debug(.network, "animepahe search success count=\(matches.count)")
                 return matches
             }
+        } catch {
+            AppLog.error(.network, "animepahe luna search failed query=\(trimmed) \(error.localizedDescription)")
         }
 
         // Fallback to direct API when JS loader fails.
+        AppLog.debug(.network, "animepahe search fallback to direct api")
         let url = baseURL.appendingPathComponent("api")
         var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)!
         comps.queryItems = [
@@ -93,13 +99,15 @@ final class SoraRuntime {
 
     func episodes(for match: SoraAnimeMatch) async throws -> [SoraEpisode] {
         AppLog.debug(.network, "episodes list start session=\(match.session)")
-        if let service = try? await loadServiceIfNeeded() {
+        do {
+            _ = try await loadServiceIfNeeded()
             let animeURL = baseURL.appendingPathComponent("anime/\(match.session)")
             let links: [EpisodeLink] = await withCheckedContinuation { cont in
                 js.fetchEpisodesJS(url: animeURL.absoluteString) { results in
                     cont.resume(returning: results)
                 }
             }
+            AppLog.debug(.network, "episodes luna links count=\(links.count) session=\(match.session)")
             let episodes: [SoraEpisode] = links.compactMap { link in
                 guard link.number > 0 else { return nil }
                 let href = link.href.isEmpty ? animeURL.absoluteString : link.href
@@ -112,10 +120,12 @@ final class SoraRuntime {
                 AppLog.debug(.network, "episodes list success count=\(sorted.count)")
                 return sorted
             }
-            _ = service
+        } catch {
+            AppLog.error(.network, "episodes luna load failed session=\(match.session) \(error.localizedDescription)")
         }
 
         // Fallback to direct API when JS loader fails.
+        AppLog.debug(.network, "episodes fallback to direct api session=\(match.session)")
         let url = baseURL.appendingPathComponent("api")
         var page = 1
         var out: [SoraEpisode] = []
@@ -153,7 +163,8 @@ final class SoraRuntime {
 
     func sources(for episode: SoraEpisode) async throws -> [SoraSource] {
         AppLog.debug(.network, "sources scrape start episode=\(episode.number)")
-        if let service = try? await loadServiceIfNeeded() {
+        do {
+            let service = try await loadServiceIfNeeded()
             let result = await withCheckedContinuation { cont in
                 js.fetchStreamUrlJS(episodeUrl: episode.playURL.absoluteString, module: service) { result in
                     cont.resume(returning: result)
@@ -175,13 +186,17 @@ final class SoraRuntime {
                 }
             }
             let deduped = dedupe(sources)
+            AppLog.debug(.network, "sources luna count=\(deduped.count)")
             if !deduped.isEmpty {
                 AppLog.debug(.network, "sources scrape success count=\(deduped.count)")
                 return deduped
             }
+        } catch {
+            AppLog.error(.network, "sources luna load failed episode=\(episode.number) \(error.localizedDescription)")
         }
 
         // Fallback to legacy HTML scraping.
+        AppLog.debug(.network, "sources fallback to html scrape episode=\(episode.number)")
         let html = try await getText(url: episode.playURL)
         let rawLinks = extractLinks(from: html)
         var sources: [SoraSource] = []
@@ -481,14 +496,17 @@ final class SoraRuntime {
         if let service = loadedService,
            let loadedAt,
            now.timeIntervalSince(loadedAt) < 1800 {
+            AppLog.debug(.network, "luna service cache hit")
             return service
         }
 
+        AppLog.debug(.network, "luna manifest load start url=\(manifestURL.absoluteString)")
         var manifestRequest = URLRequest(url: manifestURL)
         manifestRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
         manifestRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         let (manifestData, _) = try await session.data(for: manifestRequest)
         let metadata = try JSONDecoder().decode(ServiceMetadata.self, from: manifestData)
+        AppLog.debug(.network, "luna manifest loaded name=\(metadata.sourceName) version=\(metadata.version)")
         guard let scriptURL = URL(string: metadata.scriptUrl) else {
             throw URLError(.badURL)
         }
@@ -500,6 +518,7 @@ final class SoraRuntime {
         if script.isEmpty {
             throw URLError(.cannotDecodeContentData)
         }
+        AppLog.debug(.network, "luna script loaded size=\(script.count)")
 
         let service = Service(
             id: UUID(),
@@ -512,6 +531,7 @@ final class SoraRuntime {
         loadedService = service
         loadedAt = now
         js.loadScript(script)
+        AppLog.debug(.network, "luna script loaded into JSContext")
         return service
     }
 }
