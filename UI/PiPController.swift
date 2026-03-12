@@ -35,7 +35,7 @@ final class PiPController: NSObject {
         if AVPictureInPictureController.isPictureInPictureSupported() {
             let source = AVPictureInPictureController.ContentSource(
                 sampleBufferDisplayLayer: sampleBufferDisplayLayer,
-                playbackDelegate: nil
+                playbackDelegate: self
             )
             let pip = AVPictureInPictureController(contentSource: source)
             pip.canStartPictureInPictureAutomaticallyFromInline = true
@@ -48,10 +48,6 @@ final class PiPController: NSObject {
 
         if let controller {
             controller.delegate = self
-            controller.contentSource = AVPictureInPictureController.ContentSource(
-                sampleBufferDisplayLayer: sampleBufferDisplayLayer,
-                playbackDelegate: self
-            )
         }
     }
 
@@ -92,12 +88,10 @@ extension PiPController: AVPictureInPictureSampleBufferPlaybackDelegate {
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, didTransitionToRenderSize newRenderSize: CMVideoDimensions) {}
 
-    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, skipByInterval skipInterval: CMTime, completionHandler: @escaping () -> Void) {
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, skipByInterval skipInterval: CMTime, completion: @escaping () -> Void) {
         skipBy(skipInterval.seconds)
-        completionHandler()
+        completion()
     }
-
-    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, playbackStateDidChange playbackState: AVPictureInPictureController.PlaybackState) {}
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, playbackTimeDidChange playbackTime: CMTime) {}
 
