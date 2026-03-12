@@ -40,7 +40,7 @@ struct HeroHeader: View {
             .frame(height: height * 0.75)
             .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(title)
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.white)
@@ -52,16 +52,17 @@ struct HeroHeader: View {
                         .foregroundColor(Theme.textSecondary)
                 }
 
-                HStack(spacing: 8) {
-                    ForEach(pills) { pill in
-                        MetadataPill(icon: pill.icon, text: pill.text)
-                    }
-                }
-
-                if !tags.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        ForEach(tags, id: \.self) { tag in
-                            TagPill(text: tag)
+                        ForEach(pills) { pill in
+                            MetadataPill(icon: pill.icon, text: pill.text)
+                        }
+                    }
+                    if !tags.isEmpty {
+                        HStack(spacing: 8) {
+                            ForEach(tags, id: \.self) { tag in
+                                TagPill(text: tag)
+                            }
                         }
                     }
                 }

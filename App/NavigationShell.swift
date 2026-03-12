@@ -26,12 +26,6 @@ struct NavigationShell: View {
                 }
             } else {
                 TabView(selection: $appState.selectedTab) {
-                    SearchView()
-                        .tabItem {
-                            Image(systemName: "magnifyingglass")
-                            Text("Search")
-                        }
-                        .tag(AppTab.search)
                     DiscoveryView()
                         .tabItem {
                             Image(systemName: "house")
@@ -70,8 +64,6 @@ struct NavigationShell: View {
     @ViewBuilder
     private var contentView: some View {
         switch appState.selectedTab {
-        case .search:
-            SearchView()
         case .home:
             DiscoveryView()
         case .library:
@@ -137,7 +129,6 @@ private struct NavigationItem: Identifiable {
 private extension AppTab {
     static var navigationItems: [NavigationItem] {
         [
-            NavigationItem(tab: .search, systemImage: "magnifyingglass"),
             NavigationItem(tab: .home, systemImage: "house"),
             NavigationItem(tab: .library, systemImage: "books.vertical"),
             NavigationItem(tab: .notifications, systemImage: "bell"),

@@ -6,6 +6,9 @@ struct DiscoveryView: View {
     @EnvironmentObject private var appState: AppState
     @State private var sections: [AniListDiscoverySection] = []
     @State private var isLoading = false
+    @State private var isSearching = false
+    @State private var searchResults: [AniListMedia] = []
+    @State private var searchTask: Task<Void, Never>?
     @State private var selectedFilter: DiscoveryFilter = .all
 
     var body: some View {
@@ -35,6 +38,16 @@ struct DiscoveryView: View {
                             .padding(.vertical, 4)
                         }
 
+                        if isSearching {
+                            GlassCard {
+                                Text("Searching AniList...")
+                                    .foregroundColor(Theme.textSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else if !trimmedQuery().isEmpty {
+                            searchResultsSection
+                        }
+
                         if isLoading {
                             GlassCard {
                                 Text("Loading discovery...")
@@ -47,25 +60,24 @@ struct DiscoveryView: View {
                                     Text(section.title)
                                         .font(.system(size: 18, weight: .bold))
                                         .foregroundColor(.white)
-                                    LazyVGrid(
-                                        columns: [
-                                            GridItem(.adaptive(minimum: 152), spacing: 12),
-                                        ],
-                                        spacing: 12
-                                    ) {
-                                        ForEach(section.items, id: \.id) { media in
-                                            NavigationLink {
-                                                DetailsView(media: media)
-                                            } label: {
-                                                MediaPosterCard(
-                                                    title: media.title.best,
-                                                    subtitle: "New release",
-                                                    imageURL: media.coverURL,
-                                                    score: media.averageScore
-                                                )
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 12) {
+                                            ForEach(section.items, id: \.id) { media in
+                                                NavigationLink {
+                                                    DetailsView(media: media)
+                                                } label: {
+                                                    MediaPosterCard(
+                                                        title: media.title.best,
+                                                        subtitle: "New release",
+                                                        imageURL: media.coverURL,
+                                                        score: media.averageScore
+                                                    )
+                                                    .frame(width: 150)
+                                                }
+                                                .buttonStyle(.plain)
                                             }
-                                            .buttonStyle(.plain)
                                         }
+                                        .padding(.horizontal, 2)
                                     }
                                 }
                             }
@@ -80,6 +92,9 @@ struct DiscoveryView: View {
         .task {
             AppLog.debug(.ui, "discovery view load")
             await loadDiscovery()
+        }
+        .onChange(of: query) { _ in
+            runSearch()
         }
     }
 
@@ -107,6 +122,33 @@ struct DiscoveryView: View {
             tags: tags
         )
     }
+
+    private var searchResultsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Search Results")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.white)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(searchResults, id: \.id) { media in
+                        NavigationLink {
+                            DetailsView(media: media)
+                        } label: {
+                            MediaPosterCard(
+                                title: media.title.best,
+                                subtitle: media.format ?? "Result",
+                                imageURL: media.coverURL,
+                                score: media.averageScore
+                            )
+                            .frame(width: 150)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+        }
+    }
 }
 
 private enum DiscoveryFilter: String, CaseIterable, Identifiable {
@@ -120,6 +162,39 @@ private enum DiscoveryFilter: String, CaseIterable, Identifiable {
 }
 
 private extension DiscoveryView {
+    func trimmedQuery() -> String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func runSearch() {
+        searchTask?.cancel()
+        let term = trimmedQuery()
+        if term.isEmpty {
+            searchResults = []
+            isSearching = false
+            return
+        }
+        isSearching = true
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            if Task.isCancelled { return }
+            do {
+                let results = try await appState.services.aniListClient.searchAnime(query: term)
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    searchResults = results
+                    isSearching = false
+                }
+            } catch {
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    searchResults = []
+                    isSearching = false
+                }
+            }
+        }
+    }
+
     func loadDiscovery() async {
         AppLog.debug(.network, "discovery load start")
         isLoading = true
@@ -135,5 +210,9 @@ private extension DiscoveryView {
 }
 
 // Card components moved to UI/MediaCards.swift
+
+
+
+
 
 

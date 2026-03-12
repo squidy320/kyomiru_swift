@@ -48,7 +48,7 @@ struct LibraryView: View {
                                 Text("Continue Watching")
                                     .font(.system(size: 18, weight: .bold))
                                     .foregroundColor(.white)
-                                ScrollView(.horizontal, showsIndicators: false) {
+                                    ScrollView(.horizontal, showsIndicators: false) {
                                     HStack(spacing: 12) {
                                         ForEach(continueWatchingItems()) { item in
                                             ContinueWatchingCard(
@@ -160,9 +160,10 @@ struct LibraryView: View {
         guard let section = sections.first(where: { $0.title.lowercased().contains("watching") }) else {
             return []
         }
-        return section.items.prefix(6).map { entry in
+        return section.items.compactMap { entry in
             let idKey = String(entry.media.id)
             let progress = appState.services.playbackEngine.progressFraction(for: idKey)
+            guard progress > 0, progress < 0.999 else { return nil }
             let remaining = appState.services.playbackEngine.timeRemaining(for: idKey) ?? 0
             return ContinueItem(
                 id: entry.media.id,
@@ -321,25 +322,24 @@ private struct LibrarySection: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
-                LazyVGrid(
-                    columns: [
-                        GridItem(.adaptive(minimum: 152), spacing: 12),
-                    ],
-                    spacing: 12
-                ) {
-                    ForEach(section.items, id: \.id) { entry in
-                        NavigationLink {
-                            DetailsView(media: entry.media)
-                        } label: {
-                            MediaPosterCard(
-                                title: entry.media.title.best,
-                                subtitle: "Ep \(entry.progress)",
-                                imageURL: entry.media.coverURL,
-                                score: entry.media.averageScore
-                            )
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(section.items, id: \.id) { entry in
+                            NavigationLink {
+                                DetailsView(media: entry.media)
+                            } label: {
+                                MediaPosterCard(
+                                    title: entry.media.title.best,
+                                    subtitle: "Ep \(entry.progress)",
+                                    imageURL: entry.media.coverURL,
+                                    score: entry.media.averageScore
+                                )
+                                .frame(width: 150)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(.horizontal, 2)
                 }
             }
         }
@@ -354,4 +354,7 @@ private struct ContinueItem: Identifiable {
     let timeRemainingText: String
     let imageURL: URL?
 }
+
+
+
 

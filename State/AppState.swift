@@ -1,7 +1,6 @@
 import SwiftUI
 
 enum AppTab: Hashable {
-    case search
     case home
     case library
     case notifications

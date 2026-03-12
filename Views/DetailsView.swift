@@ -4,6 +4,7 @@ import UIKit
 struct DetailsView: View {
     let media: AniListMedia
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
     @State private var episodes: [SoraEpisode] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -108,6 +109,22 @@ struct DetailsView: View {
                 }
             )
         }
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            Circle().fill(Color.black.opacity(0.4))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
         .overlay(alignment: .bottom) {
             if isLoadingSources {
                 GlassCard {
@@ -161,6 +178,7 @@ struct DetailsView: View {
             }
             .padding(18)
         }
+        .ignoresSafeArea(edges: .top)
     }
 
     private var actionRow: some View {
@@ -433,10 +451,7 @@ struct DetailsView: View {
     }
 
     private func episodeColumns() -> [GridItem] {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            return Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
-        }
-        return Array(repeating: GridItem(.flexible(), spacing: 12), count: 2)
+        [GridItem(.flexible(), spacing: 12)]
     }
 
     private func episodeSubtitle() -> String {
@@ -568,12 +583,13 @@ private struct EpisodeCard: View {
                 .frame(height: 120)
             if let imageURL {
                 AsyncImage(url: imageURL) { img in
-                    img.resizable().scaledToFill()
+                    img.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: {
                     Color.white.opacity(0.08)
                 }
                 .frame(height: 120)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipped()
             }
 
             LinearGradient(
