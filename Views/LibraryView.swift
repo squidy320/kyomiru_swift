@@ -1,4 +1,3 @@
-﻿import SwiftUI
 import SwiftUI
 import UIKit
 
@@ -9,6 +8,7 @@ struct LibraryView: View {
     @State private var errorMessage: String?
     @State private var filterText: String = ""
     @State private var selectedFilter: LibraryFilter = .all
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         ZStack {
@@ -60,10 +60,13 @@ struct LibraryView: View {
                                                 episodeText: item.episodeText,
                                                 progress: item.progressFraction,
                                                 timeRemainingText: item.timeRemainingText,
-                                                imageURL: item.imageURL
+                                                imageURL: item.imageURL,
+                                                episodeBadge: item.episodeBadge
                                             )
                                         }
                                     }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
                                 }
                                 .scrollClipDisabled()
                             }
@@ -94,13 +97,12 @@ struct LibraryView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
-                }
+                    }
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.top, 8)
                     .padding(.bottom, 12)
-                    .safeAreaPadding(.top, 6)
                 }
-                .navigationTitle("Library")
+                .navigationTitle(isPad ? "Library" : "")
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
@@ -118,6 +120,7 @@ struct LibraryView: View {
             await loadLibrary()
         }
     }
+
     private var tabBarInset: CGFloat {
         UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
@@ -151,7 +154,7 @@ struct LibraryView: View {
             imageURL: heroMedia?.bannerURL ?? heroMedia?.coverURL,
             pills: pills,
             tags: tags,
-            height: 240
+            height: 260
         )
     }
 
@@ -191,7 +194,8 @@ struct LibraryView: View {
                 episodeText: "Episode \(episodeNumber)",
                 progressFraction: progress,
                 timeRemainingText: formatRemaining(remaining),
-                imageURL: entry.media.bannerURL ?? entry.media.coverURL
+                imageURL: entry.media.bannerURL ?? entry.media.coverURL,
+                episodeBadge: "EP \(episodeNumber)"
             )
         }
     }
@@ -356,11 +360,13 @@ private struct LibrarySection: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
                 }
                 .scrollClipDisabled()
             }
         }
+        .padding(.bottom, 4)
     }
 }
 
@@ -371,14 +377,5 @@ private struct ContinueItem: Identifiable {
     let progressFraction: Double
     let timeRemainingText: String
     let imageURL: URL?
+    let episodeBadge: String?
 }
-
-
-
-
-
-
-
-
-
-

@@ -3,6 +3,7 @@ import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         ZStack {
@@ -138,11 +139,10 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.top, 8)
                     .padding(.bottom, 12)
-                    .safeAreaPadding(.top, 6)
                 }
-                .navigationTitle("Settings")
+                .navigationTitle(isPad ? "Settings" : "")
                 .navigationBarTitleDisplayMode(.inline)
             }
         }

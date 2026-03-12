@@ -21,7 +21,7 @@ struct MediaPosterCard: View {
                         Color.white.opacity(0.08)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
 
                 LinearGradient(
@@ -61,6 +61,7 @@ struct ContinueWatchingCard: View {
     let progress: Double
     let timeRemainingText: String
     let imageURL: URL?
+    let episodeBadge: String?
     private let cardWidth: CGFloat = 260
     private let cardHeight: CGFloat = 140
 
@@ -76,7 +77,7 @@ struct ContinueWatchingCard: View {
                     Color.white.opacity(0.08)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
 
             LinearGradient(
@@ -108,5 +109,19 @@ struct ContinueWatchingCard: View {
         }
         .frame(width: cardWidth, height: cardHeight)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(alignment: .topTrailing) {
+            if let episodeBadge {
+                Text(episodeBadge)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.black.opacity(0.6))
+                    )
+                    .padding(10)
+            }
+        }
     }
 }

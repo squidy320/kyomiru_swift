@@ -6,6 +6,7 @@ struct AlertsView: View {
     @State private var notifications: [AniListNotificationItem] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         ZStack {
@@ -51,11 +52,10 @@ struct AlertsView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .padding(.top, 8)
                 .padding(.bottom, 12)
-                .safeAreaPadding(.top, 6)
             }
-            .navigationTitle("Alerts")
+            .navigationTitle(isPad ? "Alerts" : "")
             .navigationBarTitleDisplayMode(.inline)
         }
         .safeAreaInset(edge: .bottom) {

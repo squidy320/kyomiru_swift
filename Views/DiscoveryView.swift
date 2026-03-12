@@ -11,6 +11,7 @@ struct DiscoveryView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var heroIndex = 0
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         ZStack {
@@ -67,7 +68,8 @@ struct DiscoveryView: View {
                                                 .buttonStyle(.plain)
                                             }
                                         }
-                                        .padding(.horizontal, 2)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
                                     }
                                     .scrollClipDisabled()
                                 }
@@ -75,11 +77,10 @@ struct DiscoveryView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.top, 8)
                     .padding(.bottom, 12)
-                    .safeAreaPadding(.top, 6)
                 }
-                .navigationTitle("Discovery")
+                .navigationTitle(isPad ? "Discovery" : "")
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
@@ -135,7 +136,7 @@ struct DiscoveryView: View {
             }
             .frame(height: 350)
             .tabViewStyle(.page(indexDisplayMode: .always))
-            .padding(.top, 4)
+            .padding(.top, 2)
             .onReceive(heroTimer) { _ in
                 guard !items.isEmpty else { return }
                 withAnimation(.easeInOut(duration: 0.4)) {
@@ -188,7 +189,8 @@ struct DiscoveryView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 2)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
             }
             .scrollClipDisabled()
         }

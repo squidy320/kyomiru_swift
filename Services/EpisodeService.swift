@@ -54,6 +54,17 @@ final class EpisodeService {
         return deduped
     }
 
+    func searchCandidates(query: String) async throws -> [SoraAnimeMatch] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        AppLog.debug(.matching, "manual match search start query=\(trimmed)")
+        let matches = try await runtime.searchAnime(query: trimmed)
+        let deduped = Dictionary(grouping: matches, by: { $0.session })
+            .compactMap { $0.value.first }
+        AppLog.debug(.matching, "manual match search complete query=\(trimmed) candidates=\(deduped.count)")
+        return deduped
+    }
+
     func setManualMatch(media: AniListMedia, match: SoraAnimeMatch) {
         matchStore.set(match: match, mediaId: media.id, isManual: true)
     }
@@ -77,4 +88,3 @@ final class EpisodeService {
         }
     }
 }
-

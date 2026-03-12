@@ -20,6 +20,7 @@ struct DetailsView: View {
     @State private var isLoadingMatch = false
     @State private var matchCandidates: [SoraAnimeMatch] = []
     @State private var matchError: String?
+    @State private var matchQuery: String = ""
     @State private var selectedEpisodeTab: EpisodeTab = .currentSeries
     @State private var isBookmarked = false
     @State private var relatedSections: [AniListRelatedSection] = []
@@ -54,7 +55,7 @@ struct DetailsView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .padding(.top, 8)
                 .padding(.bottom, 12)
             }
         }
@@ -107,9 +108,13 @@ struct DetailsView: View {
         .sheet(isPresented: $showMatchSheet) {
             MatchPickerSheet(
                 media: media,
+                query: $matchQuery,
                 candidates: matchCandidates,
                 isLoading: isLoadingMatch,
                 errorMessage: matchError,
+                onSearch: { term in
+                    performMatchSearch(query: term)
+                },
                 onSelect: { match in
                     Task {
                         _ = await appState.services.metadataService.manualMatch(local: detailItem, remoteId: match.session)
@@ -160,48 +165,21 @@ struct DetailsView: View {
     }
 
     private var header: some View {
-        ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(Theme.surface)
-                .frame(height: 280)
-                .overlay(
-                    Group {
-                        if let url = media.bannerURL ?? media.coverURL {
-                            CachedImage(url: url) { img in
-                                img.resizable().scaledToFill()
-                            } placeholder: {
-                                Theme.surface
-                            }
-                        }
-                    }
-                )
-                .clipped()
-
-            LinearGradient(
-                colors: [Color.black.opacity(0.85), Color.black.opacity(0.25), Color.clear],
-                startPoint: .bottom,
-                endPoint: .top
-            )
-            .frame(height: 200)
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text(media.title.best)
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-
-                HStack(spacing: 8) {
-                    if let episodesCount = media.episodes {
-                        MetadataPill(icon: "rectangle.stack.fill", text: "\(episodesCount) EPS")
-                    }
-                    MetadataPill(icon: "building.2.fill", text: media.studios.first ?? media.format ?? "Studio")
-                    MetadataPill(icon: "star.fill", text: "Score \(media.averageScore ?? 0)")
-                }
-            }
-            .padding(18)
-        }
-        .ignoresSafeArea(edges: .top)
+        let episodesCount = media.episodes ?? 0
+        let pills = [
+            HeroPill(icon: "rectangle.stack.fill", text: episodesCount > 0 ? "\(episodesCount) EPS" : "Episodes"),
+            HeroPill(icon: "building.2.fill", text: media.studios.first ?? media.format ?? "Studio"),
+            HeroPill(icon: "star.fill", text: "Score \(media.averageScore ?? 0)")
+        ]
+        let tags = Array(media.genres.prefix(2))
+        return HeroHeader(
+            title: media.title.best,
+            subtitle: media.format,
+            imageURL: media.bannerURL ?? media.coverURL,
+            pills: pills,
+            tags: tags,
+            height: 260
+        )
     }
 
     private var actionRow: some View {
@@ -301,7 +279,14 @@ struct DetailsView: View {
             }
             LazyVStack(spacing: 12) {
                 ForEach(cards) { card in
-                    if card.isPlayable, let ep = card.episode {
+                    if let related = card.relatedMedia {
+                        NavigationLink {
+                            DetailsView(media: related)
+                        } label: {
+                            EpisodeRow(card: card)
+                        }
+                        .buttonStyle(.plain)
+                    } else if let ep = card.episode {
                         Button {
                             selectEpisode(ep)
                         } label: {
@@ -360,13 +345,24 @@ struct DetailsView: View {
     }
 
     private func openMatchPicker() {
+        matchQuery = media.title.best
         showMatchSheet = true
+        performMatchSearch(query: matchQuery)
+    }
+
+    private func performMatchSearch(query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         isLoadingMatch = true
         matchError = nil
         matchCandidates = []
         Task {
             do {
-                let candidates = try await episodeService.searchCandidates(media: media)
+                let candidates: [SoraAnimeMatch]
+                if trimmed.isEmpty {
+                    candidates = try await episodeService.searchCandidates(media: media)
+                } else {
+                    candidates = try await episodeService.searchCandidates(query: trimmed)
+                }
                 matchCandidates = candidates
                 if candidates.isEmpty {
                     matchError = "No matches found."
@@ -414,14 +410,15 @@ struct DetailsView: View {
                     id: UUID(),
                     title: "Episode \(ep.number)",
                     subtitle: episodeSubtitle(),
-                    imageURL: media.bannerURL ?? media.coverURL,
+                    imageURL: episodeThumbnailURL(for: ep),
                     progressFraction: progress,
                     badgeText: nil,
                     score: nil,
                     tags: [],
                     timeBadgeText: remaining,
                     isPlayable: true,
-                    episode: ep
+                    episode: ep,
+                    relatedMedia: nil
                 )
             }
         }
@@ -440,7 +437,8 @@ struct DetailsView: View {
                     tags: item.genres,
                     timeBadgeText: nil,
                     isPlayable: false,
-                    episode: nil
+                    episode: nil,
+                    relatedMedia: item
                 )
             }
         }
@@ -458,9 +456,14 @@ struct DetailsView: View {
                 tags: [],
                 timeBadgeText: nil,
                 isPlayable: false,
-                episode: nil
+                episode: nil,
+                relatedMedia: nil
             )
         }
+    }
+
+    private func episodeThumbnailURL(for episode: SoraEpisode) -> URL? {
+        media.coverURL ?? media.bannerURL
     }
 
     private func episodeSubtitle() -> String {
@@ -573,6 +576,7 @@ private struct EpisodeCardModel: Identifiable {
     let timeBadgeText: String?
     let isPlayable: Bool
     let episode: SoraEpisode?
+    let relatedMedia: AniListMedia?
 }
 
 private struct EpisodeRow: View {
@@ -837,15 +841,30 @@ private struct SourcePickerSheet: View {
 
 private struct MatchPickerSheet: View {
     let media: AniListMedia
+    @Binding var query: String
     let candidates: [SoraAnimeMatch]
     let isLoading: Bool
     let errorMessage: String?
+    let onSearch: (String) -> Void
     let onSelect: (SoraAnimeMatch) -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    HStack(spacing: 10) {
+                        TextField("Search titles...", text: $query)
+                            .textInputAutocapitalization(.words)
+                            .disableAutocorrection(true)
+                            .submitLabel(.search)
+                            .onSubmit { onSearch(query) }
+                        Button("Search") {
+                            onSearch(query)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
                 if isLoading {
                     Text("Searching matches...")
                         .foregroundColor(.secondary)

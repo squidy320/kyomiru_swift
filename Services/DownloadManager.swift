@@ -119,6 +119,9 @@ final class DownloadManager: NSObject, ObservableObject {
     override init() {
         super.init()
         loadIndex()
+        Task { @MainActor in
+            resumePendingRemuxes()
+        }
     }
 
     func enqueue(title: String, episode: Int, url: URL) {
@@ -207,12 +210,66 @@ final class DownloadManager: NSObject, ObservableObject {
                     self?.updateProgress(id: id, progress: value)
                 }
             }
-            updateStatus(id: id, status: "Completed", localFile: localFile)
-            AppLog.debug(.downloads, "hls download complete id=\(id)")
+            updateStatus(id: id, status: "Remuxing", localFile: localFile)
+            AppLog.debug(.downloads, "hls download complete id=\(id) starting remux")
+            Task { @MainActor in
+                await remuxIfNeeded(id: id, localFile: localFile)
+            }
             markWatched(mediaTitle: item.title, episode: item.episode)
         } catch {
             updateStatus(id: id, status: "Failed")
             AppLog.error(.downloads, "hls download failed id=\(id) error=\(error.localizedDescription)")
+        }
+    }
+
+    private func remuxIfNeeded(id: String, localFile: URL) async {
+        guard localFile.pathExtension.lowercased() == "ts" else {
+            updateStatus(id: id, status: "Completed", localFile: localFile)
+            return
+        }
+        let mp4URL = localFile.deletingPathExtension().appendingPathExtension("mp4")
+        if fm.fileExists(atPath: mp4URL.path) {
+            updateStatus(id: id, status: "Completed", localFile: mp4URL)
+            return
+        }
+        do {
+            updateProgress(id: id, progress: 0)
+            let output = try await MediaConversionManager.shared.convertToMp4(inputURL: localFile) { [weak self] value in
+                Task { @MainActor in
+                    self?.updateProgress(id: id, progress: value)
+                }
+            }
+            updateProgress(id: id, progress: 1)
+            updateStatus(id: id, status: "Completed", localFile: output)
+            AppLog.debug(.downloads, "remux complete id=\(id)")
+        } catch {
+            updateStatus(id: id, status: "Remux Failed", localFile: localFile)
+            AppLog.error(.downloads, "remux failed id=\(id) error=\(error.localizedDescription)")
+        }
+    }
+
+    private func resumePendingRemuxes() {
+        let pending = items.filter { item in
+            guard let local = item.localFile else { return false }
+            if !fm.fileExists(atPath: local.path) { return false }
+            return local.pathExtension.lowercased() == "ts"
+        }
+        for item in pending {
+            updateStatus(id: item.id, status: "Remuxing", localFile: item.localFile)
+            Task { @MainActor in
+                if let local = item.localFile {
+                    await remuxIfNeeded(id: item.id, localFile: local)
+                }
+            }
+        }
+    }
+
+    func retryRemux(itemId: String) {
+        guard let item = items.first(where: { $0.id == itemId }),
+              let local = item.localFile else { return }
+        updateStatus(id: itemId, status: "Remuxing", localFile: local)
+        Task { @MainActor in
+            await remuxIfNeeded(id: itemId, localFile: local)
         }
     }
 

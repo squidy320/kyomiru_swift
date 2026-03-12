@@ -6,6 +6,7 @@ struct DownloadsView: View {
     @State private var selectedItem: DownloadItem?
     @State private var showPlayer = false
     @State private var filterCompleted = false
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     private var tabBarInset: CGFloat {
         UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
@@ -41,6 +42,21 @@ struct DownloadsView: View {
                                     Text(item.status)
                                         .foregroundColor(Theme.textSecondary)
                                         .font(.system(size: 12))
+                                    if item.status == "Remuxing" {
+                                        HStack(spacing: 8) {
+                                            ProgressView()
+                                            Text("Remuxing to MP4…")
+                                                .foregroundColor(Theme.textSecondary)
+                                                .font(.system(size: 12, weight: .semibold))
+                                        }
+                                    }
+                                    if item.status == "Remux Failed" {
+                                        Button("Retry Remux") {
+                                            AppLog.debug(.downloads, "remux retry tapped id=\(item.id)")
+                                            DownloadManager.shared.retryRemux(itemId: item.id)
+                                        }
+                                        .buttonStyle(.bordered)
+                                    }
                                     if let _ = item.localFile {
                                         Button("Play Offline") {
                                             AppLog.debug(.ui, "offline play tapped id=\(item.id)")
@@ -60,10 +76,10 @@ struct DownloadsView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .padding(.top, 8)
                 .padding(.bottom, 12)
             }
-            .navigationTitle("Downloads")
+            .navigationTitle(isPad ? "Downloads" : "")
             .navigationBarTitleDisplayMode(.inline)
         }
         .safeAreaInset(edge: .bottom) {
