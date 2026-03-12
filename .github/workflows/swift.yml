@@ -18,6 +18,18 @@ jobs:
         with:
           xcode-version: 'latest-stable'
 
+      - name: Inject AniList Secrets
+        env:
+          ANILIST_CLIENT_ID: ${{ secrets.ANILIST_CLIENT_ID }}
+          ANILIST_CLIENT_SECRET: ${{ secrets.ANILIST_CLIENT_SECRET }}
+        run: |
+          if [ -z "$ANILIST_CLIENT_ID" ] || [ -z "$ANILIST_CLIENT_SECRET" ]; then
+            echo "AniList secrets are missing. Please set ANILIST_CLIENT_ID and ANILIST_CLIENT_SECRET in GitHub Secrets."
+            exit 1
+          fi
+          /usr/libexec/PlistBuddy -c "Set :ANILIST_CLIENT_ID $ANILIST_CLIENT_ID" Resources/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :ANILIST_CLIENT_SECRET $ANILIST_CLIENT_SECRET" Resources/Info.plist
+
       - name: Build Archive (Unsigned)
         run: |
           xcodebuild archive \
