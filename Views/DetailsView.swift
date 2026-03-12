@@ -1,4 +1,4 @@
-import SwiftUI
+ï»¿import SwiftUI
 import UIKit
 
 struct DetailsView: View {
@@ -441,7 +441,7 @@ struct DetailsView: View {
 
     private func episodeSubtitle() -> String {
         let minutes = 24
-        return "Tap to play • \(minutes)m"
+        return "Tap to play - \(minutes)m"
     }
 
     private func progressFraction(for episodeId: String, fallbackKey: String) -> Double? {
@@ -809,6 +809,7 @@ private struct MatchPickerSheet: View {
         }
     }
 }
+
 
 
 
