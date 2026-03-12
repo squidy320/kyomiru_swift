@@ -416,16 +416,15 @@ actor MediaConversionManager {
         }
 
         let coordinator = NSFileCoordinator()
-        let intent = NSFileAccessIntent.readingIntent(with: inputURL, options: .withoutChanges)
+        var coordinationError: NSError?
 
         return try await withCheckedThrowingContinuation { continuation in
-            coordinator.coordinate(with: [intent], queue: .global(qos: .utility)) { error in
-                if let error {
-                    continuation.resume(throwing: error)
+            coordinator.coordinate(readingItemAt: inputURL, options: .withoutChanges, error: &coordinationError) { coordinatedURL in
+                if let coordinationError {
+                    continuation.resume(throwing: coordinationError)
                     return
                 }
 
-                let coordinatedURL = intent.url
                 let asset = AVURLAsset(url: coordinatedURL)
                 guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
                     continuation.resume(throwing: ConversionError.exportFailed("AVAssetExportSession init failed"))
@@ -449,8 +448,8 @@ actor MediaConversionManager {
 
                     switch export.status {
                     case .completed:
-                        if coordinatedURL.pathExtension.lowercased() == "ts" {
-                            try? FileManager.default.removeItem(at: coordinatedURL)
+                        if inputURL.pathExtension.lowercased() == "ts" {
+                            try? FileManager.default.removeItem(at: inputURL)
                         }
                         continuation.resume(returning: outputURL)
                     case .failed:
