@@ -10,7 +10,7 @@ final class PiPController: NSObject {
     private let currentTime: () -> Double
     private let duration: () -> Double
     private let skipBy: (Double) -> Void
-    private let controller: AVPictureInPictureController?
+    private var controller: AVPictureInPictureController? = nil
 
     var isPictureInPicturePossible: Bool {
         controller?.isPictureInPicturePossible ?? false
