@@ -62,14 +62,7 @@
         2CFF3ECD27116963C051730A /* JSController-NetworkFetch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A0F16D55021ED2DE2E8DE8 /* JSController-NetworkFetch.swift */; };
         4788F2D20516CCB44531164A /* JavaScriptCore+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334866F7F2A74AB9510C2588 /* JavaScriptCore+Extensions.swift */; };
         5FB9970930229D05437710EC /* LunaCompat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D3DAE2316A4076C61FFB793 /* LunaCompat.swift */; };
-		C2A1B2C3D4E5F60718293A4B /* Libmpv in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C3D4E5F60718293A4B /* Libmpv */; };
-		C2A1B2C3D4E5F60718293A4C /* Libavcodec in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C3D4E5F60718293A4C /* Libavcodec */; };
-		C2A1B2C3D4E5F60718293A4D /* Libavformat in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C3D4E5F60718293A4D /* Libavformat */; };
-		C2A1B2C3D4E5F60718293A4E /* Libavutil in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C3D4E5F60718293A4E /* Libavutil */; };
-		C2A1B2C3D4E5F60718293A4F /* Libavfilter in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C3D4E5F60718293A4F /* Libavfilter */; };
-		C2A1B2C3D4E5F60718293A50 /* Libavdevice in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C3D4E5F60718293A50 /* Libavdevice */; };
-		C2A1B2C3D4E5F60718293A51 /* Libswscale in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C3D4E5F60718293A51 /* Libswscale */; };
-		C2A1B2C3D4E5F60718293A52 /* Libswresample in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C3D4E5F60718293A52 /* Libswresample */; };
+		C2A1B2C3D4E5F60718293A4B /* MPVKit-GPL in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C3D4E5F60718293A4B /* MPVKit-GPL */; };
 
 
 /* Begin PBXFileReference section */
@@ -139,14 +132,7 @@
 			files = (
 				5C97AFFC7DD823D160FB8E18 /* WebKit.framework in Frameworks */,
 				1F1794364860EAEFCE63C284 /* JavaScriptCore.framework in Frameworks */,
-				C2A1B2C3D4E5F60718293A4B /* Libmpv in Frameworks */,
-				C2A1B2C3D4E5F60718293A4C /* Libavcodec in Frameworks */,
-				C2A1B2C3D4E5F60718293A4D /* Libavformat in Frameworks */,
-				C2A1B2C3D4E5F60718293A4E /* Libavutil in Frameworks */,
-				C2A1B2C3D4E5F60718293A4F /* Libavfilter in Frameworks */,
-				C2A1B2C3D4E5F60718293A50 /* Libavdevice in Frameworks */,
-				C2A1B2C3D4E5F60718293A51 /* Libswscale in Frameworks */,
-				C2A1B2C3D4E5F60718293A52 /* Libswresample in Frameworks */,
+				C2A1B2C3D4E5F60718293A4B /* MPVKit-GPL in Frameworks */,
 			);
             runOnlyForDeploymentPostprocessing = 0;
         };
@@ -292,14 +278,7 @@
             );
             name = Kyomiru;
 			packageProductDependencies = (
-				C1A1B2C3D4E5F60718293A4B /* Libmpv */,
-				C1A1B2C3D4E5F60718293A4C /* Libavcodec */,
-				C1A1B2C3D4E5F60718293A4D /* Libavformat */,
-				C1A1B2C3D4E5F60718293A4E /* Libavutil */,
-				C1A1B2C3D4E5F60718293A4F /* Libavfilter */,
-				C1A1B2C3D4E5F60718293A50 /* Libavdevice */,
-				C1A1B2C3D4E5F60718293A51 /* Libswscale */,
-				C1A1B2C3D4E5F60718293A52 /* Libswresample */,
+				C1A1B2C3D4E5F60718293A4B /* MPVKit-GPL */,
 			);
             productName = Kyomiru;
             productReference = 72071117F02B492EA7D8D08E /* Kyomiru.app */;
@@ -414,44 +393,9 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		C1A1B2C3D4E5F60718293A4B /* Libmpv */ = {
+		C1A1B2C3D4E5F60718293A4B /* MPVKit-GPL */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = Libmpv;
-			package = C0A1B2C3D4E5F60718293A4B /* MPVKit */;
-		};
-		C1A1B2C3D4E5F60718293A4C /* Libavcodec */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Libavcodec;
-			package = C0A1B2C3D4E5F60718293A4B /* MPVKit */;
-		};
-		C1A1B2C3D4E5F60718293A4D /* Libavformat */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Libavformat;
-			package = C0A1B2C3D4E5F60718293A4B /* MPVKit */;
-		};
-		C1A1B2C3D4E5F60718293A4E /* Libavutil */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Libavutil;
-			package = C0A1B2C3D4E5F60718293A4B /* MPVKit */;
-		};
-		C1A1B2C3D4E5F60718293A4F /* Libavfilter */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Libavfilter;
-			package = C0A1B2C3D4E5F60718293A4B /* MPVKit */;
-		};
-		C1A1B2C3D4E5F60718293A50 /* Libavdevice */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Libavdevice;
-			package = C0A1B2C3D4E5F60718293A4B /* MPVKit */;
-		};
-		C1A1B2C3D4E5F60718293A51 /* Libswscale */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Libswscale;
-			package = C0A1B2C3D4E5F60718293A4B /* MPVKit */;
-		};
-		C1A1B2C3D4E5F60718293A52 /* Libswresample */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Libswresample;
+			productName = "MPVKit-GPL";
 			package = C0A1B2C3D4E5F60718293A4B /* MPVKit */;
 		};
 /* End XCSwiftPackageProductDependency section */
