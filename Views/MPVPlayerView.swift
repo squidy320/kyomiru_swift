@@ -33,12 +33,18 @@ final class MPVPlayerViewModel: ObservableObject {
         guard let mpv = mpv_create() else { return }
         handle = mpv
 
-        _ = mpv_set_option_string(mpv, "vo", "libmpv")
+        // Favor render API + iOS-friendly defaults.
+        _ = mpv_set_option_string(mpv, "vo", "gpu-next")
+        _ = mpv_set_option_string(mpv, "gpu-context", "ios")
+        _ = mpv_set_option_string(mpv, "gpu-api", "opengl")
+        _ = mpv_set_option_string(mpv, "hwdec", "auto-safe")
+        _ = mpv_set_option_string(mpv, "demuxer-lavf-o", "protocol_whitelist=file,crypto,data,https,http,tcp,tls,pipe")
         _ = mpv_initialize(mpv)
         isReady = true
     }
 
-    func load(url: URL) {
+    func load(url: URL, headers: [String: String] = [:]) {
+        applyHttpHeaders(headers)
         runCommand(["loadfile", url.absoluteString])
     }
 
@@ -147,6 +153,22 @@ final class MPVPlayerViewModel: ObservableObject {
         cArgs.withUnsafeMutableBufferPointer { buffer in
             _ = mpv_command(mpv, buffer.baseAddress)
         }
+    }
+
+    private func applyHttpHeaders(_ headers: [String: String]) {
+        guard let mpv = handle, !headers.isEmpty else { return }
+
+        if let ua = headers.first(where: { $0.key.lowercased() == "user-agent" })?.value {
+            _ = mpv_set_property_string(mpv, "user-agent", ua)
+        }
+
+        if let ref = headers.first(where: { $0.key.lowercased() == "referer" })?.value {
+            _ = mpv_set_property_string(mpv, "referrer", ref)
+        }
+
+        let headerPairs = headers.map { "\($0.key): \($0.value)" }
+        let headerString = headerPairs.joined(separator: ",")
+        _ = mpv_set_property_string(mpv, "http-header-fields", headerString)
     }
 }
 
