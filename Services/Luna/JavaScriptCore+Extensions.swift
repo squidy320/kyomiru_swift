@@ -10,10 +10,19 @@ import JavaScriptCore
 extension JSValue {
     var debugSummary: String {
         let message = toString() ?? "Unknown JS error"
-        if let stack = objectForKeyedSubscript("stack")?.toString(), !stack.isEmpty {
-            return "\(message)\n\(stack)"
+        var metaParts: [String] = []
+        let line = objectForKeyedSubscript("line")?.toInt32() ?? 0
+        let column = objectForKeyedSubscript("column")?.toInt32() ?? 0
+        if line > 0 { metaParts.append("line \(line)") }
+        if column > 0 { metaParts.append("col \(column)") }
+        if let sourceURL = objectForKeyedSubscript("sourceURL")?.toString(), !sourceURL.isEmpty {
+            metaParts.append(sourceURL)
         }
-        return message
+        let meta = metaParts.isEmpty ? "" : " (\(metaParts.joined(separator: ", ")))"
+        if let stack = objectForKeyedSubscript("stack")?.toString(), !stack.isEmpty {
+            return "\(message)\(meta)\n\(stack)"
+        }
+        return "\(message)\(meta)"
     }
 }
 

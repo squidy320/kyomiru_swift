@@ -25,9 +25,24 @@ class JSController: NSObject, ObservableObject {
     func loadScript(_ script: String) {
         context = JSContext()
         context.setupJavaScriptEnvironment()
-        context.evaluateScript(script)
+        let sourceURL = URL(string: "luna://animepahe.js")
+        if let sourceURL {
+            context.evaluateScript(script, withSourceURL: sourceURL)
+        } else {
+            context.evaluateScript(script)
+        }
         if let exception = context.exception {
-            LunaLogger.shared.log("Error loading script: \(exception.debugSummary)", type: "Error")
+            var detail = exception.debugSummary
+            let line = exception.objectForKeyedSubscript("line")?.toInt32() ?? 0
+            if line > 0 {
+                let lines = script.split(separator: "\n", omittingEmptySubsequences: false)
+                let idx = Int(line - 1)
+                if idx >= 0 && idx < lines.count {
+                    let snippet = String(lines[idx]).prefix(200)
+                    detail += "\nLine \(line): \(snippet)"
+                }
+            }
+            LunaLogger.shared.log("Error loading script: \(detail)", type: "Error")
         }
     }
 }
