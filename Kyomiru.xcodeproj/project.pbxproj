@@ -8,8 +8,10 @@
 
 /* Begin PBXBuildFile section */
         9749FCDEB57240EABD536F98 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB03B22F525412691AD3912 /* RootView.swift */; };
+        D4E5F60718293A4B5C6D7E8F /* NavigationShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* NavigationShell.swift */; };
         57D7D511708747C286FA1D14 /* AniListModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A722697BFB5416EA44A529C /* AniListModels.swift */; };
         0AD981C75D824CAB83424331 /* SoraModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C36726A901F4A6BA25B8FED /* SoraModels.swift */; };
+        E5F60718293A4B5C6D7E8F90 /* MediaItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A4B5C6D /* MediaItem.swift */; };
         2523BB6A1CCC401CB2F04C4E /* AniListAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */; };
         7D6DD7FBD32C414EA5ABECFF /* AniListClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */; };
         F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A834867881B451BADAD93AA /* AppServices.swift */; };
@@ -34,6 +36,7 @@
         67D14034D0CE4A10A7EE55F4 /* AlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 322049D9007F477FAF8D125F /* AlertsView.swift */; };
         F08F4932645347648FEC250D /* DetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EF67EDF5267442199B09036 /* DetailsView.swift */; };
         652C9F7BF8984ACB8656A97A /* DiscoveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD884A3FD40D43EB9CC88CB5 /* DiscoveryView.swift */; };
+        F60718293A4B5C6D7E8F901A /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F60718293A4B5C6D7E /* SearchView.swift */; };
         11ECF2BA28E64FC48511905D /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240319EA3938479F9B029C6A /* DownloadsView.swift */; };
         510D0F686D3B4D9D975CC4B8 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EF353E62D5546EE9E3AE4EF /* LibraryView.swift */; };
         BCFACE101D36497780C276D3 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E6C6FE87AB947BE98547B90 /* LogsView.swift */; };
@@ -54,8 +57,10 @@
 /* Begin PBXFileReference section */
         72071117F02B492EA7D8D08E /* Kyomiru.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Kyomiru.app; sourceTree = BUILT_PRODUCTS_DIR; };
         6AB03B22F525412691AD3912 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+        A1B2C3D4E5F60718293A4B5C /* NavigationShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationShell.swift; sourceTree = "<group>"; };
         1A722697BFB5416EA44A529C /* AniListModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListModels.swift; sourceTree = "<group>"; };
         8C36726A901F4A6BA25B8FED /* SoraModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoraModels.swift; sourceTree = "<group>"; };
+        B2C3D4E5F60718293A4B5C6D /* MediaItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaItem.swift; sourceTree = "<group>"; };
         8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListAuthService.swift; sourceTree = "<group>"; };
         7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListClient.swift; sourceTree = "<group>"; };
         5A834867881B451BADAD93AA /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
@@ -80,6 +85,7 @@
         322049D9007F477FAF8D125F /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
         4EF67EDF5267442199B09036 /* DetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsView.swift; sourceTree = "<group>"; };
         BD884A3FD40D43EB9CC88CB5 /* DiscoveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryView.swift; sourceTree = "<group>"; };
+        C3D4E5F60718293A4B5C6D7E /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
         240319EA3938479F9B029C6A /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
         1EF353E62D5546EE9E3AE4EF /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
         2E6C6FE87AB947BE98547B90 /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
@@ -124,6 +130,7 @@
             isa = PBXGroup;
             children = (
                 6AB03B22F525412691AD3912 /* RootView.swift */,
+                A1B2C3D4E5F60718293A4B5C /* NavigationShell.swift */,
             );
             path = App;
             sourceTree = "<group>";
@@ -132,6 +139,7 @@
             children = (
                 1A722697BFB5416EA44A529C /* AniListModels.swift */,
                 8C36726A901F4A6BA25B8FED /* SoraModels.swift */,
+                B2C3D4E5F60718293A4B5C6D /* MediaItem.swift */,
             );
             path = Models;
             sourceTree = "<group>";
@@ -181,6 +189,7 @@
                 322049D9007F477FAF8D125F /* AlertsView.swift */,
                 4EF67EDF5267442199B09036 /* DetailsView.swift */,
                 BD884A3FD40D43EB9CC88CB5 /* DiscoveryView.swift */,
+                C3D4E5F60718293A4B5C6D7E /* SearchView.swift */,
                 240319EA3938479F9B029C6A /* DownloadsView.swift */,
                 1EF353E62D5546EE9E3AE4EF /* LibraryView.swift */,
                 2E6C6FE87AB947BE98547B90 /* LogsView.swift */,
@@ -286,8 +295,10 @@
                 4788F2D20516CCB44531164A /* JavaScriptCore+Extensions.swift in Sources */,
                 5FB9970930229D05437710EC /* LunaCompat.swift in Sources */,
                 9749FCDEB57240EABD536F98 /* RootView.swift in Sources */,
+                D4E5F60718293A4B5C6D7E8F /* NavigationShell.swift in Sources */,
                 57D7D511708747C286FA1D14 /* AniListModels.swift in Sources */,
                 0AD981C75D824CAB83424331 /* SoraModels.swift in Sources */,
+                E5F60718293A4B5C6D7E8F90 /* MediaItem.swift in Sources */,
                 2523BB6A1CCC401CB2F04C4E /* AniListAuthService.swift in Sources */,
                 7D6DD7FBD32C414EA5ABECFF /* AniListClient.swift in Sources */,
                 F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */,
@@ -312,6 +323,7 @@
                 67D14034D0CE4A10A7EE55F4 /* AlertsView.swift in Sources */,
                 F08F4932645347648FEC250D /* DetailsView.swift in Sources */,
                 652C9F7BF8984ACB8656A97A /* DiscoveryView.swift in Sources */,
+                F60718293A4B5C6D7E8F901A /* SearchView.swift in Sources */,
                 11ECF2BA28E64FC48511905D /* DownloadsView.swift in Sources */,
                 510D0F686D3B4D9D975CC4B8 /* LibraryView.swift in Sources */,
                 BCFACE101D36497780C276D3 /* LogsView.swift in Sources */,

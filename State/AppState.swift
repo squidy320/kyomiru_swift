@@ -1,15 +1,16 @@
 import SwiftUI
 
 enum AppTab: Hashable {
+    case search
+    case home
     case library
-    case discovery
-    case alerts
+    case notifications
     case downloads
     case settings
 }
 
 final class AppState: ObservableObject {
-    @Published var selectedTab: AppTab = .library
+    @Published var selectedTab: AppTab = .home
     @Published var settings = SettingsState()
     let services: AppServices
     @Published var authState: AuthState
