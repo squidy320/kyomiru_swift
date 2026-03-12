@@ -2,7 +2,8 @@ import SwiftUI
 import GLKit
 import OpenGLES
 import Libmpv
-@MainActor
+import Darwin
+
 final class MPVPlayerViewModel: ObservableObject {
     private var handle: OpaquePointer?
     private var renderContext: OpaquePointer?
@@ -50,22 +51,37 @@ final class MPVPlayerViewModel: ObservableObject {
     func createRenderContext(getProcAddress: @escaping @convention(c) (UnsafePointer<CChar>?) -> UnsafeMutableRawPointer?) {
         guard let mpv = handle, renderContext == nil else { return }
 
+        let getProc: mpv_opengl_init_params_get_proc_address_fn = { _, name in
+            return getProcAddress(name)
+        }
+
         var glInitParams = mpv_opengl_init_params(
-            get_proc_address: getProcAddress,
+            get_proc_address: getProc,
             get_proc_address_ctx: nil
         )
 
-        var apiType = MPV_RENDER_API_TYPE_OPENGL
         var advanced: Int32 = 1
 
-        var params: [mpv_render_param] = [
-            mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE, data: &apiType),
-            mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, data: &glInitParams),
-            mpv_render_param(type: MPV_RENDER_PARAM_ADVANCED_CONTROL, data: &advanced),
-            mpv_render_param()
-        ]
+        MPV_RENDER_API_TYPE_OPENGL.withCString { apiTypeCString in
+            var apiTypePtr: UnsafePointer<CChar>? = apiTypeCString
+            withUnsafeMutablePointer(to: &apiTypePtr) { apiTypePtrPtr in
+                withUnsafeMutablePointer(to: &glInitParams) { glInitParamsPtr in
+                    withUnsafeMutablePointer(to: &advanced) { advancedPtr in
+                        var params: [mpv_render_param] = [
+                            mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE,
+                                             data: UnsafeMutableRawPointer(apiTypePtrPtr)),
+                            mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
+                                             data: UnsafeMutableRawPointer(glInitParamsPtr)),
+                            mpv_render_param(type: MPV_RENDER_PARAM_ADVANCED_CONTROL,
+                                             data: UnsafeMutableRawPointer(advancedPtr)),
+                            mpv_render_param()
+                        ]
 
-        mpv_render_context_create(&renderContext, mpv, &params)
+                        mpv_render_context_create(&renderContext, mpv, &params)
+                    }
+                }
+            }
+        }
     }
 
     func setRenderUpdateCallback(_ callback: @escaping @convention(c) (UnsafeMutableRawPointer?) -> Void,
@@ -74,18 +90,25 @@ final class MPVPlayerViewModel: ObservableObject {
         mpv_render_context_set_update_callback(rc, callback, ctx)
     }
 
-    func render(fbo: UInt32, width: Int32, height: Int32, flipY: Int32 = 1) {
+    func render(fbo: Int32, width: Int32, height: Int32, flipY: Int32 = 1) {
         guard let rc = renderContext else { return }
         _ = mpv_render_context_update(rc)
 
         var fboStruct = mpv_opengl_fbo(fbo: fbo, w: width, h: height, internal_format: 0)
-        var params: [mpv_render_param] = [
-            mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_FBO, data: &fboStruct),
-            mpv_render_param(type: MPV_RENDER_PARAM_FLIP_Y, data: &flipY),
-            mpv_render_param()
-        ]
+        var flipYValue = flipY
+        withUnsafeMutablePointer(to: &fboStruct) { fboPtr in
+            withUnsafeMutablePointer(to: &flipYValue) { flipYPtr in
+                var params: [mpv_render_param] = [
+                    mpv_render_param(type: MPV_RENDER_PARAM_OPENGL_FBO,
+                                     data: UnsafeMutableRawPointer(fboPtr)),
+                    mpv_render_param(type: MPV_RENDER_PARAM_FLIP_Y,
+                                     data: UnsafeMutableRawPointer(flipYPtr)),
+                    mpv_render_param()
+                ]
 
-        mpv_render_context_render(rc, &params)
+                mpv_render_context_render(rc, &params)
+            }
+        }
     }
 
     func destroy() {
@@ -100,15 +123,11 @@ final class MPVPlayerViewModel: ObservableObject {
         isReady = false
     }
 
-    deinit {
-        destroy()
-    }
-
     private func runCommand(_ args: [String]) {
         guard let mpv = handle else { return }
         var cArgs = args.map { ($0 as NSString).utf8String }
         cArgs.append(nil)
-        cArgs.withUnsafeBufferPointer { buffer in
+        cArgs.withUnsafeMutableBufferPointer { buffer in
             _ = mpv_command(mpv, buffer.baseAddress)
         }
     }
@@ -137,7 +156,7 @@ final class MPVOpenGLView: GLKView {
         viewModel.initializeIfNeeded()
         viewModel.createRenderContext { name in
             guard let name else { return nil }
-            return UnsafeMutableRawPointer(EAGLGetProcAddress(name))
+            return dlsym(UnsafeMutableRawPointer(bitPattern: -2), name)
         }
 
         viewModel.setRenderUpdateCallback(mpvRenderUpdateCallback,
@@ -164,8 +183,9 @@ final class MPVOpenGLView: GLKView {
     override func draw(_ rect: CGRect) {
         super.draw(rect)
         guard let vm = viewModel else { return }
-        let size = drawableSize
-        vm.render(fbo: 0, width: Int32(size.width), height: Int32(size.height), flipY: 1)
+        let width = Int32(drawableWidth)
+        let height = Int32(drawableHeight)
+        vm.render(fbo: 0, width: width, height: height, flipY: 1)
     }
 
     deinit {
