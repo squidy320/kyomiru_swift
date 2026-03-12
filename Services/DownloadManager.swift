@@ -20,7 +20,14 @@ actor OfflineDownloadManager {
         progress: ProgressHandler?
     ) async throws -> URL {
         let playlistData = try await fetchData(url: playlistURL, headers: headers)
-        let segmentURLs = try await resolveSegments(from: playlistData, baseURL: playlistURL, headers: headers)
+        let resolved = try await resolveSegments(from: playlistData, baseURL: playlistURL, headers: headers)
+        let segmentURLs = resolved.segments
+        let finalOutputURL = resolved.isFmp4
+            ? outputURL.deletingPathExtension().appendingPathExtension("mp4")
+            : outputURL
+        guard !segmentURLs.isEmpty else {
+            throw URLError(.cannotParseResponse)
+        }
 
         let tempFolder = fm.temporaryDirectory.appendingPathComponent("hls-\(UUID().uuidString)", isDirectory: true)
         try? fm.createDirectory(at: tempFolder, withIntermediateDirectories: true)
@@ -45,9 +52,9 @@ actor OfflineDownloadManager {
             }
         }
 
-        try? fm.removeItem(at: outputURL)
-        fm.createFile(atPath: outputURL.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: outputURL)
+        try? fm.removeItem(at: finalOutputURL)
+        fm.createFile(atPath: finalOutputURL.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: finalOutputURL)
         defer { try? handle.close() }
 
         for index in 0..<segmentURLs.count {
@@ -58,7 +65,7 @@ actor OfflineDownloadManager {
         }
 
         try? fm.removeItem(at: tempFolder)
-        return outputURL
+        return finalOutputURL
     }
 
     private func fetchData(url: URL, headers: [String: String]) async throws -> Data {
@@ -71,12 +78,22 @@ actor OfflineDownloadManager {
         return data
     }
 
-    private func resolveSegments(from data: Data, baseURL: URL, headers: [String: String]) async throws -> [URL] {
+    private func resolveSegments(from data: Data, baseURL: URL, headers: [String: String]) async throws -> (segments: [URL], isFmp4: Bool) {
         guard let text = String(data: data, encoding: .utf8) else {
             throw URLError(.cannotDecodeContentData)
         }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
         let mediaLines = lines.filter { !$0.hasPrefix("#") && !$0.isEmpty }
+        let mapLine = lines.first { $0.hasPrefix("#EXT-X-MAP:") }
+        let mapURL: URL? = {
+            guard let mapLine else { return nil }
+            let parts = mapLine.split(separator: "URI=", maxSplits: 1, omittingEmptySubsequences: true)
+            guard parts.count == 2 else { return nil }
+            var uri = parts[1]
+            if uri.hasPrefix("\"") { uri = uri.dropFirst() }
+            if uri.hasSuffix("\"") { uri = uri.dropLast() }
+            return URL(string: String(uri), relativeTo: baseURL)?.absoluteURL
+        }()
 
         if let variantLine = mediaLines.first(where: { $0.hasSuffix(".m3u8") }) {
             let variantURL = URL(string: String(variantLine), relativeTo: baseURL)?.absoluteURL
@@ -86,9 +103,14 @@ actor OfflineDownloadManager {
             }
         }
 
-        return mediaLines.compactMap { line in
+        let segments = mediaLines.compactMap { line in
             URL(string: String(line), relativeTo: baseURL)?.absoluteURL
         }
+        let isFmp4 = mapURL != nil || segments.contains { $0.pathExtension.lowercased() == "m4s" }
+        if let mapURL {
+            return ([mapURL] + segments, isFmp4)
+        }
+        return (segments, isFmp4)
     }
 }
 
@@ -400,9 +422,18 @@ extension DownloadManager: @preconcurrency URLSessionDownloadDelegate {
 actor MediaConversionManager {
     static let shared = MediaConversionManager()
 
-    enum ConversionError: Error {
+    enum ConversionError: LocalizedError {
         case exportFailed(String)
         case cancelled
+
+        var errorDescription: String? {
+            switch self {
+            case .exportFailed(let message):
+                return message
+            case .cancelled:
+                return "conversion cancelled"
+            }
+        }
     }
 
     func convertToMp4(inputURL: URL, progress: (@Sendable (Double) -> Void)? = nil) async throws -> URL {
