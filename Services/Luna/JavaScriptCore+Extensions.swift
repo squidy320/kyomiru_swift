@@ -37,71 +37,7 @@ extension JSContext {
           }
         }
 
-        class DdosGuardInterceptor {
-          async fetchWithBypass(url, options = {}) {
-            const headers = options.headers || {};
-            const method = options.method || "GET";
-            const body = options.body || null;
-
-            let response = await fetchv2(url, headers, method, body, true);
-            let text = await response.text();
-
-            if (this._needsBypass(response, text)) {
-              await this._bypass(url);
-              response = await fetchv2(url, headers, method, body, true);
-              text = await response.text();
-            }
-
-            return {
-              status: response.status,
-              headers: response.headers,
-              text: function() { return Promise.resolve(text); },
-              json: function() {
-                try { return Promise.resolve(JSON.parse(text)); }
-                catch (e) { return Promise.reject("JSON parse error: " + e.message); }
-              }
-            };
-          }
-
-          _needsBypass(response, text) {
-            const lower = (text || "").toLowerCase();
-            if (response && response.status >= 400) return true;
-            return lower.includes("ddos-guard") ||
-                   lower.includes("ddos-guard/js-challenge") ||
-                   lower.includes("data-ddg-origin") ||
-                   lower.includes("just a moment");
-          }
-
-          async _bypass(targetUrl) {
-            try {
-              const check = await fetchv2("https://check.ddos-guard.net/check.js");
-              const js = await check.text();
-
-              const wellKnownMatch = js.match(/['"](/\\.well-known\\/ddos-guard\\/[^'"]+)['"]/);
-              const checkMatch = js.match(/['"](https:\\/\\/check\\.ddos-guard\\.net\\/[^'"]+)['"]/);
-
-              const origin = this._origin(targetUrl);
-              if (wellKnownMatch && origin) {
-                await fetchv2(origin + wellKnownMatch[1], { "Referer": targetUrl });
-              }
-              if (checkMatch && checkMatch[1]) {
-                await fetchv2(checkMatch[1], { "Referer": targetUrl });
-              }
-            } catch (e) {
-              // Silent: fallback to normal fetch.
-            }
-          }
-
-          _origin(url) {
-            try {
-              const match = String(url).match(/^(https?:)\\/\\/([^\\/]+)/i);
-              if (!match) return null;
-              return match[1] + "//" + match[2];
-            } catch (e) {
-              return null;
-            }
-          }
-        }
+        // DdosGuardInterceptor is provided by the extension script.
         """
         evaluateScript(polyfills)
     }
