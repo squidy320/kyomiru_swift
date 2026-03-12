@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 import UIKit
 
 struct DiscoveryView: View {
@@ -16,7 +16,7 @@ struct DiscoveryView: View {
             Theme.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Discovery")
                             .font(.system(size: 28, weight: .heavy))
                             .foregroundColor(.white)
@@ -26,7 +26,7 @@ struct DiscoveryView: View {
                         SearchField(placeholder: "Search anime...", text: $query)
 
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
+                            HStack(spacing: 12) {
                                 ForEach(DiscoveryFilter.allCases) { filter in
                                     FilterChip(
                                         title: filter.title,
@@ -56,7 +56,7 @@ struct DiscoveryView: View {
                             }
                         } else {
                             ForEach(sections) { section in
-                                VStack(alignment: .leading, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 12) {
                                     Text(section.title)
                                         .font(.system(size: 18, weight: .bold))
                                         .foregroundColor(.white)
@@ -83,11 +83,14 @@ struct DiscoveryView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 8)
-                    .padding(.bottom, contentBottomPadding)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 12)
                 }
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            Color.clear.frame(height: tabBarInset)
         }
         .task {
             AppLog.debug(.ui, "discovery view load")
@@ -97,9 +100,8 @@ struct DiscoveryView: View {
             runSearch()
         }
     }
-
-    private var contentBottomPadding: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 24 : 32
+    private var tabBarInset: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
 
     private var heroHeader: some View {
@@ -124,7 +126,7 @@ struct DiscoveryView: View {
     }
 
     private var searchResultsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Search Results")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(.white)
@@ -210,6 +212,12 @@ private extension DiscoveryView {
 }
 
 // Card components moved to UI/MediaCards.swift
+
+
+
+
+
+
 
 
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct AlertsView: View {
     @EnvironmentObject private var appState: AppState
@@ -47,16 +48,23 @@ struct AlertsView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 14)
-                .padding(.bottom, 120)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            Color.clear.frame(height: tabBarInset)
         }
         .task {
             AppLog.debug(.ui, "alerts view load")
             await appState.bootstrap()
             await loadNotifications()
         }
+    }
+
+    private var tabBarInset: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
 
     private func loadNotifications() async {
@@ -122,4 +130,5 @@ private struct AlertRow: View {
         return formatter.string(from: date)
     }
 }
+
 

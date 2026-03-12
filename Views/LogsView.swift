@@ -26,6 +26,9 @@ struct LogsView: View {
             }
             .scrollContentBackground(.hidden)
         }
+        .safeAreaInset(edge: .bottom) {
+            Color.clear.frame(height: tabBarInset)
+        }
         .navigationTitle("Logs")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -43,6 +46,10 @@ struct LogsView: View {
         .sheet(item: $sharePayload) { payload in
             ShareSheet(items: payload.items)
         }
+    }
+
+    private var tabBarInset: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
 }
 

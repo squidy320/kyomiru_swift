@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
@@ -8,7 +9,7 @@ struct SettingsView: View {
             Theme.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Settings")
                             .font(.system(size: 28, weight: .heavy))
                             .foregroundColor(.white)
@@ -134,15 +135,22 @@ struct SettingsView: View {
                         .frame(maxWidth: 750)
                         .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 14)
-                    .padding(.bottom, 120)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 12)
                 }
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            Color.clear.frame(height: tabBarInset)
         }
         .onAppear {
             AppLog.debug(.ui, "settings view appear")
         }
+    }
+
+    private var tabBarInset: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
 }
 

@@ -1,10 +1,16 @@
 import SwiftUI
+import UIKit
 
 struct DownloadsView: View {
     @StateObject private var manager = DownloadManager.shared
     @State private var selectedItem: DownloadItem?
     @State private var showPlayer = false
     @State private var filterCompleted = false
+
+    private var tabBarInset: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
+    }
+
 
     var body: some View {
         ZStack {
@@ -27,7 +33,7 @@ struct DownloadsView: View {
                         ForEach(visible) { item in
                             GlassCard {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("\(item.title) ??? EP \(item.episode)")
+                                    Text("\(item.title) - EP \(item.episode)")
                                         .foregroundColor(.white)
                                     ProgressView(value: item.progress)
                                     Text(item.status)
@@ -51,10 +57,13 @@ struct DownloadsView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 14)
-                .padding(.bottom, 120)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            Color.clear.frame(height: tabBarInset)
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let item = selectedItem, let fileURL = item.localFile {
@@ -80,4 +89,7 @@ struct DownloadsView: View {
         }
     }
 }
+
+
+
 

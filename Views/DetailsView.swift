@@ -26,7 +26,7 @@ struct DetailsView: View {
         ZStack {
             Theme.baseBackground.ignoresSafeArea()
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 12) {
                     header
 
                     actionRow
@@ -49,11 +49,15 @@ struct DetailsView: View {
                         episodeGrid
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
-                .padding(.bottom, contentBottomPadding)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            Color.clear.frame(height: tabBarInset)
+        }
+        .navigationBarBackButtonHidden(true)
         .task {
             AppLog.debug(.ui, "details view load mediaId=\(media.id)")
             await loadEpisodes()
@@ -162,7 +166,7 @@ struct DetailsView: View {
             .frame(height: 200)
             .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text(media.title.best)
                     .font(.system(size: 26, weight: .bold))
                     .foregroundColor(.white)
@@ -255,7 +259,7 @@ struct DetailsView: View {
 
     private var episodeTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 ForEach(EpisodeTab.allCases) { tab in
                     FilterChip(
                         title: tab.title,
@@ -269,7 +273,7 @@ struct DetailsView: View {
 
     private var episodeGrid: some View {
         let cards = episodeCards()
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 12) {
             if selectedEpisodeTab != .currentSeries {
                 Text(selectedEpisodeTab.title)
                     .font(.system(size: 16, weight: .semibold))
@@ -311,10 +315,9 @@ struct DetailsView: View {
                 }
             }
         }
-    }
-
-    private var contentBottomPadding: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 24 : 32
+    }
+    private var tabBarInset: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
 
     private var detailItem: MediaItem {
@@ -685,7 +688,7 @@ private struct SourcePickerSheet: View {
                 }
                 ForEach(filteredSources()) { source in
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("\(source.quality) ??? \(source.subOrDub)")
+                        Text("\(source.quality) - \(source.subOrDub)")
                         Text(source.format.uppercased())
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
@@ -825,6 +828,10 @@ private struct MatchPickerSheet: View {
         }
     }
 }
+
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 import UIKit
 
 struct LibraryView: View {
@@ -31,7 +31,7 @@ struct LibraryView: View {
                         SearchField(placeholder: "Search in library...", text: $filterText)
 
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
+                            HStack(spacing: 12) {
                                 ForEach(LibraryFilter.allCases) { filter in
                                     FilterChip(
                                         title: filterTitle(filter),
@@ -44,11 +44,11 @@ struct LibraryView: View {
                         }
 
                         if !continueWatchingItems().isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
+                            VStack(alignment: .leading, spacing: 12) {
                                 Text("Continue Watching")
                                     .font(.system(size: 18, weight: .bold))
                                     .foregroundColor(.white)
-                                    ScrollView(.horizontal, showsIndicators: false) {
+                                ScrollView(.horizontal, showsIndicators: false) {
                                     HStack(spacing: 12) {
                                         ForEach(continueWatchingItems()) { item in
                                             ContinueWatchingCard(
@@ -90,21 +90,23 @@ struct LibraryView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 8)
-                    .padding(.bottom, contentBottomPadding)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 12)
                 }
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            Color.clear.frame(height: tabBarInset)
         }
         .task {
             AppLog.debug(.ui, "library view load")
             await appState.bootstrap()
             await loadLibrary()
         }
-    }
-
-    private var contentBottomPadding: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 24 : 32
+    }
+    private var tabBarInset: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
 
     private func filteredSections() -> [AniListLibrarySection] {
@@ -311,7 +313,7 @@ private struct LibrarySection: View {
     let filterText: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(section.title)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(.white)
@@ -354,6 +356,12 @@ private struct ContinueItem: Identifiable {
     let timeRemainingText: String
     let imageURL: URL?
 }
+
+
+
+
+
+
 
 
 

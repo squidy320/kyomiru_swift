@@ -30,7 +30,7 @@ struct SearchField: View {
     @Binding var text: String
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(Theme.textSecondary)
             TextField(placeholder, text: $text)
