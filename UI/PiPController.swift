@@ -1,6 +1,6 @@
+#if os(iOS) && !targetEnvironment(macCatalyst)
 import AVFoundation
-
-#if os(iOS)
+import AVKit
 import UIKit
 
 final class PiPController: NSObject {

@@ -39,7 +39,7 @@ struct PlayerView: View {
             scheduleAutoHide()
         }
         .onChange(of: scenePhase) { _, phase in
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst)
             if phase == .background {
                 if !player.startPictureInPictureIfPossible() {
                     player.pause()

@@ -17,13 +17,13 @@ final class MPVPlayerModel: ObservableObject {
 
     private let core = MPVCore()
     private var statusTimer: Timer?
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst)
     private var pipController: PiPController?
 #endif
 
     func attach(layer: AVSampleBufferDisplayLayer) {
         core.attach(layer: layer)
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst)
         if pipController == nil {
             pipController = PiPController(
                 sampleBufferDisplayLayer: layer,
@@ -51,7 +51,7 @@ final class MPVPlayerModel: ObservableObject {
         core.setPaused(false)
         isPlaying = true
         scheduleAutoRefresh()
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
 #endif
     }
@@ -59,7 +59,7 @@ final class MPVPlayerModel: ObservableObject {
     func pause() {
         core.setPaused(true)
         isPlaying = false
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
 #endif
     }
@@ -67,7 +67,7 @@ final class MPVPlayerModel: ObservableObject {
     func seek(to seconds: Double) {
         core.seek(to: seconds)
         scheduleAutoRefresh()
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
 #endif
     }
@@ -75,7 +75,7 @@ final class MPVPlayerModel: ObservableObject {
     func seekBy(_ delta: Double) {
         core.seekBy(delta)
         scheduleAutoRefresh()
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
 #endif
     }
@@ -83,7 +83,7 @@ final class MPVPlayerModel: ObservableObject {
     func setRate(_ value: Double) {
         rate = value
         core.setRate(value)
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
 #endif
     }
@@ -92,13 +92,13 @@ final class MPVPlayerModel: ObservableObject {
         statusTimer?.invalidate()
         statusTimer = nil
         core.shutdown()
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.stopPictureInPicture()
         pipController = nil
 #endif
     }
 
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst)
     func startPictureInPictureIfPossible() -> Bool {
         guard let pipController, pipController.isPictureInPicturePossible else { return false }
         pipController.startPictureInPicture()
@@ -137,7 +137,7 @@ final class MPVPlayerModel: ObservableObject {
         if newDuration > 0 {
             isReady = true
         }
-#if os(iOS)
+#if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
 #endif
     }
