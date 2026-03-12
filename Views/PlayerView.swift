@@ -4,7 +4,7 @@ struct PlayerView: View {
     let episode: SoraEpisode
     let sources: [SoraSource]
     @Environment(\.dismiss) private var dismiss
-    @State private var playerModel = MPVPlayerViewModel()
+    @StateObject private var playerModel = MPVPlayerViewModel()
     @State private var playbackSpeed: Float = 1.0
     @State private var selectedSource: SoraSource?
     @State private var selectedAudio: String = "Sub"

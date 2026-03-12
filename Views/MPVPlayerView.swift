@@ -2,11 +2,8 @@ import SwiftUI
 import GLKit
 import OpenGLES
 import Libmpv
-import Observation
-
-@Observable
 @MainActor
-final class MPVPlayerViewModel {
+final class MPVPlayerViewModel: ObservableObject {
     private var handle: OpaquePointer?
     private var renderContext: OpaquePointer?
 
