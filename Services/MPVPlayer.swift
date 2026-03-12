@@ -141,6 +141,11 @@ private final class MPVCore {
                 self.handle = nil
                 return
             }
+            guard let context else {
+                mpv_terminate_destroy(handle)
+                self.handle = nil
+                return
+            }
             renderContext = context
 
             let coordinator = MPVRenderCoordinator(handle: handle, renderContext: context)
@@ -245,7 +250,7 @@ private final class MPVCore {
         defer { cStrings.forEach { free($0) } }
         var cArgs = cStrings.map { UnsafePointer<CChar>($0) }
         cArgs.append(nil)
-        cArgs.withUnsafeBufferPointer { buffer in
+        cArgs.withUnsafeMutableBufferPointer { buffer in
             _ = mpv_command(handle, buffer.baseAddress)
         }
     }
@@ -286,7 +291,8 @@ private final class MPVRenderCoordinator {
     private func renderFrame() {
         guard let layer = displayLayer else { return }
         let update = mpv_render_context_update(renderContext)
-        if (update & MPV_RENDER_UPDATE_FRAME) == 0 {
+        let frameFlag = mpv_render_update_flag(rawValue: MPV_RENDER_UPDATE_FRAME)
+        if !update.contains(frameFlag) {
             return
         }
 

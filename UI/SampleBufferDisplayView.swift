@@ -3,10 +3,10 @@ import SwiftUI
 
 #if os(iOS)
 import UIKit
-private typealias PlatformView = UIView
+typealias PlatformView = UIView
 #elseif os(macOS)
 import AppKit
-private typealias PlatformView = NSView
+typealias PlatformView = NSView
 #endif
 
 final class SampleBufferDisplayView: PlatformView {
