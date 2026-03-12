@@ -17,27 +17,27 @@ struct SearchItem: Identifiable {
 extension JSController {
     func fetchJsSearchResults(keyword: String, module: Service, completion: @escaping ([SearchItem]) -> Void) {
         if let exception = context.exception {
-            Logger.shared.log("JavaScript exception: \(exception)", type: "Error")
+            LunaLogger.shared.log("JavaScript exception: \(exception)", type: "Error")
             completion([])
             return
         }
         
         guard let searchResultsFunction = context.objectForKeyedSubscript("searchResults") else {
-            Logger.shared.log("Search function not found in module", type: "Error")
+            LunaLogger.shared.log("Search function not found in module", type: "Error")
             completion([])
             return
         }
         
         let promiseValue = searchResultsFunction.call(withArguments: [keyword])
         guard let promise = promiseValue else {
-            Logger.shared.log("Search function returned invalid response", type: "Error")
+            LunaLogger.shared.log("Search function returned invalid response", type: "Error")
             completion([])
             return
         }
         
         let thenBlock: @convention(block) (JSValue) -> Void = { result in
             
-            Logger.shared.log(result.toString(), type: "HTMLStrings")
+            LunaLogger.shared.log(result.toString(), type: "HTMLStrings")
             if let jsonString = result.toString(),
                let data = jsonString.data(using: .utf8) {
                 do {
@@ -46,7 +46,7 @@ extension JSController {
                             guard let title = item["title"] as? String,
                                   let imageUrl = item["image"] as? String,
                                   let href = item["href"] as? String else {
-                                Logger.shared.log("Invalid search result data format", type: "Error")
+                                LunaLogger.shared.log("Invalid search result data format", type: "Error")
                                 return nil
                             }
                             return SearchItem(title: title, imageUrl: imageUrl, href: href)
@@ -57,19 +57,19 @@ extension JSController {
                         }
                         
                     } else {
-                        Logger.shared.log("Could not parse JSON response", type: "Error")
+                        LunaLogger.shared.log("Could not parse JSON response", type: "Error")
                         DispatchQueue.main.async {
                             completion([])
                         }
                     }
                 } catch {
-                    Logger.shared.log("JSON parsing error: \(error)", type: "Error")
+                    LunaLogger.shared.log("JSON parsing error: \(error)", type: "Error")
                     DispatchQueue.main.async {
                         completion([])
                     }
                 }
             } else {
-                Logger.shared.log("Invalid search result format", type: "Error")
+                LunaLogger.shared.log("Invalid search result format", type: "Error")
                 DispatchQueue.main.async {
                     completion([])
                 }
@@ -77,7 +77,7 @@ extension JSController {
         }
         
         let catchBlock: @convention(block) (JSValue) -> Void = { error in
-            Logger.shared.log("Search operation failed: \(String(describing: error.toString()))", type: "Error")
+            LunaLogger.shared.log("Search operation failed: \(String(describing: error.toString()))", type: "Error")
             DispatchQueue.main.async {
                 completion([])
             }

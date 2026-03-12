@@ -2,8 +2,8 @@ import Foundation
 
 // Minimal compatibility layer for Luna JSLoader integration.
 
-final class Logger {
-    static let shared = Logger()
+final class LunaLogger {
+    static let shared = LunaLogger()
 
     func log(_ message: String, type: String = "Debug") {
         switch type.lowercased() {

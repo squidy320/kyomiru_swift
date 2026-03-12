@@ -25,25 +25,25 @@ struct EpisodeLink: Identifiable {
 extension JSController {
     func fetchDetailsJS(url: String, completion: @escaping ([MediaItem], [EpisodeLink]) -> Void) {
         guard let url = URL(string: url) else {
-            Logger.shared.log("Invalid URL in fetchDetailsJS: \(url)", type: "Error")
+            LunaLogger.shared.log("Invalid URL in fetchDetailsJS: \(url)", type: "Error")
             completion([], [])
             return
         }
         
         if let exception = context.exception {
-            Logger.shared.log("JavaScript exception: \(exception)", type: "Error")
+            LunaLogger.shared.log("JavaScript exception: \(exception)", type: "Error")
             completion([], [])
             return
         }
         
         guard let extractDetailsFunction = context.objectForKeyedSubscript("extractDetails") else {
-            Logger.shared.log("No JavaScript function extractDetails found", type: "Error")
+            LunaLogger.shared.log("No JavaScript function extractDetails found", type: "Error")
             completion([], [])
             return
         }
         
         guard let extractEpisodesFunction = context.objectForKeyedSubscript("extractEpisodes") else {
-            Logger.shared.log("No JavaScript function extractEpisodes found", type: "Error")
+            LunaLogger.shared.log("No JavaScript function extractEpisodes found", type: "Error")
             completion([], [])
             return
         }
@@ -59,7 +59,7 @@ extension JSController {
         
         let promiseValueDetails = extractDetailsFunction.call(withArguments: [url.absoluteString])
         guard let promiseDetails = promiseValueDetails else {
-            Logger.shared.log("extractDetails did not return a Promise", type: "Error")
+            LunaLogger.shared.log("extractDetails did not return a Promise", type: "Error")
             detailsGroupQueue.sync {
                 guard !hasLeftDetailsGroup else { return }
                 hasLeftDetailsGroup = true
@@ -72,7 +72,7 @@ extension JSController {
         let thenBlockDetails: @convention(block) (JSValue) -> Void = { result in
             detailsGroupQueue.sync {
                 guard !hasLeftDetailsGroup else {
-                    Logger.shared.log("extractDetails: thenBlock called but group already left", type: "Debug")
+                    LunaLogger.shared.log("extractDetails: thenBlock called but group already left", type: "Debug")
                     return
                 }
                 hasLeftDetailsGroup = true
@@ -89,13 +89,13 @@ extension JSController {
                                 )
                             }
                         } else {
-                            Logger.shared.log("Failed to parse JSON of extractDetails", type: "Error")
+                            LunaLogger.shared.log("Failed to parse JSON of extractDetails", type: "Error")
                         }
                     } catch {
-                        Logger.shared.log("JSON parsing error of extract details: \(error)", type: "Error")
+                        LunaLogger.shared.log("JSON parsing error of extract details: \(error)", type: "Error")
                     }
                 } else {
-                    Logger.shared.log("Result is not a string of extractDetails", type: "Error")
+                    LunaLogger.shared.log("Result is not a string of extractDetails", type: "Error")
                 }
                 dispatchGroup.leave()
             }
@@ -104,12 +104,12 @@ extension JSController {
         let catchBlockDetails: @convention(block) (JSValue) -> Void = { error in
             detailsGroupQueue.sync {
                 guard !hasLeftDetailsGroup else {
-                    Logger.shared.log("extractDetails: catchBlock called but group already left", type: "Debug")
+                    LunaLogger.shared.log("extractDetails: catchBlock called but group already left", type: "Debug")
                     return
                 }
                 hasLeftDetailsGroup = true
                 
-                Logger.shared.log("Promise rejected of extractDetails: \(String(describing: error.toString()))", type: "Error")
+                LunaLogger.shared.log("Promise rejected of extractDetails: \(String(describing: error.toString()))", type: "Error")
                 dispatchGroup.leave()
             }
         }
@@ -127,10 +127,10 @@ extension JSController {
         let episodesGroupQueue = DispatchQueue(label: "episodes.group")
         
         let timeoutWorkItem = DispatchWorkItem {
-            Logger.shared.log("Timeout for extractEpisodes", type: "Warning")
+            LunaLogger.shared.log("Timeout for extractEpisodes", type: "Warning")
             episodesGroupQueue.sync {
                 guard !hasLeftEpisodesGroup else {
-                    Logger.shared.log("extractEpisodes: timeout called but group already left", type: "Debug")
+                    LunaLogger.shared.log("extractEpisodes: timeout called but group already left", type: "Debug")
                     return
                 }
                 hasLeftEpisodesGroup = true
@@ -140,7 +140,7 @@ extension JSController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutWorkItem)
         
         guard let promiseEpisodes = promiseValueEpisodes else {
-            Logger.shared.log("extractEpisodes did not return a Promise", type: "Error")
+            LunaLogger.shared.log("extractEpisodes did not return a Promise", type: "Error")
             timeoutWorkItem.cancel()
             episodesGroupQueue.sync {
                 guard !hasLeftEpisodesGroup else { return }
@@ -155,7 +155,7 @@ extension JSController {
             timeoutWorkItem.cancel()
             episodesGroupQueue.sync {
                 guard !hasLeftEpisodesGroup else {
-                    Logger.shared.log("extractEpisodes: thenBlock called but group already left", type: "Debug")
+                    LunaLogger.shared.log("extractEpisodes: thenBlock called but group already left", type: "Debug")
                     return
                 }
                 hasLeftEpisodesGroup = true
@@ -173,13 +173,13 @@ extension JSController {
                                 )
                             }
                         } else {
-                            Logger.shared.log("Failed to parse JSON of extractEpisodes", type: "Error")
+                            LunaLogger.shared.log("Failed to parse JSON of extractEpisodes", type: "Error")
                         }
                     } catch {
-                        Logger.shared.log("JSON parsing error of extractEpisodes: \(error)", type: "Error")
+                        LunaLogger.shared.log("JSON parsing error of extractEpisodes: \(error)", type: "Error")
                     }
                 } else {
-                    Logger.shared.log("Result is not a string of extractEpisodes", type: "Error")
+                    LunaLogger.shared.log("Result is not a string of extractEpisodes", type: "Error")
                 }
                 dispatchGroup.leave()
             }
@@ -189,12 +189,12 @@ extension JSController {
             timeoutWorkItem.cancel()
             episodesGroupQueue.sync {
                 guard !hasLeftEpisodesGroup else {
-                    Logger.shared.log("extractEpisodes: catchBlock called but group already left", type: "Debug")
+                    LunaLogger.shared.log("extractEpisodes: catchBlock called but group already left", type: "Debug")
                     return
                 }
                 hasLeftEpisodesGroup = true
                 
-                Logger.shared.log("Promise rejected of extractEpisodes: \(String(describing: error.toString()))", type: "Error")
+                LunaLogger.shared.log("Promise rejected of extractEpisodes: \(String(describing: error.toString()))", type: "Error")
                 dispatchGroup.leave()
             }
         }
@@ -212,19 +212,19 @@ extension JSController {
     
     func fetchEpisodesJS(url: String, completion: @escaping ([EpisodeLink]) -> Void) {
         guard let url = URL(string: url) else {
-            Logger.shared.log("Invalid URL in fetchEpisodesJS: \(url)", type: "Error")
+            LunaLogger.shared.log("Invalid URL in fetchEpisodesJS: \(url)", type: "Error")
             completion([])
             return
         }
         
         if let exception = context.exception {
-            Logger.shared.log("JavaScript exception: \(exception)", type: "Error")
+            LunaLogger.shared.log("JavaScript exception: \(exception)", type: "Error")
             completion([])
             return
         }
         
         guard let extractEpisodesFunction = context.objectForKeyedSubscript("extractEpisodes") else {
-            Logger.shared.log("No JavaScript function extractEpisodes found", type: "Error")
+            LunaLogger.shared.log("No JavaScript function extractEpisodes found", type: "Error")
             completion([])
             return
         }
@@ -237,10 +237,10 @@ extension JSController {
         let completionQueue = DispatchQueue(label: "episodes.completion")
         
         let timeoutWorkItem = DispatchWorkItem {
-            Logger.shared.log("Timeout for extractEpisodes", type: "Warning")
+            LunaLogger.shared.log("Timeout for extractEpisodes", type: "Warning")
             completionQueue.sync {
                 guard !hasCompleted else {
-                    Logger.shared.log("extractEpisodes: timeout called but already completed", type: "Debug")
+                    LunaLogger.shared.log("extractEpisodes: timeout called but already completed", type: "Debug")
                     return
                 }
                 hasCompleted = true
@@ -252,7 +252,7 @@ extension JSController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutWorkItem)
         
         guard let promiseEpisodes = promiseValueEpisodes else {
-            Logger.shared.log("extractEpisodes did not return a Promise", type: "Error")
+            LunaLogger.shared.log("extractEpisodes did not return a Promise", type: "Error")
             timeoutWorkItem.cancel()
             completion([])
             return
@@ -262,7 +262,7 @@ extension JSController {
             timeoutWorkItem.cancel()
             completionQueue.sync {
                 guard !hasCompleted else {
-                    Logger.shared.log("extractEpisodes: thenBlock called but already completed", type: "Debug")
+                    LunaLogger.shared.log("extractEpisodes: thenBlock called but already completed", type: "Debug")
                     return
                 }
                 hasCompleted = true
@@ -280,13 +280,13 @@ extension JSController {
                                 )
                             }
                         } else {
-                            Logger.shared.log("Failed to parse JSON of extractEpisodes", type: "Error")
+                            LunaLogger.shared.log("Failed to parse JSON of extractEpisodes", type: "Error")
                         }
                     } catch {
-                        Logger.shared.log("JSON parsing error of extractEpisodes: \(error)", type: "Error")
+                        LunaLogger.shared.log("JSON parsing error of extractEpisodes: \(error)", type: "Error")
                     }
                 } else {
-                    Logger.shared.log("Result is not a string of extractEpisodes", type: "Error")
+                    LunaLogger.shared.log("Result is not a string of extractEpisodes", type: "Error")
                 }
                 
                 DispatchQueue.main.async {
@@ -299,12 +299,12 @@ extension JSController {
             timeoutWorkItem.cancel()
             completionQueue.sync {
                 guard !hasCompleted else {
-                    Logger.shared.log("extractEpisodes: catchBlock called but already completed", type: "Debug")
+                    LunaLogger.shared.log("extractEpisodes: catchBlock called but already completed", type: "Debug")
                     return
                 }
                 hasCompleted = true
                 
-                Logger.shared.log("Promise rejected of extractEpisodes: \(String(describing: error.toString()))", type: "Error")
+                LunaLogger.shared.log("Promise rejected of extractEpisodes: \(String(describing: error.toString()))", type: "Error")
                 DispatchQueue.main.async {
                     completion([])
                 }

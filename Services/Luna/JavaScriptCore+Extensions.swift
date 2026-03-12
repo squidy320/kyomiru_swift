@@ -19,6 +19,89 @@ extension JSContext {
         if (typeof document === 'undefined') {
           var document = { cookie: '' };
         }
+
+        function unpack(packed) {
+          try {
+            var unpacked = '';
+            var originalEval = eval;
+            eval = function(code) {
+              unpacked = code;
+              return code;
+            };
+            originalEval(packed);
+            eval = originalEval;
+            return unpacked && typeof unpacked === 'string' ? unpacked : packed;
+          } catch (e) {
+            try { eval = originalEval; } catch (_) {}
+            return packed;
+          }
+        }
+
+        class DdosGuardInterceptor {
+          async fetchWithBypass(url, options = {}) {
+            const headers = options.headers || {};
+            const method = options.method || "GET";
+            const body = options.body || null;
+
+            let response = await fetchv2(url, headers, method, body, true);
+            let text = await response.text();
+
+            if (this._needsBypass(response, text)) {
+              await this._bypass(url);
+              response = await fetchv2(url, headers, method, body, true);
+              text = await response.text();
+            }
+
+            return {
+              status: response.status,
+              headers: response.headers,
+              text: function() { return Promise.resolve(text); },
+              json: function() {
+                try { return Promise.resolve(JSON.parse(text)); }
+                catch (e) { return Promise.reject("JSON parse error: " + e.message); }
+              }
+            };
+          }
+
+          _needsBypass(response, text) {
+            const lower = (text || "").toLowerCase();
+            if (response && response.status >= 400) return true;
+            return lower.includes("ddos-guard") ||
+                   lower.includes("ddos-guard/js-challenge") ||
+                   lower.includes("data-ddg-origin") ||
+                   lower.includes("just a moment");
+          }
+
+          async _bypass(targetUrl) {
+            try {
+              const check = await fetchv2("https://check.ddos-guard.net/check.js");
+              const js = await check.text();
+
+              const wellKnownMatch = js.match(/['"](/\\.well-known\\/ddos-guard\\/[^'"]+)['"]/);
+              const checkMatch = js.match(/['"](https:\\/\\/check\\.ddos-guard\\.net\\/[^'"]+)['"]/);
+
+              const origin = this._origin(targetUrl);
+              if (wellKnownMatch && origin) {
+                await fetchv2(origin + wellKnownMatch[1], { "Referer": targetUrl });
+              }
+              if (checkMatch && checkMatch[1]) {
+                await fetchv2(checkMatch[1], { "Referer": targetUrl });
+              }
+            } catch (e) {
+              // Silent: fallback to normal fetch.
+            }
+          }
+
+          _origin(url) {
+            try {
+              const match = String(url).match(/^(https?:)\\/\\/([^\\/]+)/i);
+              if (!match) return null;
+              return match[1] + "//" + match[2];
+            } catch (e) {
+              return null;
+            }
+          }
+        }
         """
         evaluateScript(polyfills)
     }
@@ -27,19 +110,19 @@ extension JSContext {
         let consoleObject = JSValue(newObjectIn: self)
         
         let consoleLogFunction: @convention(block) (String) -> Void = { message in
-            Logger.shared.log(message, type: "Debug")
+            LunaLogger.shared.log(message, type: "Debug")
         }
         consoleObject?.setObject(consoleLogFunction, forKeyedSubscript: "log" as NSString)
         
         let consoleErrorFunction: @convention(block) (String) -> Void = { message in
-            Logger.shared.log(message, type: "Error")
+            LunaLogger.shared.log(message, type: "Error")
         }
         consoleObject?.setObject(consoleErrorFunction, forKeyedSubscript: "error" as NSString)
         
         self.setObject(consoleObject, forKeyedSubscript: "console" as NSString)
         
         let logFunction: @convention(block) (String) -> Void = { message in
-            Logger.shared.log("JavaScript log: \(message)", type: "Debug")
+            LunaLogger.shared.log("JavaScript log: \(message)", type: "Debug")
         }
         self.setObject(logFunction, forKeyedSubscript: "log" as NSString)
     }
@@ -47,7 +130,7 @@ extension JSContext {
     func setupNativeFetch() {
         let fetchNativeFunction: @convention(block) (String, [String: String]?, JSValue, JSValue) -> Void = { urlString, headers, resolve, reject in
             guard let url = URL(string: urlString) else {
-                Logger.shared.log("Invalid URL", type: "Error")
+                LunaLogger.shared.log("Invalid URL", type: "Error")
                 reject.call(withArguments: ["Invalid URL"])
                 return
             }
@@ -59,19 +142,19 @@ extension JSContext {
             }
             let task = URLSession.custom.dataTask(with: request) { data, _, error in
                 if let error = error {
-                    Logger.shared.log("Network error in fetchNativeFunction: \(error.localizedDescription)", type: "Error")
+                    LunaLogger.shared.log("Network error in fetchNativeFunction: \(error.localizedDescription)", type: "Error")
                     reject.call(withArguments: [error.localizedDescription])
                     return
                 }
                 guard let data = data else {
-                    Logger.shared.log("No data in response", type: "Error")
+                    LunaLogger.shared.log("No data in response", type: "Error")
                     reject.call(withArguments: ["No data"])
                     return
                 }
                 if let text = String(data: data, encoding: .utf8) {
                     resolve.call(withArguments: [text])
                 } else {
-                    Logger.shared.log("Unable to decode data to text", type: "Error")
+                    LunaLogger.shared.log("Unable to decode data to text", type: "Error")
                     reject.call(withArguments: ["Unable to decode data"])
                 }
             }
@@ -92,7 +175,7 @@ extension JSContext {
     func setupFetchV2() {
         let fetchV2NativeFunction: @convention(block) (String, Any?, String?, String?, ObjCBool, String?, JSValue, JSValue) -> Void = { urlString, headersAny, method, body, redirect, encoding, resolve, reject in
             guard let url = URL(string: urlString) else {
-                Logger.shared.log("Invalid URL", type: "Error")
+                LunaLogger.shared.log("Invalid URL", type: "Error")
                 DispatchQueue.main.async {
                     resolve.call(withArguments: ["Invalid URL"])
                 }
@@ -139,7 +222,7 @@ extension JSContext {
                     }
                     headers = safeHeaders.isEmpty ? nil : safeHeaders
                 } else {
-                    Logger.shared.log("Headers argument is not a dictionary, type: \(type(of: headersAny))", type: "Warning")
+                    LunaLogger.shared.log("Headers argument is not a dictionary, type: \(type(of: headersAny))", type: "Warning")
                     headers = nil
                 }
             }
@@ -167,7 +250,7 @@ extension JSContext {
                 case "utf-16", "utf16":
                     return .utf16
                 default:
-                    Logger.shared.log("Unknown encoding '\(encodingString)', defaulting to UTF-8", type: "Warning")
+                    LunaLogger.shared.log("Unknown encoding '\(encodingString)', defaulting to UTF-8", type: "Warning")
                     return .utf8
                 }
             }
@@ -177,7 +260,7 @@ extension JSContext {
             let bodyIsEmpty = body == nil || (body)?.isEmpty == true || body == "null" || body == "undefined"
             
             if httpMethod == "GET" && !bodyIsEmpty {
-                Logger.shared.log("GET request must not have a body", type: "Error")
+                LunaLogger.shared.log("GET request must not have a body", type: "Error")
                 DispatchQueue.main.async {
                     resolve.call(withArguments: ["GET request must not have a body"])
                 }
@@ -209,19 +292,19 @@ extension JSContext {
                         if !resolve.isUndefined {
                             resolve.call(withArguments: [dict])
                         } else {
-                            Logger.shared.log("Resolve callback is undefined", type: "Error")
+                            LunaLogger.shared.log("Resolve callback is undefined", type: "Error")
                         }
                     }
                 }
                 
                 if let error = error {
-                    Logger.shared.log("Network error in fetchV2NativeFunction: \(error.localizedDescription)", type: "Error")
+                    LunaLogger.shared.log("Network error in fetchV2NativeFunction: \(error.localizedDescription)", type: "Error")
                     callResolve(["error": error.localizedDescription])
                     return
                 }
                 
                 guard let tempFileURL = tempFileURL else {
-                    Logger.shared.log("No data in response", type: "Error")
+                    LunaLogger.shared.log("No data in response", type: "Error")
                     callResolve(["error": "No data"])
                     return
                 }
@@ -251,7 +334,7 @@ extension JSContext {
                     let data = try Data(contentsOf: tempFileURL)
                     
                     if data.count > 10_000_000 {
-                        Logger.shared.log("Response exceeds maximum size", type: "Error")
+                        LunaLogger.shared.log("Response exceeds maximum size", type: "Error")
                         callResolve(["error": "Response exceeds maximum size"])
                         return
                     }
@@ -260,18 +343,18 @@ extension JSContext {
                         responseDict["body"] = text
                         callResolve(responseDict)
                     } else {
-                        Logger.shared.log("Unable to decode data with encoding \(encoding ?? "utf-8"), trying UTF-8 fallback", type: "Warning")
+                        LunaLogger.shared.log("Unable to decode data with encoding \(encoding ?? "utf-8"), trying UTF-8 fallback", type: "Warning")
                         if let fallbackText = String(data: data, encoding: .utf8) {
                             responseDict["body"] = fallbackText
                             callResolve(responseDict)
                         } else {
-                            Logger.shared.log("Unable to decode data to text with any encoding", type: "Error")
+                            LunaLogger.shared.log("Unable to decode data to text with any encoding", type: "Error")
                             callResolve(responseDict)
                         }
                     }
                     
                 } catch {
-                    Logger.shared.log("Error reading downloaded file: \(error.localizedDescription)", type: "Error")
+                    LunaLogger.shared.log("Error reading downloaded file: \(error.localizedDescription)", type: "Error")
                     callResolve(["error": "Error reading downloaded file"])
                 }
             }
@@ -324,7 +407,7 @@ extension JSContext {
     func setupBase64Functions() {
         let btoaFunction: @convention(block) (String) -> String? = { data in
             guard let data = data.data(using: .utf8) else {
-                Logger.shared.log("btoa: Failed to encode input as UTF-8", type: "Error")
+                LunaLogger.shared.log("btoa: Failed to encode input as UTF-8", type: "Error")
                 return nil
             }
             return data.base64EncodedString()
@@ -332,7 +415,7 @@ extension JSContext {
         
         let atobFunction: @convention(block) (String) -> String? = { base64String in
             guard let data = Data(base64Encoded: base64String) else {
-                Logger.shared.log("atob: Invalid base64 input", type: "Error")
+                LunaLogger.shared.log("atob: Invalid base64 input", type: "Error")
                 return nil
             }
             

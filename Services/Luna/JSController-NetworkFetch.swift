@@ -16,7 +16,7 @@
             func log(_ m: String) { print("[FakeWKWebView] log:", m) }
             func logError(_ m: String) { print("[FakeWKWebView] error:", m) }
         }
-        WKWebView.logger = SimpleLogger()
+        WKWebView.LunaLogger = SimpleLogger()
     }()
      */
 #else
