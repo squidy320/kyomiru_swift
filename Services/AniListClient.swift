@@ -250,7 +250,7 @@ final class AniListClient {
         return items
     }
 
-    func cachedDiscoverySections() -> [AniListDiscoverySection]? {
+    func cachedDiscoverySectionsSnapshot() -> [AniListDiscoverySection]? {
         cachedDiscoverySectionsFromDisk()
     }
 

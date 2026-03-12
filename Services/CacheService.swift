@@ -8,18 +8,18 @@ final class CacheService {
     func clearAll() async {
         AppLog.debug(.cache, "clear all start")
         URLCache.shared.removeAllCachedResponses()
-        await clearTemporaryFiles()
-        await clearDownloads()
+        clearTemporaryFiles()
+        clearDownloads()
         AppLog.debug(.cache, "clear all complete")
     }
 
     func clearDownloadsOnly() async {
         AppLog.debug(.cache, "clear downloads only start")
-        await clearDownloads()
+        clearDownloads()
         AppLog.debug(.cache, "clear downloads only complete")
     }
 
-    private func clearTemporaryFiles() async {
+    private func clearTemporaryFiles() {
         let fm = FileManager.default
         let temp = fm.temporaryDirectory
         guard let enumerator = fm.enumerator(
@@ -41,7 +41,7 @@ final class CacheService {
         AppLog.debug(.cache, "cleared temp files count=\(cleared)")
     }
 
-    private func clearDownloads() async {
+    private func clearDownloads() {
         let fm = FileManager.default
         let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let folder = base.appendingPathComponent("KyomiruDownloads", isDirectory: true)
