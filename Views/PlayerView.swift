@@ -13,7 +13,6 @@ struct PlayerView: View {
     @State private var pipPlayer: AVPlayer?
     @State private var pipController: AVPlayerViewController?
     @State private var showPipController = false
-    @State private var shouldStartPiP = false
     @State private var pipSource: SoraSource?
 
     var body: some View {
@@ -94,12 +93,6 @@ struct PlayerView: View {
                 PiPControllerHost(
                     controller: controller,
                     player: $pipPlayer,
-                    startPiP: $shouldStartPiP,
-                    onPiPStarted: {
-                        DispatchQueue.main.async {
-                            showPipController = false
-                        }
-                    },
                     onPiPEnded: { resumeTime in
                         resumeFromPiP(at: resumeTime)
                     }
@@ -123,7 +116,6 @@ struct PlayerView: View {
         }
         playerModel.setPaused(true)
         showPipController = true
-        shouldStartPiP = true
     }
 
     private func resumeFromPiP(at time: Double?) {
@@ -216,8 +208,6 @@ struct PlayerView: View {
 private struct PiPControllerHost: UIViewControllerRepresentable {
     let controller: AVPlayerViewController
     @Binding var player: AVPlayer?
-    @Binding var startPiP: Bool
-    let onPiPStarted: () -> Void
     let onPiPEnded: (Double?) -> Void
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
@@ -232,30 +222,17 @@ private struct PiPControllerHost: UIViewControllerRepresentable {
         if uiViewController.player !== player {
             uiViewController.player = player
         }
-        if startPiP && uiViewController.canStartPictureInPicture {
-            uiViewController.startPictureInPicture()
-            DispatchQueue.main.async {
-                startPiP = false
-            }
-        }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onPiPStarted: onPiPStarted, onPiPEnded: onPiPEnded)
+        Coordinator(onPiPEnded: onPiPEnded)
     }
 
     final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
-        private let onPiPStarted: () -> Void
         private let onPiPEnded: (Double?) -> Void
 
-        init(onPiPStarted: @escaping () -> Void,
-             onPiPEnded: @escaping (Double?) -> Void) {
-            self.onPiPStarted = onPiPStarted
+        init(onPiPEnded: @escaping (Double?) -> Void) {
             self.onPiPEnded = onPiPEnded
-        }
-
-        func playerViewControllerDidStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
-            onPiPStarted()
         }
 
         func playerViewControllerDidStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
