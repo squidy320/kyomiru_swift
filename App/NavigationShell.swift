@@ -1,11 +1,10 @@
-﻿import SwiftUI
+import SwiftUI
+import UIKit
 
 struct NavigationShell: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
     private var isPadLayout: Bool {
-        horizontalSizeClass == .regular
+        UIDevice.current.userInterfaceIdiom == .pad
     }
 
     var body: some View {
@@ -28,7 +27,11 @@ struct NavigationShell: View {
             } else {
                 contentView
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.horizontal, 10)
+                    .safeAreaInset(edge: .top) {
+                        TopNavigationBar(selectedTab: $appState.selectedTab)
+                            .padding(.top, 8)
+                            .padding(.horizontal, 14)
+                    }
             }
         }
     }
@@ -100,6 +103,46 @@ private struct NavigationItem: Identifiable {
     let systemImage: String
 }
 
+private struct TopNavigationBar: View {
+    @Binding var selectedTab: AppTab
+    private let items: [NavigationItem] = AppTab.navigationItems
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(items) { item in
+                Button {
+                    selectedTab = item.tab
+                } label: {
+                    Image(systemName: item.systemImage)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(selectedTab == item.tab ? Theme.accent : Theme.textSecondary)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            Circle()
+                                .fill(selectedTab == item.tab ? Theme.accent.opacity(0.18) : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            Capsule(style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Capsule(style: .continuous)
+                        .fill(Color.black.opacity(0.5))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+        )
+    }
+}
+
 private extension AppTab {
     static var navigationItems: [NavigationItem] {
         [
@@ -112,3 +155,4 @@ private extension AppTab {
         ]
     }
 }
+

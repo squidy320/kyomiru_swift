@@ -1,4 +1,5 @@
-﻿import SwiftUI
+import SwiftUI
+import UIKit
 
 struct DetailsView: View {
     let media: AniListMedia
@@ -48,8 +49,8 @@ struct DetailsView: View {
                     }
                 }
                 .padding(.horizontal, 14)
-                .padding(.top, 14)
-                .padding(.bottom, 120)
+                .padding(.top, 8)
+                .padding(.bottom, contentBottomPadding)
             }
         }
         .task {
@@ -257,7 +258,7 @@ struct DetailsView: View {
                     .foregroundColor(.white)
             }
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 150), spacing: 12)],
+                columns: episodeColumns(),
                 spacing: 12
             ) {
                 ForEach(cards) { card in
@@ -292,6 +293,10 @@ struct DetailsView: View {
                 }
             }
         }
+    }
+
+    private var contentBottomPadding: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 24 : 32
     }
 
     private var detailItem: MediaItem {
@@ -427,9 +432,16 @@ struct DetailsView: View {
         }
     }
 
+    private func episodeColumns() -> [GridItem] {
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
+        }
+        return Array(repeating: GridItem(.flexible(), spacing: 12), count: 2)
+    }
+
     private func episodeSubtitle() -> String {
         let minutes = 24
-        return "Tap to play • \(minutes)m"
+        return "Tap to play � \(minutes)m"
     }
 
     private func progressFraction(for episodeId: String, fallbackKey: String) -> Double? {
@@ -507,7 +519,7 @@ private enum EpisodeTab: String, CaseIterable, Identifiable {
     case currentSeries = "Current Series"
     case adaptation = "Adaptation"
     case prequel = "Prequel"
-    case sideStory = "Side_Story"
+    case sideStory = "Side Story"
 
     var id: String { rawValue }
     var title: String { rawValue }
@@ -797,3 +809,9 @@ private struct MatchPickerSheet: View {
         }
     }
 }
+
+
+
+
+
+

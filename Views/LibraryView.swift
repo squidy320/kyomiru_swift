@@ -1,4 +1,5 @@
-﻿import SwiftUI
+import SwiftUI
+import UIKit
 
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
@@ -90,8 +91,8 @@ struct LibraryView: View {
                         }
                     }
                     .padding(.horizontal, 14)
-                    .padding(.top, 14)
-                    .padding(.bottom, 120)
+                    .padding(.top, 8)
+                    .padding(.bottom, contentBottomPadding)
                 }
             }
         }
@@ -100,6 +101,10 @@ struct LibraryView: View {
             await appState.bootstrap()
             await loadLibrary()
         }
+    }
+
+    private var contentBottomPadding: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 24 : 32
     }
 
     private func filteredSections() -> [AniListLibrarySection] {
@@ -349,3 +354,4 @@ private struct ContinueItem: Identifiable {
     let timeRemainingText: String
     let imageURL: URL?
 }
+

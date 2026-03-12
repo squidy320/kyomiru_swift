@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct DiscoveryView: View {
     @State private var query = ""
@@ -71,8 +72,8 @@ struct DiscoveryView: View {
                         }
                     }
                     .padding(.horizontal, 14)
-                    .padding(.top, 14)
-                    .padding(.bottom, 120)
+                    .padding(.top, 8)
+                    .padding(.bottom, contentBottomPadding)
                 }
             }
         }
@@ -80,6 +81,10 @@ struct DiscoveryView: View {
             AppLog.debug(.ui, "discovery view load")
             await loadDiscovery()
         }
+    }
+
+    private var contentBottomPadding: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 24 : 32
     }
 
     private var heroHeader: some View {
@@ -130,4 +135,5 @@ private extension DiscoveryView {
 }
 
 // Card components moved to UI/MediaCards.swift
+
 
