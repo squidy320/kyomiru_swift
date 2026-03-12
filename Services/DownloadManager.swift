@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 
 actor OfflineDownloadManager {
     typealias ProgressHandler = @Sendable (Double) -> Void
@@ -395,8 +396,6 @@ extension DownloadManager: @preconcurrency URLSessionDownloadDelegate {
         }
     }
 }
-
-import AVFoundation
 
 actor MediaConversionManager {
     static let shared = MediaConversionManager()

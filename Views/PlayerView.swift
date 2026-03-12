@@ -152,7 +152,7 @@ final class PlayerViewModel: ObservableObject {
                     }
                     isPreparing = false
                     let item = makePlayerItem(url: output, headers: [:])
-                    await replaceAndPlay(item: item, episodeId: episodeId, seekToSaved: seekToSaved)
+                    replaceAndPlay(item: item, episodeId: episodeId, seekToSaved: seekToSaved)
                 } catch {
                     isPreparing = false
                     errorMessage = "Conversion failed: \(error.localizedDescription)"
