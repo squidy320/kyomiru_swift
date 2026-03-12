@@ -176,7 +176,7 @@ final class MPVOpenGLView: GLKView {
     }
 }
 
-private final class MPVPlayerHostController: UIViewController {
+final class MPVPlayerHostController: UIViewController {
     private let playerView: MPVOpenGLView
 
     init(viewModel: MPVPlayerViewModel) {
