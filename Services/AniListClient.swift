@@ -12,6 +12,9 @@ final class AniListClient {
     private var cachedTrending: (items: [AniListMedia], expires: Date)?
     private var cachedDiscoverySections: (items: [AniListDiscoverySection], expires: Date)?
     private var cachedLibrarySections: (items: [AniListLibrarySection], expires: Date)?
+    private var cachedTrackingEntries: [Int: (entry: AniListTrackingEntry?, expires: Date)] = [:]
+    private var cachedAvailability: [Int: (entry: AniListEpisodeAvailability?, expires: Date)] = [:]
+    private let requestGate = RequestGate(maxConcurrent: 4)
 
     init(cacheStore: CacheStore, session: URLSession = .shared) {
         self.cacheStore = cacheStore
@@ -254,7 +257,7 @@ final class AniListClient {
                 id
                 type
                 createdAt
-                context
+                contexts
                 media {
                   id
                   title { romaji english native }
@@ -283,7 +286,8 @@ final class AniListClient {
             let id = row["id"] as? Int ?? 0
             let type = row["type"] as? String ?? ""
             let createdAt = row["createdAt"] as? Int ?? 0
-            let context = row["context"] as? String
+            let contexts = row["contexts"] as? [String] ?? []
+            let context = contexts.isEmpty ? nil : contexts.joined(separator: "\n")
             let media = (row["media"] as? [String: Any]).flatMap(decodeMedia)
             return AniListNotificationItem(id: id, type: type, createdAt: createdAt, context: context, media: media)
         }
@@ -292,6 +296,9 @@ final class AniListClient {
     }
 
     func trackingEntry(token: String, mediaId: Int) async throws -> AniListTrackingEntry? {
+        if let cached = cachedTrackingEntries[mediaId], cached.expires > Date() {
+            return cached.entry
+        }
         AppLog.debug(.network, "tracking entry start mediaId=\(mediaId)")
         let viewer = try await viewer(token: token)
         let query = """
@@ -304,7 +311,13 @@ final class AniListClient {
           }
         }
         """
-        let data = try await graphql(query: query, variables: ["mediaId": mediaId, "userId": viewer.id], token: token)
+        let data: Data
+        do {
+            data = try await graphql(query: query, variables: ["mediaId": mediaId, "userId": viewer.id], token: token)
+        } catch let AniListError.graphQLError(message) where message == "Not Found." {
+            cachedTrackingEntries[mediaId] = (nil, Date().addingTimeInterval(60 * 5))
+            return nil
+        }
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dataMap = root["data"] as? [String: Any],
               let row = dataMap["MediaList"] as? [String: Any] else {
@@ -316,11 +329,15 @@ final class AniListClient {
         let progress = row["progress"] as? Int
         let score = row["score"] as? Double ?? (row["score"] as? Int).map(Double.init)
         let entry = AniListTrackingEntry(id: id, status: status, progress: progress, score: score)
+        cachedTrackingEntries[mediaId] = (entry, Date().addingTimeInterval(60 * 5))
         AppLog.debug(.network, "tracking entry success mediaId=\(mediaId)")
         return entry
     }
 
     func episodeAvailability(token: String, mediaId: Int) async throws -> AniListEpisodeAvailability? {
+        if let cached = cachedAvailability[mediaId], cached.expires > Date() {
+            return cached.entry
+        }
         AppLog.debug(.network, "episode availability start mediaId=\(mediaId)")
         let query = """
         query Availability($id: Int) {
@@ -342,6 +359,7 @@ final class AniListClient {
         let status = media["status"] as? String
         let nextEpisode = (media["nextAiringEpisode"] as? [String: Any])?["episode"] as? Int
         let availability = AniListEpisodeAvailability(totalEpisodes: total, nextAiringEpisode: nextEpisode, status: status)
+        cachedAvailability[mediaId] = (availability, Date().addingTimeInterval(60 * 5))
         AppLog.debug(.network, "episode availability success mediaId=\(mediaId)")
         return availability
     }
@@ -365,6 +383,8 @@ final class AniListClient {
     }
 
     private func graphql(query: String, variables: [String: Any] = [:], token: String? = nil) async throws -> Data {
+        await requestGate.acquire()
+        defer { Task { await self.requestGate.release() } }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -459,6 +479,36 @@ final class AniListClient {
             }
         }
         return current
+    }
+}
+
+actor RequestGate {
+    private let maxConcurrent: Int
+    private var current: Int = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(maxConcurrent: Int) {
+        self.maxConcurrent = maxConcurrent
+    }
+
+    func acquire() async {
+        if current < maxConcurrent {
+            current += 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+        current += 1
+    }
+
+    func release() {
+        if !waiters.isEmpty {
+            let next = waiters.removeFirst()
+            next.resume()
+        } else {
+            current = max(0, current - 1)
+        }
     }
 }
 
