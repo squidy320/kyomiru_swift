@@ -14,6 +14,11 @@ struct PlayerView: View {
             .ignoresSafeArea()
             .onAppear {
                 AppLog.debug(.player, "player appear episode=\(episode.id)")
+                PlaybackHistoryStore.shared.saveLastEpisode(
+                    mediaId: mediaId,
+                    episodeId: episode.id,
+                    episodeNumber: episode.number
+                )
                 if let src = sources.first {
                     startPlayback(source: src, seekToSaved: true)
                 }

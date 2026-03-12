@@ -17,9 +17,11 @@ struct DownloadsView: View {
             Theme.baseBackground.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Downloads")
-                        .font(.system(size: 28, weight: .heavy))
-                        .foregroundColor(.white)
+                    if UIDevice.current.userInterfaceIdiom != .pad {
+                        Text("Downloads")
+                            .font(.system(size: 28, weight: .heavy))
+                            .foregroundColor(.white)
+                    }
                     Toggle("Completed Only", isOn: $filterCompleted)
                         .foregroundColor(.white)
                     let visible = manager.items.filter { filterCompleted ? $0.status == "Completed" : true }
@@ -61,6 +63,8 @@ struct DownloadsView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 12)
             }
+            .navigationTitle("Downloads")
+            .navigationBarTitleDisplayMode(.inline)
         }
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: tabBarInset)

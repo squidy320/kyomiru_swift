@@ -18,9 +18,11 @@ struct DiscoveryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Discovery")
-                            .font(.system(size: 28, weight: .heavy))
-                            .foregroundColor(.white)
+                        if UIDevice.current.userInterfaceIdiom != .pad {
+                            Text("Discovery")
+                                .font(.system(size: 28, weight: .heavy))
+                                .foregroundColor(.white)
+                        }
 
                         heroCarousel
 
@@ -60,14 +62,14 @@ struct DiscoveryView: View {
                                                         imageURL: media.coverURL,
                                                         score: media.averageScore
                                                     )
-                                                    .frame(width: 120)
-                                                    .clipped()
+                                                    .frame(width: 150)
                                                 }
                                                 .buttonStyle(.plain)
                                             }
                                         }
                                         .padding(.horizontal, 2)
                                     }
+                                    .scrollClipDisabled()
                                 }
                             }
                         }
@@ -77,6 +79,8 @@ struct DiscoveryView: View {
                     .padding(.bottom, 12)
                     .safeAreaPadding(.top, 6)
                 }
+                .navigationTitle("Discovery")
+                .navigationBarTitleDisplayMode(.inline)
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -131,6 +135,7 @@ struct DiscoveryView: View {
             }
             .frame(height: 350)
             .tabViewStyle(.page(indexDisplayMode: .always))
+            .padding(.top, 4)
             .onReceive(heroTimer) { _ in
                 guard !items.isEmpty else { return }
                 withAnimation(.easeInOut(duration: 0.4)) {
@@ -178,14 +183,14 @@ struct DiscoveryView: View {
                                 imageURL: media.coverURL,
                                 score: media.averageScore
                             )
-                            .frame(width: 120)
-                            .clipped()
+                            .frame(width: 150)
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 2)
             }
+            .scrollClipDisabled()
         }
     }
 }
@@ -225,6 +230,9 @@ private extension DiscoveryView {
     }
 
     func heroItems() -> [AniListMedia] {
+        if let trending = sections.first(where: { $0.id == "trending" }) {
+            return Array(trending.items.prefix(5))
+        }
         let items = sections.first?.items ?? []
         return Array(items.prefix(5))
     }

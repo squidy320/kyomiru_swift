@@ -1,4 +1,5 @@
 ﻿import SwiftUI
+import SwiftUI
 import UIKit
 
 struct LibraryView: View {
@@ -15,16 +16,18 @@ struct LibraryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        LibraryTopBar(
-                            title: "Library",
-                            subtitle: "Currently watching and synced lists",
-                            avatarURL: appState.authState.user?.avatarURL,
-                            onAvatarTap: {
-                                if !appState.authState.isSignedIn {
-                                    Task { await appState.authState.signIn() }
+                        if UIDevice.current.userInterfaceIdiom != .pad {
+                            LibraryTopBar(
+                                title: "Library",
+                                subtitle: "Currently watching and synced lists",
+                                avatarURL: appState.authState.user?.avatarURL,
+                                onAvatarTap: {
+                                    if !appState.authState.isSignedIn {
+                                        Task { await appState.authState.signIn() }
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
 
                         libraryHero
 
@@ -42,6 +45,7 @@ struct LibraryView: View {
                             }
                             .padding(.vertical, 4)
                         }
+                        .scrollClipDisabled()
 
                         if !continueWatchingItems().isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
@@ -61,6 +65,7 @@ struct LibraryView: View {
                                         }
                                     }
                                 }
+                                .scrollClipDisabled()
                             }
                         }
 
@@ -90,12 +95,14 @@ struct LibraryView: View {
                             }
                         }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 12)
-                .safeAreaPadding(.top, 6)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 12)
+                    .safeAreaPadding(.top, 6)
+                }
+                .navigationTitle("Library")
+                .navigationBarTitleDisplayMode(.inline)
             }
-        }
         }
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: tabBarInset)
@@ -129,7 +136,8 @@ struct LibraryView: View {
     }
 
     private var libraryHero: some View {
-        let heroMedia = sections.first?.items.first?.media
+        let heroMedia = sections.first(where: { $0.title.lowercased().contains("watching") })?.items.first?.media
+            ?? sections.first?.items.first?.media
         let score = heroMedia?.averageScore ?? 91
         let pills = [
             HeroPill(icon: "hand.thumbsup.fill", text: "\(score)% Match"),
@@ -169,17 +177,18 @@ struct LibraryView: View {
             return []
         }
         return section.items.compactMap { entry in
-            let idKey = String(entry.media.id)
-            let progressEntry = appState.services.playbackEngine.progressByItem[idKey]
-            guard let progressEntry,
-                  progressEntry.currentTime > 0,
-                  progressEntry.currentTime < progressEntry.duration else { return nil }
-            let progress = progressEntry.fraction
-            let remaining = progressEntry.timeRemaining
+            guard let lastEpisodeId = PlaybackHistoryStore.shared.lastEpisodeId(for: entry.media.id),
+                  let duration = PlaybackHistoryStore.shared.duration(for: lastEpisodeId),
+                  let position = PlaybackHistoryStore.shared.position(for: lastEpisodeId),
+                  duration.isFinite, position.isFinite,
+                  position > 0, position < duration else { return nil }
+            let progress = min(max(position / duration, 0), 1)
+            let remaining = max(duration - position, 0)
+            let episodeNumber = PlaybackHistoryStore.shared.lastEpisodeNumber(for: entry.media.id) ?? (entry.progress + 1)
             return ContinueItem(
                 id: entry.media.id,
                 title: entry.media.title.best,
-                episodeText: "Episode \(entry.progress + 1)",
+                episodeText: "Episode \(episodeNumber)",
                 progressFraction: progress,
                 timeRemainingText: formatRemaining(remaining),
                 imageURL: entry.media.bannerURL ?? entry.media.coverURL
@@ -206,19 +215,6 @@ struct LibraryView: View {
 
     private func applyLibrarySections(_ items: [AniListLibrarySection]) {
         sections = items
-        for section in items {
-            for entry in section.items {
-                let totalEpisodes = Double(max(entry.media.episodes ?? 12, 1))
-                let currentEpisodes = Double(entry.progress)
-                let duration = totalEpisodes * 24.0 * 60.0
-                let current = currentEpisodes * 24.0 * 60.0
-                appState.services.playbackEngine.updateProgress(
-                    for: String(entry.media.id),
-                    currentTime: current,
-                    duration: duration
-                )
-            }
-        }
         let mediaItems = items.flatMap { section -> [MediaItem] in
             let status = statusForSection(section.title)
             return section.items.map { entry in
@@ -355,14 +351,14 @@ private struct LibrarySection: View {
                                     imageURL: entry.media.coverURL,
                                     score: entry.media.averageScore
                                 )
-                                .frame(width: 120)
-                                .clipped()
+                                .frame(width: 150)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 2)
                 }
+                .scrollClipDisabled()
             }
         }
     }

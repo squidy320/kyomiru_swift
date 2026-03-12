@@ -12,9 +12,11 @@ struct AlertsView: View {
             Theme.baseBackground.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Alerts")
-                        .font(.system(size: 28, weight: .heavy))
-                        .foregroundColor(.white)
+                    if UIDevice.current.userInterfaceIdiom != .pad {
+                        Text("Alerts")
+                            .font(.system(size: 28, weight: .heavy))
+                            .foregroundColor(.white)
+                    }
 
                     if !appState.authState.isSignedIn {
                         GlassCard {
@@ -53,6 +55,8 @@ struct AlertsView: View {
                 .padding(.bottom, 12)
                 .safeAreaPadding(.top, 6)
             }
+            .navigationTitle("Alerts")
+            .navigationBarTitleDisplayMode(.inline)
         }
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: tabBarInset)

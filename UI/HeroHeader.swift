@@ -69,6 +69,7 @@ struct HeroHeader: View {
             }
             .padding(18)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 }
 

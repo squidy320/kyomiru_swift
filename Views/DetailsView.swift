@@ -24,6 +24,7 @@ struct DetailsView: View {
     @State private var isBookmarked = false
     @State private var relatedSections: [AniListRelatedSection] = []
     private let episodeService = EpisodeService()
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         ZStack {
@@ -60,7 +61,9 @@ struct DetailsView: View {
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: tabBarInset)
         }
-        .navigationBarBackButtonHidden(true)
+        .navigationBarBackButtonHidden(!isPad)
+        .navigationTitle(isPad ? media.title.best : "")
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             AppLog.debug(.ui, "details view load mediaId=\(media.id)")
             await loadEpisodes()
@@ -128,19 +131,21 @@ struct DetailsView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 36, height: 36)
-                        .background(
-                            Circle().fill(Color.black.opacity(0.4))
-                        )
+            if !isPad {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(
+                                Circle().fill(Color.black.opacity(0.4))
+                            )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .overlay(alignment: .bottom) {

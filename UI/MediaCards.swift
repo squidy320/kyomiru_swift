@@ -5,8 +5,8 @@ struct MediaPosterCard: View {
     let subtitle: String?
     let imageURL: URL?
     let score: Int?
-    private let cardHeight: CGFloat = 232
-    private let cardWidth: CGFloat = 120
+    private let cardHeight: CGFloat = 220
+    private let cardWidth: CGFloat = 150
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -51,7 +51,7 @@ struct MediaPosterCard: View {
                 .padding(10)
         }
         .frame(width: cardWidth, height: cardHeight)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 

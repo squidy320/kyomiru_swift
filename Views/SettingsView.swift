@@ -10,9 +10,11 @@ struct SettingsView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Settings")
-                            .font(.system(size: 28, weight: .heavy))
-                            .foregroundColor(.white)
+                        if UIDevice.current.userInterfaceIdiom != .pad {
+                            Text("Settings")
+                                .font(.system(size: 28, weight: .heavy))
+                                .foregroundColor(.white)
+                        }
 
                         VStack(spacing: 12) {
                             GlassCard {
@@ -140,6 +142,8 @@ struct SettingsView: View {
                     .padding(.bottom, 12)
                     .safeAreaPadding(.top, 6)
                 }
+                .navigationTitle("Settings")
+                .navigationBarTitleDisplayMode(.inline)
             }
         }
         .safeAreaInset(edge: .bottom) {
