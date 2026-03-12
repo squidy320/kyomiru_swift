@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import SwiftUI
+import QuartzCore
 
 #if canImport(Libmpv)
 import Libmpv
@@ -16,9 +17,25 @@ final class MPVPlayerModel: ObservableObject {
 
     private let core = MPVCore()
     private var statusTimer: Timer?
+#if os(iOS)
+    private var pipController: PiPController?
+#endif
 
     func attach(layer: AVSampleBufferDisplayLayer) {
         core.attach(layer: layer)
+#if os(iOS)
+        if pipController == nil {
+            pipController = PiPController(
+                sampleBufferDisplayLayer: layer,
+                isPlaying: { [weak self] in self?.isPlaying ?? false },
+                play: { [weak self] in self?.play() },
+                pause: { [weak self] in self?.pause() },
+                currentTime: { [weak self] in self?.position ?? 0 },
+                duration: { [weak self] in self?.duration ?? 0 },
+                skipBy: { [weak self] delta in self?.seekBy(delta) }
+            )
+        }
+#endif
     }
 
     func load(url: URL, headers: [String: String], startTime: Double?) {
@@ -34,33 +51,64 @@ final class MPVPlayerModel: ObservableObject {
         core.setPaused(false)
         isPlaying = true
         scheduleAutoRefresh()
+#if os(iOS)
+        pipController?.invalidatePlaybackState()
+#endif
     }
 
     func pause() {
         core.setPaused(true)
         isPlaying = false
+#if os(iOS)
+        pipController?.invalidatePlaybackState()
+#endif
     }
 
     func seek(to seconds: Double) {
         core.seek(to: seconds)
         scheduleAutoRefresh()
+#if os(iOS)
+        pipController?.invalidatePlaybackState()
+#endif
     }
 
     func seekBy(_ delta: Double) {
         core.seekBy(delta)
         scheduleAutoRefresh()
+#if os(iOS)
+        pipController?.invalidatePlaybackState()
+#endif
     }
 
     func setRate(_ value: Double) {
         rate = value
         core.setRate(value)
+#if os(iOS)
+        pipController?.invalidatePlaybackState()
+#endif
     }
 
     func shutdown() {
         statusTimer?.invalidate()
         statusTimer = nil
         core.shutdown()
+#if os(iOS)
+        pipController?.stopPictureInPicture()
+        pipController = nil
+#endif
     }
+
+#if os(iOS)
+    func startPictureInPictureIfPossible() -> Bool {
+        guard let pipController, pipController.isPictureInPicturePossible else { return false }
+        pipController.startPictureInPicture()
+        return true
+    }
+
+    func stopPictureInPicture() {
+        pipController?.stopPictureInPicture()
+    }
+#endif
 
     private func startStatusTimer() {
         if statusTimer != nil { return }
@@ -89,6 +137,9 @@ final class MPVPlayerModel: ObservableObject {
         if newDuration > 0 {
             isReady = true
         }
+#if os(iOS)
+        pipController?.invalidatePlaybackState()
+#endif
     }
 }
 
@@ -265,10 +316,18 @@ private final class MPVRenderCoordinator {
     private var lastSize: CGSize = .zero
     private var isRendering = false
     private var formatCString = Array("bgr0".utf8CString)
+    private var minRenderInterval: CFTimeInterval = 1.0 / 30.0
+    private var lastRenderTime: CFTimeInterval = 0
+    private var isRenderScheduled = false
 
     init(handle: OpaquePointer, renderContext: OpaquePointer) {
         self.handle = handle
         self.renderContext = renderContext
+#if os(iOS)
+        let maxFPS = UIScreen.main.maximumFramesPerSecond
+        let cappedFPS = min(maxFPS, 60)
+        minRenderInterval = 1.0 / CFTimeInterval(cappedFPS)
+#endif
     }
 
     func setDisplayLayer(_ layer: AVSampleBufferDisplayLayer) {
@@ -276,25 +335,54 @@ private final class MPVRenderCoordinator {
             self.displayLayer = layer
             self.displayLayer?.videoGravity = .resizeAspect
             self.displayLayer?.backgroundColor = CGColor(gray: 0, alpha: 1)
+            self.displayLayer?.flushAndRemoveImage()
+            self.scheduleRender()
         }
     }
 
     func scheduleRender() {
         queue.async {
-            if self.isRendering { return }
-            self.isRendering = true
-            self.renderFrame()
-            self.isRendering = false
+            let now = CACurrentMediaTime()
+            let elapsed = now - self.lastRenderTime
+
+            if elapsed < self.minRenderInterval {
+                let remaining = self.minRenderInterval - elapsed
+                if self.isRenderScheduled { return }
+                self.isRenderScheduled = true
+                self.queue.asyncAfter(deadline: .now() + remaining) { [weak self] in
+                    guard let self else { return }
+                    self.lastRenderTime = CACurrentMediaTime()
+                    self.performRenderUpdate()
+                    self.isRenderScheduled = false
+                }
+                return
+            }
+
+            if self.isRenderScheduled { return }
+            self.isRenderScheduled = true
+            self.lastRenderTime = now
+            self.performRenderUpdate()
+            self.isRenderScheduled = false
+        }
+    }
+
+    private func performRenderUpdate() {
+        guard let layer = displayLayer else { return }
+        if layer.status == .failed {
+            layer.flushAndRemoveImage()
+        }
+        let updateRaw = mpv_render_context_update(renderContext)
+        let frameMask = UInt64(MPV_RENDER_UPDATE_FRAME.rawValue)
+        if (updateRaw & frameMask) != 0 {
+            renderFrame()
+        }
+        if updateRaw > 0 {
+            scheduleRender()
         }
     }
 
     private func renderFrame() {
         guard let layer = displayLayer else { return }
-        let updateRaw = mpv_render_context_update(renderContext)
-        let frameMask = UInt64(MPV_RENDER_UPDATE_FRAME.rawValue)
-        if (updateRaw & frameMask) == 0 {
-            return
-        }
 
         let size = resolveVideoSize(layer: layer)
         if size.width <= 1 || size.height <= 1 {
@@ -372,6 +460,9 @@ private final class MPVRenderCoordinator {
                                  Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
         }
 
+        if !layer.isReadyForMoreMediaData {
+            layer.flush()
+        }
         layer.enqueue(sampleBuffer)
     }
 

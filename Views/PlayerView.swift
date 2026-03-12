@@ -6,6 +6,7 @@ struct PlayerView: View {
     let mediaId: Int
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var player = MPVPlayerModel()
     @State private var controlsVisible = true
     @State private var isScrubbing = false
@@ -36,6 +37,15 @@ struct PlayerView: View {
         }
         .onChange(of: player.isPlaying) { _, _ in
             scheduleAutoHide()
+        }
+        .onChange(of: scenePhase) { _, phase in
+#if os(iOS)
+            if phase == .background {
+                if !player.startPictureInPictureIfPossible() {
+                    player.pause()
+                }
+            }
+#endif
         }
         .alert("Playback Error", isPresented: Binding(
             get: { player.errorMessage != nil },
