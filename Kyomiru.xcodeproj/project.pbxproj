@@ -41,7 +41,14 @@
         F3F3C1E6A0A94E34A29B1DEB /* UnwatchedBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF49C70551B440FF9A686940 /* UnwatchedBadge.swift */; };
         BD14A6AD0AE24C59ADB229A3 /* KyomiruApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2110ACC12DA4498F90623464 /* KyomiruApp.swift */; };
         B9A3232611B34F8F9A1DD350 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9086C63B78104A0B85864ECF /* ContentView.swift */; };
-/* End PBXBuildFile section */
+        34D87D2A9B9F0C884137BA41 /* JSController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9319810F7BFF414F98EB8BD5 /* JSController.swift */; };
+        C4720C8C2D983F148004369D /* JSController-Search.swift in Sources */ = {isa = PBXBuildFile; fileRef = E38F26C8A04294DC0BE2DC9A /* JSController-Search.swift */; };
+        80D6C3862DCF7D7290AE7AD8 /* JSController-Streams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 054BD8EF3437F74017E74A35 /* JSController-Streams.swift */; };
+        F925FB3B0380A3F17AD2E27E /* JSController-Details.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED74AE460E0A8757756331C5 /* JSController-Details.swift */; };
+        2CFF3ECD27116963C051730A /* JSController-NetworkFetch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A0F16D55021ED2DE2E8DE8 /* JSController-NetworkFetch.swift */; };
+        4788F2D20516CCB44531164A /* JavaScriptCore+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334866F7F2A74AB9510C2588 /* JavaScriptCore+Extensions.swift */; };
+        5FB9970930229D05437710EC /* LunaCompat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D3DAE2316A4076C61FFB793 /* LunaCompat.swift */; };
+
 
 /* Begin PBXFileReference section */
         72071117F02B492EA7D8D08E /* Kyomiru.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Kyomiru.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -80,13 +87,22 @@
         2110ACC12DA4498F90623464 /* KyomiruApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KyomiruApp.swift; sourceTree = "<group>"; };
         9086C63B78104A0B85864ECF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
         38B34000AF8743898D5971C2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-/* End PBXFileReference section */
+        9319810F7BFF414F98EB8BD5 /* JSController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSController.swift; sourceTree = "<group>"; };
+        E38F26C8A04294DC0BE2DC9A /* JSController-Search.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JSController-Search.swift"; sourceTree = "<group>"; };
+        054BD8EF3437F74017E74A35 /* JSController-Streams.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JSController-Streams.swift"; sourceTree = "<group>"; };
+        ED74AE460E0A8757756331C5 /* JSController-Details.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JSController-Details.swift"; sourceTree = "<group>"; };
+        45A0F16D55021ED2DE2E8DE8 /* JSController-NetworkFetch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JSController-NetworkFetch.swift"; sourceTree = "<group>"; };
+        334866F7F2A74AB9510C2588 /* JavaScriptCore+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JavaScriptCore+Extensions.swift"; sourceTree = "<group>"; };
+        4D3DAE2316A4076C61FFB793 /* LunaCompat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LunaCompat.swift; sourceTree = "<group>"; };
+
 
 /* Begin PBXFrameworksBuildPhase section */
         61A1D0A9364F47778B137DBF /* Frameworks */ = {
             isa = PBXFrameworksBuildPhase;
             buildActionMask = 2147483647;
             files = (
+                5C97AFFC7DD823D160FB8E18 /* WebKit.framework in Frameworks */,
+                1F1794364860EAEFCE63C284 /* JavaScriptCore.framework in Frameworks */,
             );
             runOnlyForDeploymentPostprocessing = 0;
         };
@@ -96,6 +112,8 @@
         A1F6688393CD43E789FC9C3D = {
             isa = PBXGroup;
             children = (
+                B9DBA9411C2F769120D165B0 /* WebKit.framework */,
+                59848050E347612F09813FD7 /* JavaScriptCore.framework */,
                 C591C82493CB4BA0B5125830 /* App */,                 1EE5CC4E90AD46AD84E284B2 /* Models */,                 A56FD437DEE6442B8A5604FA /* Services */,                 ECF9CF9AE044490489714400 /* State */,                 69CBAC85A6A842B8A3C969F4 /* UI */,                 07B7F45882C14BB0849DC0B7 /* Views */,                 9B3569C6E5B54AC38A5FC2DB /* Sources */,                 C3B872E7402442BEA5900710 /* Resources */,                 72071117F02B492EA7D8D08E /* Kyomiru.app */,
             );
             sourceTree = "<group>";
@@ -118,6 +136,7 @@
         };        A56FD437DEE6442B8A5604FA /* Services */ = {
             isa = PBXGroup;
             children = (
+                F767F8BD91F7C2D9A61E1009 /* Luna */,
                 8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */,
                 7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */,
                 5A834867881B451BADAD93AA /* AppServices.swift */,
@@ -184,7 +203,21 @@
             path = Resources;
             sourceTree = "<group>";
         };
-/* End PBXGroup section */
+        F767F8BD91F7C2D9A61E1009 /* Luna */ = {
+            isa = PBXGroup;
+            children = (
+                9319810F7BFF414F98EB8BD5 /* JSController.swift */,
+                E38F26C8A04294DC0BE2DC9A /* JSController-Search.swift */,
+                054BD8EF3437F74017E74A35 /* JSController-Streams.swift */,
+                ED74AE460E0A8757756331C5 /* JSController-Details.swift */,
+                45A0F16D55021ED2DE2E8DE8 /* JSController-NetworkFetch.swift */,
+                334866F7F2A74AB9510C2588 /* JavaScriptCore+Extensions.swift */,
+                4D3DAE2316A4076C61FFB793 /* LunaCompat.swift */,
+            );
+            path = Luna;
+            sourceTree = "<group>";
+        };
+
 
 /* Begin PBXNativeTarget section */
         7864ECBDBA1A47A195DD8A53 /* Kyomiru */ = {
@@ -238,6 +271,13 @@
             isa = PBXSourcesBuildPhase;
             buildActionMask = 2147483647;
             files = (
+                34D87D2A9B9F0C884137BA41 /* JSController.swift in Sources */,
+                C4720C8C2D983F148004369D /* JSController-Search.swift in Sources */,
+                80D6C3862DCF7D7290AE7AD8 /* JSController-Streams.swift in Sources */,
+                F925FB3B0380A3F17AD2E27E /* JSController-Details.swift in Sources */,
+                2CFF3ECD27116963C051730A /* JSController-NetworkFetch.swift in Sources */,
+                4788F2D20516CCB44531164A /* JavaScriptCore+Extensions.swift in Sources */,
+                5FB9970930229D05437710EC /* LunaCompat.swift in Sources */,
                 9749FCDEB57240EABD536F98 /* RootView.swift in Sources */,
                 57D7D511708747C286FA1D14 /* AniListModels.swift in Sources */,
                 0AD981C75D824CAB83424331 /* SoraModels.swift in Sources */,
@@ -364,3 +404,5 @@
     };
     rootObject = E8295A472FC94C02B98D39A2 /* Project object */;
 }
+
+
