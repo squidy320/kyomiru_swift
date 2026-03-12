@@ -6,9 +6,24 @@ import Darwin
 
 private typealias MPVGetProcAddress = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?) -> UnsafeMutableRawPointer?
 
+private final class MPVGetProcBox {
+    let getProc: @convention(c) (UnsafePointer<CChar>?) -> UnsafeMutableRawPointer?
+
+    init(_ getProc: @escaping @convention(c) (UnsafePointer<CChar>?) -> UnsafeMutableRawPointer?) {
+        self.getProc = getProc
+    }
+}
+
+private let mpvGetProcThunk: MPVGetProcAddress = { ctx, name in
+    guard let ctx else { return nil }
+    let box = Unmanaged<MPVGetProcBox>.fromOpaque(ctx).takeUnretainedValue()
+    return box.getProc(name)
+}
+
 final class MPVPlayerViewModel: ObservableObject {
     private var handle: OpaquePointer?
     private var renderContext: OpaquePointer?
+    private var getProcBox: MPVGetProcBox?
 
     var isReady = false
 
@@ -52,14 +67,13 @@ final class MPVPlayerViewModel: ObservableObject {
 
     func createRenderContext(getProcAddress: @escaping @convention(c) (UnsafePointer<CChar>?) -> UnsafeMutableRawPointer?) {
         guard let mpv = handle, renderContext == nil else { return }
-
-        let getProc: MPVGetProcAddress = { _, name in
-            return getProcAddress(name)
-        }
+        let box = MPVGetProcBox(getProcAddress)
+        getProcBox = box
+        let boxPtr = Unmanaged.passUnretained(box).toOpaque()
 
         var glInitParams = mpv_opengl_init_params(
-            get_proc_address: getProc,
-            get_proc_address_ctx: nil
+            get_proc_address: mpvGetProcThunk,
+            get_proc_address_ctx: boxPtr
         )
 
         var advanced: Int32 = 1
@@ -122,6 +136,7 @@ final class MPVPlayerViewModel: ObservableObject {
             mpv_terminate_destroy(mpv)
             handle = nil
         }
+        getProcBox = nil
         isReady = false
     }
 
