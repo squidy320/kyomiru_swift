@@ -33,7 +33,7 @@ struct HeroHeader: View {
                 .clipped()
 
             LinearGradient(
-                colors: [Color.black.opacity(0.85), Color.black.opacity(0.35), Color.clear],
+                colors: [Color.black.opacity(0.9), Color.black.opacity(0.5), Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )

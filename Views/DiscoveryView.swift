@@ -9,7 +9,6 @@ struct DiscoveryView: View {
     @State private var isSearching = false
     @State private var searchResults: [AniListMedia] = []
     @State private var searchTask: Task<Void, Never>?
-    @State private var selectedFilter: DiscoveryFilter = .all
     @State private var heroIndex = 0
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
@@ -26,19 +25,6 @@ struct DiscoveryView: View {
                         heroCarousel
 
                         SearchField(placeholder: "Search anime...", text: $query)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
-                                ForEach(DiscoveryFilter.allCases) { filter in
-                                    FilterChip(
-                                        title: filter.title,
-                                        isSelected: selectedFilter == filter,
-                                        action: { selectedFilter = filter }
-                                    )
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
 
                         if isSearching {
                             GlassCard {
@@ -63,7 +49,7 @@ struct DiscoveryView: View {
                                         .font(.system(size: 18, weight: .bold))
                                         .foregroundColor(.white)
                                     ScrollView(.horizontal, showsIndicators: false) {
-                                        HStack(spacing: 12) {
+                                        LazyHStack(spacing: 16) {
                                             ForEach(section.items, id: \.id) { media in
                                                 NavigationLink {
                                                     DetailsView(media: media)
@@ -74,7 +60,8 @@ struct DiscoveryView: View {
                                                         imageURL: media.coverURL,
                                                         score: media.averageScore
                                                     )
-                                                    .frame(width: 150)
+                                                    .frame(width: 120)
+                                                    .clipped()
                                                 }
                                                 .buttonStyle(.plain)
                                             }
@@ -88,6 +75,7 @@ struct DiscoveryView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
                     .padding(.bottom, 12)
+                    .safeAreaPadding(.top, 6)
                 }
             }
         }
@@ -141,7 +129,7 @@ struct DiscoveryView: View {
                     .tag(index)
                 }
             }
-            .frame(height: 260)
+            .frame(height: 350)
             .tabViewStyle(.page(indexDisplayMode: .always))
             .onReceive(heroTimer) { _ in
                 guard !items.isEmpty else { return }
@@ -168,7 +156,8 @@ struct DiscoveryView: View {
             subtitle: "Top rated, new releases, and hot anime",
             imageURL: heroMedia.bannerURL ?? heroMedia.coverURL,
             pills: pills,
-            tags: tags
+            tags: tags,
+            height: 350
         )
     }
 
@@ -178,7 +167,7 @@ struct DiscoveryView: View {
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(.white)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                LazyHStack(spacing: 16) {
                     ForEach(searchResults, id: \.id) { media in
                         NavigationLink {
                             DetailsView(media: media)
@@ -189,7 +178,8 @@ struct DiscoveryView: View {
                                 imageURL: media.coverURL,
                                 score: media.averageScore
                             )
-                            .frame(width: 150)
+                            .frame(width: 120)
+                            .clipped()
                         }
                         .buttonStyle(.plain)
                     }
@@ -198,16 +188,6 @@ struct DiscoveryView: View {
             }
         }
     }
-}
-
-private enum DiscoveryFilter: String, CaseIterable, Identifiable {
-    case all
-    case watching
-    case planning
-    case completed
-
-    var id: String { rawValue }
-    var title: String { rawValue.capitalized }
 }
 
 private extension DiscoveryView {

@@ -65,6 +65,7 @@ struct DetailsView: View {
             AppLog.debug(.ui, "details view load mediaId=\(media.id)")
             await loadEpisodes()
             await loadRelated()
+            isBookmarked = (appState.services.mediaTracker.item(forExternalId: media.id)?.status ?? .planning) != .planning
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let episode = selectedEpisode, !sources.isEmpty {
@@ -122,6 +123,9 @@ struct DetailsView: View {
                 isBookmarked = updated.status != MediaStatus.planning
             }
             .presentationDetents([PresentationDetent.medium])
+            .onAppear {
+                listManagerModel = makeListManagerModel()
+            }
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -216,7 +220,7 @@ struct DetailsView: View {
             .buttonStyle(.plain)
 
             Button {
-                listManagerModel = ListManagerViewModel(item: detailItem)
+                listManagerModel = makeListManagerModel()
                 showListManager = true
             } label: {
                 Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
@@ -290,38 +294,17 @@ struct DetailsView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
             }
-            LazyVGrid(
-                columns: episodeColumns(),
-                spacing: 12
-            ) {
+            LazyVStack(spacing: 12) {
                 ForEach(cards) { card in
                     if card.isPlayable, let ep = card.episode {
                         Button {
                             selectEpisode(ep)
                         } label: {
-                            EpisodeCard(
-                                title: card.title,
-                                subtitle: card.subtitle,
-                                imageURL: card.imageURL,
-                                progressFraction: card.progressFraction,
-                                badgeText: card.badgeText,
-                                score: card.score,
-                                tags: card.tags,
-                                timeBadgeText: card.timeBadgeText
-                            )
+                            EpisodeRow(card: card)
                         }
                         .buttonStyle(.plain)
                     } else {
-                        EpisodeCard(
-                            title: card.title,
-                            subtitle: card.subtitle,
-                            imageURL: card.imageURL,
-                            progressFraction: card.progressFraction,
-                            badgeText: card.badgeText,
-                            score: card.score,
-                            tags: card.tags,
-                            timeBadgeText: card.timeBadgeText
-                        )
+                        EpisodeRow(card: card)
                     }
                 }
             }
@@ -349,6 +332,13 @@ struct DetailsView: View {
             studio: media.studios.first ?? media.format,
             status: .planning
         )
+    }
+
+    private func makeListManagerModel() -> ListManagerViewModel {
+        if let existing = appState.services.mediaTracker.item(forExternalId: media.id) {
+            return ListManagerViewModel(item: existing)
+        }
+        return ListManagerViewModel(item: detailItem)
     }
 
     private func loadEpisodes() async {
@@ -468,10 +458,6 @@ struct DetailsView: View {
         }
     }
 
-    private func episodeColumns() -> [GridItem] {
-        [GridItem(.flexible(), spacing: 12)]
-    }
-
     private func episodeSubtitle() -> String {
         let minutes = 24
         return "Tap to play - \(minutes)m"
@@ -584,95 +570,57 @@ private struct EpisodeCardModel: Identifiable {
     let episode: SoraEpisode?
 }
 
-private struct EpisodeCard: View {
-    let title: String
-    let subtitle: String
-    let imageURL: URL?
-    let progressFraction: Double?
-    let badgeText: String?
-    let score: Int?
-    let tags: [String]
-    let timeBadgeText: String?
+private struct EpisodeRow: View {
+    let card: EpisodeCardModel
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-                .frame(height: 120)
-            if let imageURL {
-                CachedImage(url: imageURL) { img in
-                    img.resizable().aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Color.white.opacity(0.08)
+        HStack(alignment: .top, spacing: 12) {
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 140, height: 80)
+                if let imageURL = card.imageURL {
+                    CachedImage(url: imageURL) { img in
+                        img.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Color.white.opacity(0.08)
+                    }
+                    .frame(width: 140, height: 80)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                .frame(height: 120)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .clipped()
+                if let score = card.score {
+                    RatingBadge(score: score)
+                        .padding(6)
+                }
             }
 
-            LinearGradient(
-                colors: [Color.black.opacity(0.8), Color.clear],
-                startPoint: .bottom,
-                endPoint: .top
-            )
-            .frame(height: 70)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(card.title)
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
-                Text(subtitle)
-                    .font(.system(size: 11, weight: .regular))
+                    .lineLimit(2)
+                Text(card.subtitle)
+                    .font(.system(size: 12))
                     .foregroundColor(Theme.textSecondary)
-                if !tags.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(tags.prefix(2), id: \.self) { tag in
-                            TagPill(text: tag)
-                        }
-                    }
+                    .lineLimit(1)
+                if let timeBadgeText = card.timeBadgeText {
+                    Text(timeBadgeText)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
                 }
-                if let progressFraction {
-                    ProgressView(value: progressFraction)
+                if let progress = card.progressFraction {
+                    ProgressView(value: progress)
                         .tint(Theme.accent)
                 }
             }
-            .padding(10)
-
-            if let badgeText {
-                Text(badgeText)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(Color.black.opacity(0.6))
-                    )
-                    .padding(8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
-
-            if let score {
-                RatingBadge(score: score)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            }
-
-            if let timeBadgeText {
-                Text(timeBadgeText)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(Color.black.opacity(0.6))
-                    )
-                    .padding(8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-            }
+            Spacer(minLength: 0)
         }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+        )
     }
 }
 

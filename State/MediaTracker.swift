@@ -40,6 +40,10 @@ final class MediaTracker: ObservableObject {
         grouped[status, default: []].count
     }
 
+    func item(forExternalId externalId: Int) -> MediaItem? {
+        items.first { $0.externalId == externalId }
+    }
+
     private func rebuildGroups() {
         grouped = Dictionary(grouping: items, by: { $0.status })
     }

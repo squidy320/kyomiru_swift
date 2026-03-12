@@ -31,7 +31,7 @@ struct LibraryView: View {
                         SearchField(placeholder: "Search in library...", text: $filterText)
 
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 12) {
+                            LazyHStack(spacing: 16) {
                                 ForEach(LibraryFilter.allCases) { filter in
                                     FilterChip(
                                         title: filterTitle(filter),
@@ -49,7 +49,7 @@ struct LibraryView: View {
                                     .font(.system(size: 18, weight: .bold))
                                     .foregroundColor(.white)
                                 ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 12) {
+                                    LazyHStack(spacing: 16) {
                                         ForEach(continueWatchingItems()) { item in
                                             ContinueWatchingCard(
                                                 title: item.title,
@@ -89,12 +89,13 @@ struct LibraryView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 12)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
+                .safeAreaPadding(.top, 6)
             }
+        }
         }
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: tabBarInset)
@@ -169,9 +170,12 @@ struct LibraryView: View {
         }
         return section.items.compactMap { entry in
             let idKey = String(entry.media.id)
-            let progress = appState.services.playbackEngine.progressFraction(for: idKey)
-            guard progress > 0, progress < 0.999 else { return nil }
-            let remaining = appState.services.playbackEngine.timeRemaining(for: idKey) ?? 0
+            let progressEntry = appState.services.playbackEngine.progressByItem[idKey]
+            guard let progressEntry,
+                  progressEntry.currentTime > 0,
+                  progressEntry.currentTime < progressEntry.duration else { return nil }
+            let progress = progressEntry.fraction
+            let remaining = progressEntry.timeRemaining
             return ContinueItem(
                 id: entry.media.id,
                 title: entry.media.title.best,
@@ -340,7 +344,7 @@ private struct LibrarySection: View {
                 }
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    LazyHStack(spacing: 16) {
                         ForEach(section.items, id: \.id) { entry in
                             NavigationLink {
                                 DetailsView(media: entry.media)
@@ -351,7 +355,8 @@ private struct LibrarySection: View {
                                     imageURL: entry.media.coverURL,
                                     score: entry.media.averageScore
                                 )
-                                .frame(width: 150)
+                                .frame(width: 120)
+                                .clipped()
                             }
                             .buttonStyle(.plain)
                         }

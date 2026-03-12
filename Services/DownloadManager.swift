@@ -7,7 +7,7 @@ actor OfflineDownloadManager {
     private let fm = FileManager.default
 
     init() {
-        let config = URLSessionConfiguration.background(withIdentifier: "kyomiru.hls.background")
+        let config = URLSessionConfiguration.default
         config.waitsForConnectivity = true
         session = URLSession(configuration: config)
     }

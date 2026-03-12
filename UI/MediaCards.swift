@@ -6,6 +6,7 @@ struct MediaPosterCard: View {
     let imageURL: URL?
     let score: Int?
     private let cardHeight: CGFloat = 232
+    private let cardWidth: CGFloat = 120
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -49,7 +50,8 @@ struct MediaPosterCard: View {
             RatingBadge(score: score)
                 .padding(10)
         }
-        .frame(height: cardHeight)
+        .frame(width: cardWidth, height: cardHeight)
+        .clipped()
     }
 }
 

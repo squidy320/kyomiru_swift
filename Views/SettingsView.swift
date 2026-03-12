@@ -138,6 +138,7 @@ struct SettingsView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
                     .padding(.bottom, 12)
+                    .safeAreaPadding(.top, 6)
                 }
             }
         }

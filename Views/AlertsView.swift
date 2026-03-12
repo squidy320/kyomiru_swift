@@ -51,6 +51,7 @@ struct AlertsView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
                 .padding(.bottom, 12)
+                .safeAreaPadding(.top, 6)
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -103,16 +104,11 @@ private struct AlertRow: View {
                     Text(item.media?.title.best ?? "AniList Update")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white)
-                    if let context = item.context, !context.isEmpty {
-                        Text(context)
-                            .font(.system(size: 12))
-                            .foregroundColor(Theme.textSecondary)
-                            .lineLimit(3)
-                    } else {
-                        Text(item.type.replacingOccurrences(of: "_", with: " ").capitalized)
-                            .font(.system(size: 12))
-                            .foregroundColor(Theme.textSecondary)
-                    }
+                    Text(notificationSummary(item))
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.textSecondary)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
                     Text(formatTimestamp(item.createdAt))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(Theme.textSecondary)
@@ -128,6 +124,22 @@ private struct AlertRow: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private func notificationSummary(_ item: AniListNotificationItem) -> String {
+        let title = item.media?.title.best ?? "Unknown"
+        if let context = item.context, !context.isEmpty {
+            if let episode = extractEpisodeNumber(from: context) {
+                return "Episode \(episode) of \(title) aired."
+            }
+            return context
+        }
+        return "Episode update for \(title)."
+    }
+
+    private func extractEpisodeNumber(from text: String) -> Int? {
+        let digits = text.split { !$0.isNumber }.compactMap { Int($0) }
+        return digits.first
     }
 }
 
