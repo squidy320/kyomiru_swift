@@ -79,7 +79,7 @@ extension PiPController: AVPictureInPictureSampleBufferPlaybackDelegate {
         return !isPlaying()
     }
 
-    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, timeRangeForPlayback timeRange: CMTimeRange) -> CMTimeRange {
+    func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {
         let start = CMTime(seconds: 0, preferredTimescale: 600)
         let endSeconds = max(duration(), 0)
         let end = CMTime(seconds: endSeconds, preferredTimescale: 600)
