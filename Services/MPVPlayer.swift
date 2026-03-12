@@ -291,8 +291,8 @@ private final class MPVRenderCoordinator {
     private func renderFrame() {
         guard let layer = displayLayer else { return }
         let updateRaw = mpv_render_context_update(renderContext)
-        let updateFlags = mpv_render_update_flag(rawValue: UInt32(truncatingIfNeeded: updateRaw))
-        if !updateFlags.contains(MPV_RENDER_UPDATE_FRAME) {
+        let updateBits = UInt32(truncatingIfNeeded: updateRaw)
+        if (updateBits & MPV_RENDER_UPDATE_FRAME) == 0 {
             return
         }
 
