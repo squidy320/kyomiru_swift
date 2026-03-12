@@ -75,7 +75,10 @@ final class SoraRuntime {
                 URLQueryItem(name: "page", value: "\(page)")
             ]
             let data = try await get(url: comps.url!)
-            guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { break }
+            guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                AppLog.error(.network, "episodes list decode failed session=\(match.session)")
+                break
+            }
             lastPage = root["last_page"] as? Int ?? lastPage
             let rows = (root["data"] as? [[String: Any]] ?? [])
             let eps: [SoraEpisode] = rows.compactMap { row in
@@ -204,8 +207,15 @@ final class SoraRuntime {
 
     private func get(url: URL, referer: URL? = nil) async throws -> Data {
         var request = URLRequest(url: url)
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        request.setValue(baseURL.absoluteString, forHTTPHeaderField: "Origin")
         if let referer {
             request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
+        } else {
+            request.setValue(baseURL.absoluteString, forHTTPHeaderField: "Referer")
         }
         AppLog.debug(.network, "http get \(url.absoluteString)")
         let (data, _) = try await session.data(for: request)
