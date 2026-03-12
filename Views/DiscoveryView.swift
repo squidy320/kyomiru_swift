@@ -10,6 +10,8 @@ struct DiscoveryView: View {
     @State private var searchResults: [AniListMedia] = []
     @State private var searchTask: Task<Void, Never>?
     @State private var selectedFilter: DiscoveryFilter = .all
+    @State private var heroIndex = 0
+    private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
@@ -21,7 +23,7 @@ struct DiscoveryView: View {
                             .font(.system(size: 28, weight: .heavy))
                             .foregroundColor(.white)
 
-                        heroHeader
+                        heroCarousel
 
                         SearchField(placeholder: "Search anime...", text: $query)
 
@@ -94,32 +96,77 @@ struct DiscoveryView: View {
         }
         .task {
             AppLog.debug(.ui, "discovery view load")
+            if sections.isEmpty,
+               let cached = appState.services.aniListClient.cachedDiscoverySections() {
+                sections = cached
+            }
             await loadDiscovery()
         }
         .onChange(of: query) { _ in
             runSearch()
+        }
+        .onChange(of: sections) { _ in
+            if heroIndex >= heroItems().count {
+                heroIndex = 0
+            }
         }
     }
     private var tabBarInset: CGFloat {
         UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
 
-    private var heroHeader: some View {
-        let heroMedia = sections.first?.items.first
-        let match = heroMedia?.averageScore ?? 91
-        let rating = heroMedia?.averageScore ?? 83
-        let contentRating = (heroMedia?.isAdult ?? false) ? "TV-MA" : "TV-14"
+    private var heroCarousel: some View {
+        let items = heroItems()
+        if items.isEmpty {
+            return AnyView(
+                HeroHeader(
+                    title: "Easygoing Territory Defense",
+                    subtitle: "Top rated, new releases, and hot anime",
+                    imageURL: nil,
+                    pills: [],
+                    tags: []
+                )
+            )
+        }
+
+        return AnyView(
+            TabView(selection: $heroIndex) {
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, media in
+                    NavigationLink {
+                        DetailsView(media: media)
+                    } label: {
+                        heroHeader(for: media)
+                    }
+                    .buttonStyle(.plain)
+                    .tag(index)
+                }
+            }
+            .frame(height: 260)
+            .tabViewStyle(.page(indexDisplayMode: .always))
+            .onReceive(heroTimer) { _ in
+                guard !items.isEmpty else { return }
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    heroIndex = (heroIndex + 1) % items.count
+                }
+            }
+        )
+    }
+
+    private func heroHeader(for heroMedia: AniListMedia) -> some View {
+        let match = heroMedia.averageScore ?? 91
+        let rating = heroMedia.averageScore ?? 83
+        let contentRating = heroMedia.isAdult ? "TV-MA" : "TV-14"
         let pills = [
             HeroPill(icon: "hand.thumbsup.fill", text: "\(match)% Match"),
             HeroPill(icon: "star.fill", text: "Score \(rating)%"),
             HeroPill(icon: "shield.fill", text: contentRating),
         ]
-        let tags = Array(heroMedia?.genres.prefix(2) ?? [])
+        let tags = Array(heroMedia.genres.prefix(2))
 
         return HeroHeader(
-            title: heroMedia?.title.best ?? "Easygoing Territory Defense",
+            title: heroMedia.title.best,
             subtitle: "Top rated, new releases, and hot anime",
-            imageURL: heroMedia?.bannerURL ?? heroMedia?.coverURL,
+            imageURL: heroMedia.bannerURL ?? heroMedia.coverURL,
             pills: pills,
             tags: tags
         )
@@ -195,6 +242,11 @@ private extension DiscoveryView {
                 }
             }
         }
+    }
+
+    func heroItems() -> [AniListMedia] {
+        let items = sections.first?.items ?? []
+        return Array(items.prefix(5))
     }
 
     func loadDiscovery() async {

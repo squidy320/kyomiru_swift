@@ -1,0 +1,98 @@
+import SwiftUI
+import UIKit
+import CryptoKit
+
+actor ImageCache {
+    static let shared = ImageCache()
+
+    private let memory = NSCache<NSURL, NSData>()
+    private let folder: URL
+    private let session: URLSession
+
+    init() {
+        let fm = FileManager.default
+        let base = fm.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        folder = base.appendingPathComponent("KyomiruImageCache", isDirectory: true)
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        let config = URLSessionConfiguration.default
+        config.requestCachePolicy = .returnCacheDataElseLoad
+        config.urlCache = URLCache(
+            memoryCapacity: 50 * 1024 * 1024,
+            diskCapacity: 200 * 1024 * 1024,
+            diskPath: "KyomiruURLCache"
+        )
+        session = URLSession(configuration: config)
+    }
+
+    func data(for url: URL) async -> Data? {
+        let key = url as NSURL
+        if let cached = memory.object(forKey: key) {
+            return cached as Data
+        }
+
+        let fileURL = fileURLFor(url: url)
+        if let data = try? Data(contentsOf: fileURL) {
+            memory.setObject(data as NSData, forKey: key)
+            return data
+        }
+
+        do {
+            let (data, response) = try await session.data(from: url)
+            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                memory.setObject(data as NSData, forKey: key)
+                try? data.write(to: fileURL, options: .atomic)
+                return data
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
+    private func fileURLFor(url: URL) -> URL {
+        let name = sha256(url.absoluteString)
+        return folder.appendingPathComponent(name).appendingPathExtension("img")
+    }
+
+    private func sha256(_ string: String) -> String {
+        let data = Data(string.utf8)
+        let hash = SHA256.hash(data: data)
+        return hash.compactMap { String(format: "%02x", $0) }.joined()
+    }
+}
+
+struct CachedImage<Content: View, Placeholder: View>: View {
+    let url: URL?
+    let content: (Image) -> Content
+    let placeholder: () -> Placeholder
+
+    @State private var uiImage: UIImage?
+
+    var body: some View {
+        Group {
+            if let uiImage {
+                content(Image(uiImage: uiImage))
+            } else {
+                placeholder()
+            }
+        }
+        .task(id: url) {
+            await load()
+        }
+    }
+
+    private func load() async {
+        guard let url else {
+            await MainActor.run { uiImage = nil }
+            return
+        }
+        if let data = await ImageCache.shared.data(for: url),
+           let image = UIImage(data: data) {
+            await MainActor.run { uiImage = image }
+        } else {
+            await MainActor.run { uiImage = nil }
+        }
+    }
+}
+

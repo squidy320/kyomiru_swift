@@ -67,12 +67,13 @@ struct DownloadsView: View {
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let item = selectedItem, let fileURL = item.localFile {
+                let format = fileURL.pathExtension.lowercased()
                 let source = SoraSource(
                     id: "local|\(item.id)",
                     url: fileURL,
                     quality: "Local",
                     subOrDub: "Sub",
-                    format: "mp4",
+                    format: format.isEmpty ? "mp4" : format,
                     headers: [:]
                 )
                 let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)

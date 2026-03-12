@@ -22,7 +22,7 @@ struct HeroHeader: View {
                 .overlay(
                     Group {
                         if let imageURL {
-                            AsyncImage(url: imageURL) { img in
+                            CachedImage(url: imageURL) { img in
                                 img.resizable().scaledToFill()
                             } placeholder: {
                                 Theme.surface

@@ -20,6 +20,18 @@ final class MediaTracker: ObservableObject {
         rebuildGroups()
     }
 
+    func upsert(_ item: MediaItem) {
+        if let externalId = item.externalId,
+           let index = items.firstIndex(where: { $0.externalId == externalId }) {
+            items[index] = item
+        } else if let index = items.firstIndex(where: { $0.id == item.id }) {
+            items[index] = item
+        } else {
+            items.append(item)
+        }
+        rebuildGroups()
+    }
+
     func items(for status: MediaStatus) -> [MediaItem] {
         grouped[status, default: []]
     }

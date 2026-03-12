@@ -102,9 +102,14 @@ struct LibraryView: View {
         .task {
             AppLog.debug(.ui, "library view load")
             await appState.bootstrap()
+            if let token = appState.authState.token,
+               let cached = appState.services.aniListClient.cachedLibrarySections(token: token),
+               !cached.isEmpty {
+                applyLibrarySections(cached)
+            }
             await loadLibrary()
         }
-    }
+    }
     private var tabBarInset: CGFloat {
         UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
@@ -186,45 +191,52 @@ struct LibraryView: View {
         errorMessage = nil
         do {
             let items = try await appState.services.aniListClient.librarySections(token: token)
-            sections = items
-            for section in items {
-                for entry in section.items {
-                    let totalEpisodes = Double(max(entry.media.episodes ?? 12, 1))
-                    let currentEpisodes = Double(entry.progress)
-                    let duration = totalEpisodes * 24.0 * 60.0
-                    let current = currentEpisodes * 24.0 * 60.0
-                    appState.services.playbackEngine.updateProgress(
-                        for: String(entry.media.id),
-                        currentTime: current,
-                        duration: duration
-                    )
-                }
-            }
-            let mediaItems = items.flatMap { section -> [MediaItem] in
-                let status = statusForSection(section.title)
-                return section.items.map { entry in
-                    MediaItem(
-                        title: entry.media.title.best,
-                        subtitle: entry.media.format,
-                        posterImageURL: entry.media.coverURL,
-                        heroImageURL: entry.media.bannerURL ?? entry.media.coverURL,
-                        ratingScore: entry.media.averageScore,
-                        matchPercent: entry.media.averageScore,
-                        contentRating: entry.media.isAdult ? "TV-MA" : "TV-14",
-                        genres: entry.media.genres,
-                        totalEpisodes: entry.media.episodes,
-                        studio: entry.media.studios.first,
-                        status: status
-                    )
-                }
-            }
-            appState.services.mediaTracker.setItems(mediaItems)
+            applyLibrarySections(items)
         } catch {
             errorMessage = "Failed to load AniList library."
             AppLog.error(.network, "library load failed \(error.localizedDescription)")
         }
         isLoading = false
         AppLog.debug(.network, "library load complete sections=\(sections.count)")
+    }
+
+    private func applyLibrarySections(_ items: [AniListLibrarySection]) {
+        sections = items
+        for section in items {
+            for entry in section.items {
+                let totalEpisodes = Double(max(entry.media.episodes ?? 12, 1))
+                let currentEpisodes = Double(entry.progress)
+                let duration = totalEpisodes * 24.0 * 60.0
+                let current = currentEpisodes * 24.0 * 60.0
+                appState.services.playbackEngine.updateProgress(
+                    for: String(entry.media.id),
+                    currentTime: current,
+                    duration: duration
+                )
+            }
+        }
+        let mediaItems = items.flatMap { section -> [MediaItem] in
+            let status = statusForSection(section.title)
+            return section.items.map { entry in
+                MediaItem(
+                    externalId: entry.media.id,
+                    title: entry.media.title.best,
+                    subtitle: entry.media.format,
+                    posterImageURL: entry.media.coverURL,
+                    heroImageURL: entry.media.bannerURL ?? entry.media.coverURL,
+                    ratingScore: entry.media.averageScore,
+                    matchPercent: entry.media.averageScore,
+                    contentRating: entry.media.isAdult ? "TV-MA" : "TV-14",
+                    genres: entry.media.genres,
+                    totalEpisodes: entry.media.episodes,
+                    currentEpisode: entry.progress,
+                    userRating: entry.media.averageScore ?? 0,
+                    studio: entry.media.studios.first,
+                    status: status
+                )
+            }
+        }
+        appState.services.mediaTracker.setItems(mediaItems)
     }
 
     private func statusForSection(_ title: String) -> MediaStatus {
@@ -240,6 +252,9 @@ struct LibraryView: View {
         }
         if lower.contains("paused") {
             return .paused
+        }
+        if lower.contains("dropped") {
+            return .dropped
         }
         return .planning
     }
@@ -289,7 +304,7 @@ private struct LibraryTopBar: View {
                         .fill(Color.white.opacity(0.08))
                         .frame(width: 38, height: 38)
                     if let url = avatarURL {
-                        AsyncImage(url: url) { image in
+                        CachedImage(url: url) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {
                             ProgressView()

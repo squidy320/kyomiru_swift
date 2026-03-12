@@ -54,6 +54,11 @@ final class AniListClient {
             AppLog.debug(.cache, "trending cache hit")
             return cached.items
         }
+        if let cached = cachedTrendingFromDisk() {
+            AppLog.debug(.cache, "trending disk cache hit")
+            cachedTrending = (cached, Date().addingTimeInterval(60 * 10))
+            return cached
+        }
         AppLog.debug(.network, "trending request start")
         let query = """
         query Trending {
@@ -77,6 +82,7 @@ final class AniListClient {
         """
         let data = try await graphql(query: query)
         let items = decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
+        cacheStore.writeJSON(data, forKey: "discovery:trending")
         cachedTrending = (items, Date().addingTimeInterval(60 * 10))
         AppLog.debug(.network, "trending request success count=\(items.count)")
         return items
@@ -86,6 +92,11 @@ final class AniListClient {
         if let cached = cachedDiscoverySections, cached.expires > Date() {
             AppLog.debug(.cache, "discovery sections cache hit")
             return cached.items
+        }
+        if let cached = cachedDiscoverySectionsFromDisk() {
+            AppLog.debug(.cache, "discovery sections disk cache hit")
+            cachedDiscoverySections = (cached, Date().addingTimeInterval(60 * 10))
+            return cached
         }
         AppLog.debug(.network, "discovery sections request start")
         let query = """
@@ -158,6 +169,7 @@ final class AniListClient {
                 items: decodeMediaList(data: data, keyPath: ["data", "hotNow", "media"])
             )
         ]
+        cacheStore.writeJSON(data, forKey: "discovery:sections")
         cachedDiscoverySections = (sections, Date().addingTimeInterval(60 * 10))
         AppLog.debug(.network, "discovery sections request success count=\(sections.count)")
         return sections
@@ -167,6 +179,11 @@ final class AniListClient {
         if let cached = cachedLibrarySections, cached.expires > Date() {
             AppLog.debug(.cache, "library cache hit")
             return cached.items
+        }
+        if let cached = cachedLibrarySectionsFromDisk(token: token) {
+            AppLog.debug(.cache, "library disk cache hit")
+            cachedLibrarySections = (cached, Date().addingTimeInterval(60 * 5))
+            return cached
         }
         AppLog.debug(.network, "library request start")
         let viewer = try await viewer(token: token)
@@ -199,6 +216,7 @@ final class AniListClient {
         """
         let data = try await graphql(query: query, variables: ["userId": viewer.id], token: token)
         let sections = decodeLibrarySections(data: data)
+        cacheStore.writeJSON(data, forKey: "library:\(token.prefix(8))")
         cachedLibrarySections = (sections, Date().addingTimeInterval(60 * 5))
         AppLog.debug(.network, "library request success count=\(sections.count)")
         return sections
@@ -230,6 +248,46 @@ final class AniListClient {
         let items = decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
         AppLog.debug(.network, "search request success count=\(items.count)")
         return items
+    }
+
+    func cachedDiscoverySections() -> [AniListDiscoverySection]? {
+        cachedDiscoverySectionsFromDisk()
+    }
+
+    func cachedLibrarySections(token: String) -> [AniListLibrarySection]? {
+        cachedLibrarySectionsFromDisk(token: token)
+    }
+
+    private func cachedTrendingFromDisk() -> [AniListMedia]? {
+        guard let data = cacheStore.readJSON(forKey: "discovery:trending") else { return nil }
+        return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
+    }
+
+    private func cachedDiscoverySectionsFromDisk() -> [AniListDiscoverySection]? {
+        guard let data = cacheStore.readJSON(forKey: "discovery:sections") else { return nil }
+        return [
+            AniListDiscoverySection(
+                id: "trending",
+                title: "Trending",
+                items: decodeMediaList(data: data, keyPath: ["data", "trending", "media"])
+            ),
+            AniListDiscoverySection(
+                id: "topRated",
+                title: "Top Rated",
+                items: decodeMediaList(data: data, keyPath: ["data", "topRated", "media"])
+            ),
+            AniListDiscoverySection(
+                id: "hotNow",
+                title: "Hot Now",
+                items: decodeMediaList(data: data, keyPath: ["data", "hotNow", "media"])
+            )
+        ]
+    }
+
+    private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySection]? {
+        let key = "library:\(token.prefix(8))"
+        guard let data = cacheStore.readJSON(forKey: key) else { return nil }
+        return decodeLibrarySections(data: data)
     }
 
     func saveTrackingEntry(token: String, mediaId: Int, progress: Int) async throws -> Bool {

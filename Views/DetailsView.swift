@@ -14,6 +14,8 @@ struct DetailsView: View {
     @State private var isLoadingSources = false
     @State private var showSourceSheet = false
     @State private var showMatchSheet = false
+    @State private var showListManager = false
+    @State private var listManagerModel = ListManagerViewModel(item: MediaItem(title: "", status: .planning))
     @State private var isLoadingMatch = false
     @State private var matchCandidates: [SoraAnimeMatch] = []
     @State private var matchError: String?
@@ -113,6 +115,13 @@ struct DetailsView: View {
                 }
             )
         }
+        .sheet(isPresented: $showListManager) {
+            ListManagerView(item: detailItem, viewModel: listManagerModel) { updated in
+                appState.services.mediaTracker.upsert(updated)
+                isBookmarked = updated.status != .planning
+            }
+            .presentationDetents([.medium])
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -148,7 +157,7 @@ struct DetailsView: View {
                 .overlay(
                     Group {
                         if let url = media.bannerURL ?? media.coverURL {
-                            AsyncImage(url: url) { img in
+                            CachedImage(url: url) { img in
                                 img.resizable().scaledToFill()
                             } placeholder: {
                                 Theme.surface
@@ -206,7 +215,8 @@ struct DetailsView: View {
             .buttonStyle(.plain)
 
             Button {
-                isBookmarked.toggle()
+                listManagerModel = ListManagerViewModel(item: detailItem)
+                showListManager = true
             } label: {
                 Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
                     .font(.system(size: 14, weight: .semibold))
@@ -322,6 +332,7 @@ struct DetailsView: View {
 
     private var detailItem: MediaItem {
         MediaItem(
+            externalId: media.id,
             title: media.title.best,
             subtitle: media.format,
             posterImageURL: media.coverURL,
@@ -331,6 +342,8 @@ struct DetailsView: View {
             contentRating: media.isAdult ? "TV-MA" : "TV-14",
             genres: media.genres,
             totalEpisodes: media.episodes,
+            currentEpisode: 0,
+            userRating: 0,
             studio: media.studios.first ?? media.format,
             status: .planning
         )
@@ -585,7 +598,7 @@ private struct EpisodeCard: View {
                 .fill(Color.white.opacity(0.06))
                 .frame(height: 120)
             if let imageURL {
-                AsyncImage(url: imageURL) { img in
+                CachedImage(url: imageURL) { img in
                     img.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: {
                     Color.white.opacity(0.08)
@@ -791,7 +804,7 @@ private struct MatchPickerSheet: View {
                     ForEach(candidates) { match in
                         HStack(spacing: 12) {
                             if let url = match.imageURL {
-                                AsyncImage(url: url) { img in
+                                CachedImage(url: url) { img in
                                     img.resizable().scaledToFill()
                                 } placeholder: {
                                     Color.white.opacity(0.1)

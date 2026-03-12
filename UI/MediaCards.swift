@@ -5,22 +5,22 @@ struct MediaPosterCard: View {
     let subtitle: String?
     let imageURL: URL?
     let score: Int?
+    private let cardHeight: CGFloat = 232
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             ZStack(alignment: .bottomLeading) {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(Color.white.opacity(0.06))
-                    .frame(height: 232)
 
                 if let imageURL {
-                    AsyncImage(url: imageURL) { image in
+                    CachedImage(url: imageURL) { image in
                         image.resizable().scaledToFill()
                     } placeholder: {
                         Color.white.opacity(0.08)
                     }
-                    .frame(height: 232)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
                 }
 
                 LinearGradient(
@@ -29,7 +29,6 @@ struct MediaPosterCard: View {
                     endPoint: .top
                 )
                 .frame(height: 120)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
@@ -44,10 +43,13 @@ struct MediaPosterCard: View {
                 }
                 .padding(12)
             }
+            .frame(maxWidth: .infinity, maxHeight: cardHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
             RatingBadge(score: score)
                 .padding(10)
         }
+        .frame(height: cardHeight)
     }
 }
 
@@ -57,21 +59,22 @@ struct ContinueWatchingCard: View {
     let progress: Double
     let timeRemainingText: String
     let imageURL: URL?
+    private let cardWidth: CGFloat = 260
+    private let cardHeight: CGFloat = 140
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.white.opacity(0.06))
-                .frame(width: 260, height: 140)
 
             if let imageURL {
-                AsyncImage(url: imageURL) { img in
+                CachedImage(url: imageURL) { img in
                     img.resizable().scaledToFill()
                 } placeholder: {
                     Color.white.opacity(0.08)
                 }
-                .frame(width: 260, height: 140)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
             }
 
             LinearGradient(
@@ -101,5 +104,7 @@ struct ContinueWatchingCard: View {
             }
             .padding(12)
         }
+        .frame(width: cardWidth, height: cardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }

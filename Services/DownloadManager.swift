@@ -23,6 +23,7 @@ final class DownloadManager: NSObject, ObservableObject {
 
     private let fm = FileManager.default
     private let indexKey = "downloads_index.json"
+    private let offlineManager = OfflineDownloadManager()
 
     override init() {
         super.init()
@@ -66,6 +67,13 @@ final class DownloadManager: NSObject, ObservableObject {
         return folder.appendingPathComponent("E\(episode).mp4")
     }
 
+    private func localMergedHLSFileURL(for title: String, episode: Int) -> URL {
+        let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let folder = base.appendingPathComponent("KyomiruDownloads/\(safe(title))", isDirectory: true)
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder.appendingPathComponent("E\(episode).ts")
+    }
+
     private func localHLSFolder(title: String, episode: Int) -> URL {
         let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let folder = base.appendingPathComponent("KyomiruDownloads/\(safe(title))/E\(episode)", isDirectory: true)
@@ -95,91 +103,22 @@ final class DownloadManager: NSObject, ObservableObject {
 
     private func downloadHLS(id: String, url: URL, headers: [String: String]) async {
         do {
+            guard let item = items.first(where: { $0.id == id }) else { return }
             AppLog.debug(.downloads, "hls download start id=\(id)")
-            var request = URLRequest(url: url)
-            for (k, v) in headers {
-                request.setValue(v, forHTTPHeaderField: k)
-            }
-            let (data, _) = try await URLSession.shared.data(for: request)
-            guard let playlist = String(data: data, encoding: .utf8) else {
-                updateStatus(id: id, status: "Failed")
-                AppLog.error(.downloads, "hls playlist decode failed id=\(id)")
-                return
-            }
-            let lines = playlist.split(separator: "\n", omittingEmptySubsequences: false)
-            let segmentLines = lines.filter { !$0.hasPrefix("#") && !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            var localLines: [String] = []
-            let folder = localHLSFolder(title: items.first(where: { $0.id == id })?.title ?? "Unknown", episode: items.first(where: { $0.id == id })?.episode ?? 0)
-            var index = 0
-            let total = max(segmentLines.count, 1)
-            var keyURLString: String?
-            var keyLocalPath: String?
             updateProgress(id: id, progress: 0)
-
-            for line in lines {
-                if line.hasPrefix("#") || line.trimmingCharacters(in: .whitespaces).isEmpty {
-                    let str = String(line)
-                    if str.contains("#EXT-X-KEY") {
-                        if let uriRange = str.range(of: "URI=\"") {
-                            let tail = str[uriRange.upperBound...]
-                            if let end = tail.firstIndex(of: "\"") {
-                                keyURLString = String(tail[..<end])
-                            }
-                        }
-                    }
-                    localLines.append(str)
-                    continue
-                }
-                let raw = String(line).trimmingCharacters(in: .whitespaces)
-                let segmentURL = URL(string: raw, relativeTo: url)?.absoluteURL ?? URL(string: raw)
-                guard let segURL = segmentURL else {
-                    localLines.append(raw)
-                    continue
-                }
-                let localName = String(format: "seg_%04d.ts", index)
-                let localFile = folder.appendingPathComponent(localName)
-                var segRequest = URLRequest(url: segURL)
-                for (k, v) in headers {
-                    segRequest.setValue(v, forHTTPHeaderField: k)
-                }
-                let (segData, _) = try await URLSession.shared.data(for: segRequest)
-                try segData.write(to: localFile, options: .atomic)
-                localLines.append(localName)
-                index += 1
-                updateProgress(id: id, progress: Double(index) / Double(total))
-            }
-
-            if let keyURLString {
-                let keyURL = URL(string: keyURLString, relativeTo: url)?.absoluteURL ?? URL(string: keyURLString)
-                if let keyURL {
-                    var keyRequest = URLRequest(url: keyURL)
-                    for (k, v) in headers {
-                        keyRequest.setValue(v, forHTTPHeaderField: k)
-                    }
-                    let (keyData, _) = try await URLSession.shared.data(for: keyRequest)
-                    let keyFile = folder.appendingPathComponent("key.bin")
-                    try keyData.write(to: keyFile, options: .atomic)
-                    keyLocalPath = "key.bin"
+            let output = localMergedHLSFileURL(for: item.title, episode: item.episode)
+            let localFile = try await offlineManager.downloadAndMerge(
+                playlistURL: url,
+                headers: headers,
+                outputURL: output
+            ) { [weak self] value in
+                Task { @MainActor in
+                    self?.updateProgress(id: id, progress: value)
                 }
             }
-
-            if let keyLocalPath {
-                localLines = localLines.map { line in
-                    if line.contains("#EXT-X-KEY"), line.contains("URI=\"") {
-                        return line.replacingOccurrences(of: #"URI="[^"]+""#, with: "URI=\"\(keyLocalPath)\"", options: .regularExpression)
-                    }
-                    return line
-                }
-            }
-
-            let localPlaylist = localLines.joined(separator: "\n")
-            let playlistURL = folder.appendingPathComponent("index.m3u8")
-            try localPlaylist.data(using: .utf8)?.write(to: playlistURL, options: .atomic)
-            updateStatus(id: id, status: "Completed", localFile: playlistURL)
+            updateStatus(id: id, status: "Completed", localFile: localFile)
             AppLog.debug(.downloads, "hls download complete id=\(id)")
-            if let item = items.first(where: { $0.id == id }) {
-                markWatched(mediaTitle: item.title, episode: item.episode)
-            }
+            markWatched(mediaTitle: item.title, episode: item.episode)
         } catch {
             updateStatus(id: id, status: "Failed")
             AppLog.error(.downloads, "hls download failed id=\(id) error=\(error.localizedDescription)")

@@ -91,7 +91,7 @@ private struct AlertRow: View {
         GlassCard {
             HStack(alignment: .top, spacing: 12) {
                 if let url = item.media?.coverURL {
-                    AsyncImage(url: url) { image in
+                    CachedImage(url: url) { image in
                         image.resizable().scaledToFill()
                     } placeholder: {
                         Color.white.opacity(0.1)
