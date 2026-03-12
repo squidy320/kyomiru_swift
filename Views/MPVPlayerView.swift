@@ -39,6 +39,9 @@ final class MPVPlayerViewModel: ObservableObject {
         _ = mpv_set_option_string(mpv, "gpu-api", "opengl")
         _ = mpv_set_option_string(mpv, "hwdec", "auto-safe")
         _ = mpv_set_option_string(mpv, "demuxer-lavf-o", "protocol_whitelist=file,crypto,data,https,http,tcp,tls,pipe")
+        _ = mpv_set_option_string(mpv, "osc", "yes")
+        _ = mpv_set_option_string(mpv, "input-default-bindings", "yes")
+        _ = mpv_set_option_string(mpv, "input-vo-keyboard", "yes")
         _ = mpv_initialize(mpv)
         isReady = true
     }
