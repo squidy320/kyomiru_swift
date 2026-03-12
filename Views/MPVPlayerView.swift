@@ -4,6 +4,8 @@ import OpenGLES
 import Libmpv
 import Darwin
 
+private typealias MPVGetProcAddress = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?) -> UnsafeMutableRawPointer?
+
 final class MPVPlayerViewModel: ObservableObject {
     private var handle: OpaquePointer?
     private var renderContext: OpaquePointer?
@@ -51,7 +53,7 @@ final class MPVPlayerViewModel: ObservableObject {
     func createRenderContext(getProcAddress: @escaping @convention(c) (UnsafePointer<CChar>?) -> UnsafeMutableRawPointer?) {
         guard let mpv = handle, renderContext == nil else { return }
 
-        let getProc: mpv_opengl_init_params_get_proc_address_fn = { _, name in
+        let getProc: MPVGetProcAddress = { _, name in
             return getProcAddress(name)
         }
 
