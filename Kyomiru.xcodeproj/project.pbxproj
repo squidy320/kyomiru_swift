@@ -39,6 +39,7 @@
         BCFACE101D36497780C276D3 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E6C6FE87AB947BE98547B90 /* LogsView.swift */; };
         C6372A0E92E24F3A9427C2A4 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEA74C0C38214FBC986C9022 /* PlayerView.swift */; };
         3B6A9E0F5A3E4F88B9A1F6C1 /* MPVPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C7E8D9F1B24E3B8C6F4A2D /* MPVPlayerView.swift */; };
+        6D2B9E2B6F5F4B4B9C2A1A11 /* MPVKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9E4A6C0B1D1C4D2F9B8C7A5E /* MPVKit */; };
         92401A9DC859426A8AF69DF2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0A90E57F6F44F0583A71822 /* SettingsView.swift */; };
         F3F3C1E6A0A94E34A29B1DEB /* UnwatchedBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF49C70551B440FF9A686940 /* UnwatchedBadge.swift */; };
         BD14A6AD0AE24C59ADB229A3 /* KyomiruApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2110ACC12DA4498F90623464 /* KyomiruApp.swift */; };
@@ -107,6 +108,7 @@
             files = (
                 5C97AFFC7DD823D160FB8E18 /* WebKit.framework in Frameworks */,
                 1F1794364860EAEFCE63C284 /* JavaScriptCore.framework in Frameworks */,
+                6D2B9E2B6F5F4B4B9C2A1A11 /* MPVKit in Frameworks */,
             );
             runOnlyForDeploymentPostprocessing = 0;
         };
@@ -239,6 +241,9 @@
             dependencies = (
             );
             name = Kyomiru;
+            packageProductDependencies = (
+                9E4A6C0B1D1C4D2F9B8C7A5E /* MPVKit */,
+            );
             productName = Kyomiru;
             productReference = 72071117F02B492EA7D8D08E /* Kyomiru.app */;
             productType = "com.apple.product-type.application";
@@ -253,6 +258,9 @@
             developmentRegion = en;
             hasScannedForEncodings = 0;
             mainGroup = A1F6688393CD43E789FC9C3D;
+            packageReferences = (
+                5A6E6E1E8A0E4E6BBED0F55F /* MPVKit */,
+            );
             productRefGroup = A1F6688393CD43E789FC9C3D;
             projectDirPath = "";
             projectRoot = "";
@@ -324,6 +332,25 @@
             runOnlyForDeploymentPostprocessing = 0;
         };
 /* End PBXSourcesBuildPhase section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+        5A6E6E1E8A0E4E6BBED0F55F /* MPVKit */ = {
+            isa = XCRemoteSwiftPackageReference;
+            repositoryURL = "https://github.com/mpvkit/MPVKit.git";
+            requirement = {
+                kind = upToNextMajorVersion;
+                minimumVersion = 0.41.0;
+            };
+        };
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+        9E4A6C0B1D1C4D2F9B8C7A5E /* MPVKit */ = {
+            isa = XCSwiftPackageProductDependency;
+            package = 5A6E6E1E8A0E4E6BBED0F55F /* MPVKit */;
+            productName = MPVKit;
+        };
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
         9352DCBE24924B6D87856072 /* Debug */ = {
