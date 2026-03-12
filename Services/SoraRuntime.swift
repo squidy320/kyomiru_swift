@@ -522,15 +522,15 @@ final class SoraRuntime {
         script = script
             .replacingOccurrences(
                 of: "match(/<div class=\"anime-synopsis\">(.*?)<\\/div>/s)",
-                with: "match(/<div class=\\\"anime-synopsis\\\">([\\\\s\\\\S]*?)<\\\\/div>/)"
+                with: "match(/<div class=\\\"anime-synopsis\\\">([\\s\\S]*?)<\\/div>/)"
             )
             .replacingOccurrences(
                 of: "match(/<strong>Aired:<\\/strong>(.*?)<\\/p>/s)",
-                with: "match(/<strong>Aired:<\\\\/strong>([\\\\s\\\\S]*?)<\\\\/p>/)"
+                with: "match(/<strong>Aired:<\\/strong>([\\s\\S]*?)<\\/p>/)"
             )
             .replacingOccurrences(
                 of: "match(/<script>(.*?)<\\/script>/s)",
-                with: "match(/<script>([\\\\s\\\\S]*?)<\\\\/script>/)"
+                with: "match(/<script>([\\s\\S]*?)<\\/script>/)"
             )
         AppLog.debug(.network, "luna script loaded size=\(script.count)")
 
