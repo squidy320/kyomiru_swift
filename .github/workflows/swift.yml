@@ -32,17 +32,27 @@ jobs:
 
       - name: Build Archive (Unsigned)
         run: |
-          xcodebuild archive \
-            -project Kyomiru.xcodeproj \
-            -scheme Kyomiru \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -archivePath $PWD/Kyomiru.xcarchive \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+          set -e
+          for attempt in 1 2; do
+            xcodebuild archive \
+              -project Kyomiru.xcodeproj \
+              -scheme Kyomiru \
+              -configuration Release \
+              -sdk iphoneos \
+              -destination 'generic/platform=iOS' \
+              -archivePath $PWD/Kyomiru.xcarchive \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              AD_HOC_CODE_SIGNING_ALLOWED=YES \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              ONLY_ACTIVE_ARCH=NO && break
+            echo "xcodebuild failed on attempt $attempt"
+            if [ "$attempt" -eq 2 ]; then
+              exit 1
+            fi
+            rm -rf ~/Library/Developer/Xcode/DerivedData
+          done
 
       - name: Prepare IPA (Sideload Ready)
         run: |
