@@ -416,57 +416,65 @@ actor MediaConversionManager {
         }
 
         let coordinator = NSFileCoordinator()
-        var coordinationError: NSError?
 
         return try await withCheckedThrowingContinuation { continuation in
-            coordinator.coordinate(readingItemAt: inputURL, options: .withoutChanges, error: &coordinationError) { coordinatedURL in
-                if let coordinationError {
-                    continuation.resume(throwing: coordinationError)
-                    return
-                }
+            var coordError: NSError?
+            var coordinatedURL: URL?
+            coordinator.coordinate(readingItemAt: inputURL, options: .withoutChanges, error: &coordError) { url in
+                coordinatedURL = url
+            }
 
-                let asset = AVURLAsset(url: coordinatedURL)
-                guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
-                    continuation.resume(throwing: ConversionError.exportFailed("AVAssetExportSession init failed"))
-                    return
-                }
+            if let coordError {
+                continuation.resume(throwing: coordError)
+                return
+            }
 
-                try? FileManager.default.removeItem(at: outputURL)
-                export.outputURL = outputURL
-                export.outputFileType = .mp4
-                export.shouldOptimizeForNetworkUse = true
+            guard let coordinatedURL else {
+                continuation.resume(throwing: ConversionError.exportFailed("File coordination failed"))
+                return
+            }
 
-                let progressTimer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-                progressTimer.schedule(deadline: .now(), repeating: .milliseconds(200))
-                progressTimer.setEventHandler {
-                    progress?(Double(export.progress))
-                }
-                progressTimer.resume()
+            let asset = AVURLAsset(url: coordinatedURL)
+            guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
+                continuation.resume(throwing: ConversionError.exportFailed("AVAssetExportSession init failed"))
+                return
+            }
 
-                export.exportAsynchronously {
-                    progressTimer.cancel()
+            try? FileManager.default.removeItem(at: outputURL)
+            export.outputURL = outputURL
+            export.outputFileType = .mp4
+            export.shouldOptimizeForNetworkUse = true
 
-                    switch export.status {
-                    case .completed:
-                        if inputURL.pathExtension.lowercased() == "ts" {
-                            try? FileManager.default.removeItem(at: inputURL)
-                        }
-                        continuation.resume(returning: outputURL)
-                    case .failed:
-                        let message = self.describe(export.error)
-                        continuation.resume(throwing: ConversionError.exportFailed(message))
-                    case .cancelled:
-                        continuation.resume(throwing: ConversionError.cancelled)
-                    default:
-                        let message = self.describe(export.error)
-                        continuation.resume(throwing: ConversionError.exportFailed(message))
+            let progressTimer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+            progressTimer.schedule(deadline: .now(), repeating: .milliseconds(200))
+            progressTimer.setEventHandler {
+                progress?(Double(export.progress))
+            }
+            progressTimer.resume()
+
+            export.exportAsynchronously {
+                progressTimer.cancel()
+
+                switch export.status {
+                case .completed:
+                    if inputURL.pathExtension.lowercased() == "ts" {
+                        try? FileManager.default.removeItem(at: inputURL)
                     }
+                    continuation.resume(returning: outputURL)
+                case .failed:
+                    let message = MediaConversionManager.describe(export.error)
+                    continuation.resume(throwing: ConversionError.exportFailed(message))
+                case .cancelled:
+                    continuation.resume(throwing: ConversionError.cancelled)
+                default:
+                    let message = MediaConversionManager.describe(export.error)
+                    continuation.resume(throwing: ConversionError.exportFailed(message))
                 }
             }
         }
     }
 
-    private func describe(_ error: Error?) -> String {
+    nonisolated static func describe(_ error: Error?) -> String {
         guard let error = error as NSError? else {
             return "unknown export error"
         }
