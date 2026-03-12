@@ -80,7 +80,7 @@ struct DownloadsView: View {
                 PlayerView(episode: episode, sources: [source], mediaId: 0)
             }
         }
-        .onChange(of: showPlayer) {
+        .onChange(of: showPlayer) { _, _ in
             if showPlayer, let item = selectedItem {
                 AppLog.debug(.ui, "offline player present id=\(item.id)")
             }

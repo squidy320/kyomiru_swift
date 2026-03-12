@@ -102,10 +102,10 @@ struct DiscoveryView: View {
             }
             await loadDiscovery()
         }
-        .onChange(of: query) { _ in
+        .onChange(of: query) { _, _ in
             runSearch()
         }
-        .onChange(of: sections) { _ in
+        .onChange(of: sections) { _, _ in
             if heroIndex >= heroItems().count {
                 heroIndex = 0
             }
