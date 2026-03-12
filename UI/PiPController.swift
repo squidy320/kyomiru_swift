@@ -32,6 +32,8 @@ final class PiPController: NSObject {
         self.duration = duration
         self.skipBy = skipBy
 
+        super.init()
+
         if AVPictureInPictureController.isPictureInPictureSupported() {
             let source = AVPictureInPictureController.ContentSource(
                 sampleBufferDisplayLayer: sampleBufferDisplayLayer,
@@ -39,15 +41,10 @@ final class PiPController: NSObject {
             )
             let pip = AVPictureInPictureController(contentSource: source)
             pip.canStartPictureInPictureAutomaticallyFromInline = true
+            pip.delegate = self
             controller = pip
         } else {
             controller = nil
-        }
-
-        super.init()
-
-        if let controller {
-            controller.delegate = self
         }
     }
 
