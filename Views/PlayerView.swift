@@ -1,11 +1,10 @@
 import SwiftUI
-import AVKit
 
 struct PlayerView: View {
     let episode: SoraEpisode
     let sources: [SoraSource]
     @Environment(\.dismiss) private var dismiss
-    @State private var player = AVPlayer()
+    @State private var playerModel = MPVPlayerViewModel()
     @State private var playbackSpeed: Float = 1.0
     @State private var selectedSource: SoraSource?
     @State private var selectedAudio: String = "Sub"
@@ -13,28 +12,28 @@ struct PlayerView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            PlayerContainer(player: $player)
+            MPVPlayerContainer(viewModel: playerModel)
                 .ignoresSafeArea()
                 .onAppear {
                     AppLog.debug(.player, "player appear episode=\(episode.id)")
+                    playerModel.initializeIfNeeded()
                     let initial = pickSource(audio: selectedAudio, quality: selectedQuality) ?? sources.first
                     selectedSource = initial
                     if let src = initial {
-                        let item = AVPlayerItem(url: src.url)
-                        player.replaceCurrentItem(with: item)
+                        playerModel.load(url: src.url)
                     }
                     if let saved = PlaybackHistoryStore.shared.position(for: episode.id) {
-                        let cm = CMTime(seconds: saved, preferredTimescale: 600)
-                        player.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero)
+                        playerModel.seek(to: saved)
                     }
-                    player.play()
+                    playerModel.setSpeed(Double(playbackSpeed))
+                    playerModel.setPaused(false)
                 }
                 .onDisappear {
-                    let seconds = player.currentTime().seconds
-                    if seconds.isFinite {
+                    if let seconds = playerModel.currentTime(), seconds.isFinite {
                         PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
                     }
-                    player.pause()
+                    playerModel.setPaused(true)
+                    playerModel.destroy()
                     AppLog.debug(.player, "player disappear episode=\(episode.id)")
                 }
 
@@ -108,10 +107,8 @@ struct PlayerView: View {
     private func setSpeed(_ speed: Double) {
         AppLog.debug(.player, "player speed change \(speed)")
         playbackSpeed = Float(speed)
-        let currentTime = player.currentTime()
-        player.rate = playbackSpeed
-        player.seek(to: currentTime, toleranceBefore: .zero, toleranceAfter: .zero)
-        player.play()
+        playerModel.setSpeed(speed)
+        playerModel.setPaused(false)
     }
 
     private func audioKey(_ value: String) -> String {
@@ -154,31 +151,12 @@ struct PlayerView: View {
         guard let target = pickSource(audio: audio, quality: quality) else { return }
         AppLog.debug(.player, "player source switch audio=\(audio) quality=\(quality)")
         selectedSource = target
-        let currentTime = player.currentTime()
-        let item = AVPlayerItem(url: target.url)
-        player.replaceCurrentItem(with: item)
-        player.seek(to: currentTime, toleranceBefore: .zero, toleranceAfter: .zero)
-        player.play()
+        let currentTime = playerModel.currentTime()
+        playerModel.load(url: target.url)
+        if let seconds = currentTime, seconds.isFinite {
+            playerModel.seek(to: seconds)
+        }
+        playerModel.setPaused(false)
     }
-}
-
-private struct PlayerContainer: UIViewControllerRepresentable {
-    @Binding var player: AVPlayer
-
-    func makeUIViewController(context: Context) -> PlayerHostController {
-        let controller = PlayerHostController()
-        controller.player = player
-        return controller
-    }
-
-    func updateUIViewController(_ uiViewController: PlayerHostController, context: Context) {
-        uiViewController.player = player
-    }
-}
-
-final class PlayerHostController: AVPlayerViewController {
-    override var prefersStatusBarHidden: Bool { true }
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
-    override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation { .fade }
 }
 
