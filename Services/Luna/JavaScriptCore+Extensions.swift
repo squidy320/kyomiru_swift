@@ -7,6 +7,16 @@
 
 import JavaScriptCore
 
+extension JSValue {
+    var debugSummary: String {
+        let message = toString() ?? "Unknown JS error"
+        if let stack = objectForKeyedSubscript("stack")?.toString(), !stack.isEmpty {
+            return "\(message)\n\(stack)"
+        }
+        return message
+    }
+}
+
 extension JSContext {
     func setupWeirdCode() {
         let polyfills = """

@@ -10,7 +10,7 @@ import JavaScriptCore
 extension JSController {
     func fetchStreamUrlJS(episodeUrl: String, softsub: Bool = false, module: Service, completion: @escaping ((streams: [String]?, subtitles: [String]?,sources: [[String:Any]]? )) -> Void) {
         if let exception = context.exception {
-            LunaLogger.shared.log("JavaScript exception: \(exception)", type: "Error")
+            LunaLogger.shared.log("JavaScript exception: \(exception.debugSummary)", type: "Error")
             completion((nil, nil,nil))
             return
         }

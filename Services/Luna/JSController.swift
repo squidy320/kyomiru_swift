@@ -27,7 +27,7 @@ class JSController: NSObject, ObservableObject {
         context.setupJavaScriptEnvironment()
         context.evaluateScript(script)
         if let exception = context.exception {
-            LunaLogger.shared.log("Error loading script: \(exception)", type: "Error")
+            LunaLogger.shared.log("Error loading script: \(exception.debugSummary)", type: "Error")
         }
     }
 }
