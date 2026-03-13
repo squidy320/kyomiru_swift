@@ -274,6 +274,16 @@ private final class MPVCore {
     func load(url: URL, headers: [String: String], startTime: Double?) {
         queue.async {
             guard let handle = self.handle else { return }
+            if url.isFileURL {
+                let path = url.path
+                let exists = FileManager.default.fileExists(atPath: path)
+                AppLog.debug(.player, "mpv loadfile local exists=\(exists) path=\(path)")
+                if !exists {
+                    AppLog.error(.player, "mpv loadfile missing local file path=\(path)")
+                }
+            } else {
+                AppLog.debug(.player, "mpv loadfile remote url=\(url.absoluteString)")
+            }
             if headers.isEmpty {
                 mpv_set_property_string(handle, "http-header-fields", "")
             } else {
@@ -394,7 +404,7 @@ private final class MPVRenderCoordinator {
     private var formatDescription: CMVideoFormatDescription?
     private var lastSize: CGSize = .zero
     private var isRendering = false
-    private var formatCString = Array("bgra".utf8CString)
+    private var formatCString = Array("bgr0".utf8CString)
     private var minRenderInterval: CFTimeInterval = 1.0 / 30.0
     private var lastRenderTime: CFTimeInterval = 0
     private var isRenderScheduled = false
@@ -422,10 +432,12 @@ private final class MPVRenderCoordinator {
     func setDisplayLayer(_ layer: AVSampleBufferDisplayLayer) {
         queue.async {
             self.displayLayer = layer
-            self.displayLayer?.videoGravity = .resizeAspect
-            self.displayLayer?.backgroundColor = CGColor(gray: 0, alpha: 1)
-            self.displayLayer?.flushAndRemoveImage()
-            self.configureTimebaseIfNeeded()
+            DispatchQueue.main.async {
+                self.displayLayer?.videoGravity = .resizeAspect
+                self.displayLayer?.backgroundColor = CGColor(gray: 0, alpha: 1)
+                self.displayLayer?.flushAndRemoveImage()
+                self.configureTimebaseIfNeeded()
+            }
             self.scheduleRender()
         }
     }
@@ -497,7 +509,8 @@ private final class MPVRenderCoordinator {
         var pixelBuffer: CVPixelBuffer?
         let attrs: [CFString: Any] = [
             kCVPixelBufferCGImageCompatibilityKey: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey: true
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+            kCVPixelBufferIOSurfacePropertiesKey: [:]
         ]
         let status = CVPixelBufferCreate(kCFAllocatorDefault,
                                          Int(size.width),
@@ -624,7 +637,10 @@ private final class MPVRenderCoordinator {
         let status = CMTimebaseCreateWithMasterClock(allocator: kCFAllocatorDefault,
                                                      masterClock: clock,
                                                      timebaseOut: &newTimebase)
-        guard status == noErr, let timebase = newTimebase else { return }
+        guard status == noErr, let timebase = newTimebase else {
+            AppLog.error(.player, "mpv timebase create failed status=\(status)")
+            return
+        }
         CMTimebaseSetTime(timebase, time: .zero)
         CMTimebaseSetRate(timebase, rate: 1.0)
         layer.controlTimebase = timebase
@@ -635,6 +651,10 @@ private final class MPVRenderCoordinator {
         let hostTime = CACurrentMediaTime()
         if firstFrameHostTime == nil {
             firstFrameHostTime = hostTime
+            if let timebase {
+                CMTimebaseSetTime(timebase, time: .zero)
+                CMTimebaseSetRate(timebase, rate: 1.0)
+            }
         }
 
         let frameRate = resolveFrameRate() ?? 30.0
