@@ -14,12 +14,11 @@ final class MPVPlayerModel: ObservableObject {
     @Published var duration: Double = 0
     @Published var rate: Double = 1
     @Published var errorMessage: String?
-#if DEBUG
     @Published var debugStats: MPVDebugStats?
-#endif
 
     private let core = MPVCore()
     private var statusTimer: Timer?
+    private var wantsDebugStats = false
 #if os(iOS) && !targetEnvironment(macCatalyst)
     private var pipController: PiPController?
 #endif
@@ -48,6 +47,13 @@ final class MPVPlayerModel: ObservableObject {
 
     func togglePlay() {
         isPlaying ? pause() : play()
+    }
+
+    func setDebugOverlayEnabled(_ enabled: Bool) {
+        wantsDebugStats = enabled
+        if !enabled {
+            debugStats = nil
+        }
     }
 
     func play() {
@@ -143,9 +149,9 @@ final class MPVPlayerModel: ObservableObject {
 #if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
 #endif
-#if DEBUG
-        debugStats = core.renderStats()
-#endif
+        if wantsDebugStats {
+            debugStats = core.renderStats()
+        }
     }
 }
 
@@ -158,13 +164,15 @@ struct MPVVideoView: View {
                 player.attach(layer: layer)
             }
             .background(Color.black)
-#if DEBUG
             if let stats = player.debugStats {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("MPV Debug")
                         .font(.system(size: 12, weight: .semibold))
                     Text("frames: \(stats.framesRendered)")
                     Text("lastUpdate: \(String(format: "%.2f", stats.secondsSinceUpdate))s")
+                    Text("enqueued: \(stats.framesEnqueued)")
+                    Text("lastEnqueue: \(String(format: "%.2f", stats.secondsSinceEnqueue))s")
+                    Text("updateMask: \(stats.lastUpdateMask)")
                     Text("size: \(stats.videoSize)")
                     Text("layer: \(stats.layerStatus)")
                     if let error = stats.layerError {
@@ -178,7 +186,6 @@ struct MPVVideoView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(8)
             }
-#endif
         }
     }
 }
@@ -189,6 +196,14 @@ private final class MPVCore {
     private var renderContext: OpaquePointer?
     private var renderCoordinator: MPVRenderCoordinator?
     private var eventTimer: DispatchSourceTimer?
+    private static let logCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<mpv_log_message>?) -> Void = { _, msg in
+        guard let msg else { return }
+        let level = String(cString: msg.pointee.level)
+        let text = String(cString: msg.pointee.text).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+            AppLog.debug(.player, "mpv[\(level)]: \(text)")
+        }
+    }
 
     init() {
         queue.sync {
@@ -214,6 +229,13 @@ private final class MPVCore {
                 self.handle = nil
                 return
             }
+
+#if DEBUG
+            mpv_request_log_messages(handle, "info")
+#else
+            mpv_request_log_messages(handle, "warn")
+#endif
+            mpv_set_log_callback(handle, MPVCore.logCallback, nil)
 
             var apiType = UnsafePointer<CChar>(strdup(MPV_RENDER_API_TYPE_SW))
             defer { free(UnsafeMutablePointer(mutating: apiType)) }
@@ -337,12 +359,10 @@ private final class MPVCore {
         }
     }
 
-#if DEBUG
     func renderStats() -> MPVDebugStats? {
         guard let coordinator = renderCoordinator else { return nil }
         return coordinator.snapshot()
     }
-#endif
 
     private func command(_ args: [String]) {
         guard let handle = handle else { return }
@@ -386,11 +406,12 @@ private final class MPVRenderCoordinator {
     private var minRenderInterval: CFTimeInterval = 1.0 / 30.0
     private var lastRenderTime: CFTimeInterval = 0
     private var isRenderScheduled = false
-#if DEBUG
+    private var lastEnqueueTime: CFTimeInterval = 0
+    private var framesEnqueued: Int = 0
     private var framesRendered: Int = 0
     private var lastUpdateTime: CFTimeInterval = 0
     private var lastLogTime: CFTimeInterval = 0
-#endif
+    private var lastUpdateMask: UInt64 = 0
 
     init(handle: OpaquePointer, renderContext: OpaquePointer) {
         self.handle = handle
@@ -439,13 +460,15 @@ private final class MPVRenderCoordinator {
 #endif
         }
         let updateRaw = mpv_render_context_update(renderContext)
-#if DEBUG
+        lastUpdateMask = updateRaw
         lastUpdateTime = CACurrentMediaTime()
+#if DEBUG
         let now = lastUpdateTime
         if now - lastLogTime > 2.0 {
             lastLogTime = now
             AppLog.debug(.player, "mpv update=\(updateRaw) size=\(Int(lastSize.width))x\(Int(lastSize.height)) layer=\(layer.status.rawValue)")
         }
+#endif
 #endif
         let frameMask = UInt64(MPV_RENDER_UPDATE_FRAME.rawValue)
         if (updateRaw & frameMask) != 0 {
@@ -549,10 +572,13 @@ private final class MPVRenderCoordinator {
         if !layer.isReadyForMoreMediaData {
             layer.flush()
         }
+        if layer.requiresFlushToResumeDecoding {
+            layer.flush()
+        }
         layer.enqueue(sampleBuffer)
-#if DEBUG
+        framesEnqueued += 1
+        lastEnqueueTime = CACurrentMediaTime()
         framesRendered += 1
-#endif
     }
 
     private func resolveVideoSize(layer: AVSampleBufferDisplayLayer) -> CGSize {
@@ -568,7 +594,6 @@ private final class MPVRenderCoordinator {
         return CGSize(width: CGFloat(width), height: CGFloat(height))
     }
 
-#if DEBUG
     func snapshot() -> MPVDebugStats {
         let sizeText: String
         if lastSize.width > 0 && lastSize.height > 0 {
@@ -599,21 +624,24 @@ private final class MPVRenderCoordinator {
             secondsSinceUpdate: since,
             videoSize: sizeText,
             layerStatus: layerStatusText,
-            layerError: layerErrorText
+            layerError: layerErrorText,
+            framesEnqueued: framesEnqueued,
+            secondsSinceEnqueue: max(CACurrentMediaTime() - lastEnqueueTime, 0),
+            lastUpdateMask: lastUpdateMask
         )
     }
-#endif
 }
 
-#if DEBUG
 struct MPVDebugStats: Equatable {
     let framesRendered: Int
     let secondsSinceUpdate: Double
     let videoSize: String
     let layerStatus: String
     let layerError: String?
+    let framesEnqueued: Int
+    let secondsSinceEnqueue: Double
+    let lastUpdateMask: UInt64
 }
-#endif
 
 #else
 

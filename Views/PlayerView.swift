@@ -38,6 +38,9 @@ struct PlayerView: View {
         .onChange(of: player.isPlaying) { _, _ in
             scheduleAutoHide()
         }
+        .onChange(of: appState.settings.showPlayerDebugOverlay) { _, value in
+            player.setDebugOverlayEnabled(value)
+        }
         .onChange(of: scenePhase) { _, phase in
 #if os(iOS) && !targetEnvironment(macCatalyst)
             if phase == .background {
@@ -223,6 +226,7 @@ struct PlayerView: View {
     }
 
     private func startPlayback() {
+        player.setDebugOverlayEnabled(appState.settings.showPlayerDebugOverlay)
         AppLog.debug(.player, "player appear episode=\(episode.id)")
         PlaybackHistoryStore.shared.saveLastEpisode(
             mediaId: mediaId,

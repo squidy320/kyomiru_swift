@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct LogsView: View {
+    @EnvironmentObject private var appState: AppState
     @StateObject private var store = LogStore.shared
     @State private var sharePayload: SharePayload?
 
@@ -31,7 +32,14 @@ struct LogsView: View {
         }
         .navigationTitle("Logs")
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    appState.settings.showPlayerDebugOverlay.toggle()
+                } label: {
+                    Image(systemName: appState.settings.showPlayerDebugOverlay ? "waveform.path.ecg.rectangle" : "waveform.path.ecg")
+                }
+                .accessibilityLabel("Toggle Player Debug Overlay")
+
                 Button("Share .txt") {
                     sharePayload = SharePayload(items: [store.exportURL()])
                 }
