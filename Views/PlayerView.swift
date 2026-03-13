@@ -19,7 +19,7 @@ struct PlayerView: View {
             MPVVideoView(player: player)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
-                .onTapGesture { toggleControls() }
+                .onTapGesture { showControls() }
 
             if !player.isReady {
                 loadingOverlay
