@@ -39,6 +39,10 @@ jobs:
             -project Kyomiru.xcodeproj \
             -scheme Kyomiru
 
+      - name: Lint String Interpolation
+        run: |
+          python3 scripts/lint_interpolation.py
+
       - name: Build Archive (Unsigned)
         run: |
           set -e
