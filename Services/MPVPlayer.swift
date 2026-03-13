@@ -173,6 +173,7 @@ struct MPVVideoView: View {
                     Text("enqueued: \(stats.framesEnqueued)")
                     Text("lastEnqueue: \(String(format: "%.2f", stats.secondsSinceEnqueue))s")
                     Text("updateMask: \(stats.lastUpdateMask)")
+                    Text("fps: \(String(format: "%.1f", stats.fps))")
                     Text("size: \(stats.videoSize)")
                     Text("layer: \(stats.layerStatus)")
                     if let error = stats.layerError {
@@ -403,6 +404,10 @@ private final class MPVRenderCoordinator {
     private var lastUpdateTime: CFTimeInterval = 0
     private var lastLogTime: CFTimeInterval = 0
     private var lastUpdateMask: UInt64 = 0
+    private var timebase: CMTimebase?
+    private var firstFrameHostTime: CFTimeInterval?
+    private var lastFrameHostTime: CFTimeInterval?
+    private var fpsEstimate: Double = 0
 
     init(handle: OpaquePointer, renderContext: OpaquePointer) {
         self.handle = handle
@@ -420,6 +425,7 @@ private final class MPVRenderCoordinator {
             self.displayLayer?.videoGravity = .resizeAspect
             self.displayLayer?.backgroundColor = CGColor(gray: 0, alpha: 1)
             self.displayLayer?.flushAndRemoveImage()
+            self.configureTimebaseIfNeeded()
             self.scheduleRender()
         }
     }
@@ -536,9 +542,7 @@ private final class MPVRenderCoordinator {
         }
         guard let formatDescription else { return }
 
-        var timing = CMSampleTimingInfo(duration: .invalid,
-                                        presentationTimeStamp: .invalid,
-                                        decodeTimeStamp: .invalid)
+        let timing = makeTimingInfo()
         var sampleBuffer: CMSampleBuffer?
         let result = CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault,
                                                         imageBuffer: pixelBuffer,
@@ -550,20 +554,12 @@ private final class MPVRenderCoordinator {
                                                         sampleBufferOut: &sampleBuffer)
         guard result == noErr, let sampleBuffer else { return }
 
-        if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true),
-           CFArrayGetCount(attachments) > 0,
-           let attachment = CFArrayGetValueAtIndex(attachments, 0) {
-            let dict = unsafeBitCast(attachment, to: CFMutableDictionary.self)
-            CFDictionarySetValue(dict,
-                                 Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
-                                 Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
-        }
-
-        if !layer.isReadyForMoreMediaData {
-            layer.flush()
-        }
         if layer.requiresFlushToResumeDecoding {
             layer.flush()
+        }
+        if !layer.isReadyForMoreMediaData {
+            scheduleRender()
+            return
         }
         layer.enqueue(sampleBuffer)
         framesEnqueued += 1
@@ -616,8 +612,57 @@ private final class MPVRenderCoordinator {
             layerError: layerErrorText,
             framesEnqueued: framesEnqueued,
             secondsSinceEnqueue: max(CACurrentMediaTime() - lastEnqueueTime, 0),
-            lastUpdateMask: lastUpdateMask
+            lastUpdateMask: lastUpdateMask,
+            fps: fpsEstimate
         )
+    }
+
+    private func configureTimebaseIfNeeded() {
+        guard let layer = displayLayer, layer.controlTimebase == nil else { return }
+        var newTimebase: CMTimebase?
+        let clock = CMClockGetHostTimeClock()
+        let status = CMTimebaseCreateWithMasterClock(allocator: kCFAllocatorDefault,
+                                                     masterClock: clock,
+                                                     timebaseOut: &newTimebase)
+        guard status == noErr, let timebase = newTimebase else { return }
+        CMTimebaseSetTime(timebase, time: .zero)
+        CMTimebaseSetRate(timebase, rate: 1.0)
+        layer.controlTimebase = timebase
+        self.timebase = timebase
+    }
+
+    private func makeTimingInfo() -> CMSampleTimingInfo {
+        let hostTime = CACurrentMediaTime()
+        if firstFrameHostTime == nil {
+            firstFrameHostTime = hostTime
+        }
+
+        let frameRate = resolveFrameRate() ?? 30.0
+        let frameDuration = CMTimeMakeWithSeconds(1.0 / frameRate, preferredTimescale: 600)
+        let ptsSeconds = max(hostTime - (firstFrameHostTime ?? hostTime), 0)
+        let pts = CMTimeMakeWithSeconds(ptsSeconds, preferredTimescale: 600)
+
+        if let lastHost = lastFrameHostTime {
+            let delta = max(hostTime - lastHost, 0.001)
+            fpsEstimate = 1.0 / delta
+        }
+        lastFrameHostTime = hostTime
+
+        return CMSampleTimingInfo(duration: frameDuration,
+                                  presentationTimeStamp: pts,
+                                  decodeTimeStamp: .invalid)
+    }
+
+    private func resolveFrameRate() -> Double? {
+        var fps: Double = 0
+        if mpv_get_property(handle, "container-fps", MPV_FORMAT_DOUBLE, &fps) >= 0, fps > 1 {
+            return fps
+        }
+        fps = 0
+        if mpv_get_property(handle, "fps", MPV_FORMAT_DOUBLE, &fps) >= 0, fps > 1 {
+            return fps
+        }
+        return nil
     }
 }
 
@@ -630,6 +675,7 @@ struct MPVDebugStats: Equatable {
     let framesEnqueued: Int
     let secondsSinceEnqueue: Double
     let lastUpdateMask: UInt64
+    let fps: Double
 }
 
 #else
