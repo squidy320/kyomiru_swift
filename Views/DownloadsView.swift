@@ -87,6 +87,7 @@ struct DownloadsView: View {
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let item = selectedItem, let fileURL = manager.playableURL(for: item) {
+                AppLog.debug(.downloads, "offline play resolved url=\(fileURL.path)")
                 let format = fileURL.pathExtension.lowercased()
                 let source = SoraSource(
                     id: "local|\(item.id)",

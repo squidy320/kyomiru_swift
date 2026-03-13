@@ -469,6 +469,14 @@ final class DownloadManager: NSObject, ObservableObject {
         let exists = fm.fileExists(atPath: localFile.path)
         AppLog.debug(.downloads, "offline resolve path=\(localFile.path) exists=\(exists) isDir=\(localFile.hasDirectoryPath)")
 
+        if item.isHls {
+            let folder = localHLSFolder(title: item.title, episode: item.episode)
+            if hasSegments(in: folder), let playlist = ensurePlaylist(forFolder: folder) {
+                AppLog.debug(.downloads, "offline resolve using playlist path=\(playlist.path)")
+                return playlist
+            }
+        }
+
         if !exists {
             if let fallback = resolveFallbackPlayableURL(for: item) {
                 return fallback
@@ -494,6 +502,7 @@ final class DownloadManager: NSObject, ObservableObject {
             }
         }
 
+        AppLog.debug(.downloads, "offline resolve using file path=\(localFile.path)")
         return localFile
     }
 
@@ -525,15 +534,7 @@ final class DownloadManager: NSObject, ObservableObject {
             return playlist
         }
 
-        guard let enumerator = fm.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else {
-            return nil
-        }
-
-        var segments: [URL] = []
-        for case let fileURL as URL in enumerator {
-            guard fileURL.pathExtension.lowercased() == "ts" else { continue }
-            segments.append(fileURL)
-        }
+        let segments = collectSegments(in: folder)
 
         if segments.isEmpty {
             return nil
@@ -562,6 +563,24 @@ final class DownloadManager: NSObject, ObservableObject {
             AppLog.error(.downloads, "offline playlist write failed path=\(playlist.path) error=\(error.localizedDescription)")
             return nil
         }
+    }
+
+    private func hasSegments(in folder: URL) -> Bool {
+        !collectSegments(in: folder).isEmpty
+    }
+
+    private func collectSegments(in folder: URL) -> [URL] {
+        guard fm.fileExists(atPath: folder.path) else { return [] }
+        guard let enumerator = fm.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else {
+            return []
+        }
+
+        var segments: [URL] = []
+        for case let fileURL as URL in enumerator {
+            guard fileURL.pathExtension.lowercased() == "ts" else { continue }
+            segments.append(fileURL)
+        }
+        return segments.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 }
 
