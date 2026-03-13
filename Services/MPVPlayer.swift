@@ -159,6 +159,7 @@ private final class MPVCore {
     private var handle: OpaquePointer?
     private var renderContext: OpaquePointer?
     private var renderCoordinator: MPVRenderCoordinator?
+    private var eventTimer: DispatchSourceTimer?
 
     init() {
         queue.sync {
@@ -207,6 +208,8 @@ private final class MPVCore {
                 coordinator.scheduleRender()
             }
             mpv_render_context_set_update_callback(context, callback, Unmanaged.passUnretained(coordinator).toOpaque())
+
+            startEventLoop()
         }
     }
 
@@ -283,6 +286,7 @@ private final class MPVCore {
 
     func shutdown() {
         queue.sync {
+            stopEventLoop()
             if let context = renderContext {
                 mpv_render_context_set_update_callback(context, nil, nil)
                 mpv_render_context_free(context)
@@ -304,6 +308,24 @@ private final class MPVCore {
         cArgs.withUnsafeMutableBufferPointer { buffer in
             _ = mpv_command(handle, buffer.baseAddress)
         }
+    }
+
+    private func startEventLoop() {
+        if eventTimer != nil { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: 0.1, leeway: .milliseconds(20))
+        timer.setEventHandler { [weak self] in
+            guard let self, let handle = self.handle else { return }
+            // Pump the mpv event queue so render callbacks fire reliably.
+            _ = mpv_wait_event(handle, 0)
+        }
+        eventTimer = timer
+        timer.resume()
+    }
+
+    private func stopEventLoop() {
+        eventTimer?.cancel()
+        eventTimer = nil
     }
 }
 
@@ -386,6 +408,10 @@ private final class MPVRenderCoordinator {
 
         let size = resolveVideoSize(layer: layer)
         if size.width <= 1 || size.height <= 1 {
+            // Try again shortly once mpv has a valid size.
+            queue.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.scheduleRender()
+            }
             return
         }
 
