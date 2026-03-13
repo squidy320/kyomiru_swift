@@ -471,7 +471,12 @@ final class DownloadManager: NSObject, ObservableObject {
 
         if item.isHls {
             let folder = localHLSFolder(title: item.title, episode: item.episode)
-            if hasSegments(in: folder), let playlist = ensurePlaylist(forFolder: folder) {
+            if hasSegments(in: folder), let playlist = ensurePlaylist(forFolder: folder, prefix: nil) {
+                AppLog.debug(.downloads, "offline resolve using playlist path=\(playlist.path)")
+                return playlist
+            }
+            let sibling = localFile.deletingPathExtension()
+            if hasSegments(in: sibling), let playlist = ensurePlaylist(forFolder: sibling, prefix: nil) {
                 AppLog.debug(.downloads, "offline resolve using playlist path=\(playlist.path)")
                 return playlist
             }
@@ -496,6 +501,12 @@ final class DownloadManager: NSObject, ObservableObject {
 
         if ext == "ts" {
             let folder = localFile.deletingLastPathComponent()
+            let baseName = localFile.deletingPathExtension().lastPathComponent
+            if hasSegments(in: folder, prefix: baseName),
+               let playlist = ensurePlaylist(forFolder: folder, prefix: baseName) {
+                AppLog.debug(.downloads, "offline resolve using playlist path=\(playlist.path)")
+                return playlist
+            }
             let playlist = folder.appendingPathComponent("playlist.m3u8")
             if fm.fileExists(atPath: playlist.path) {
                 return playlist
@@ -509,7 +520,7 @@ final class DownloadManager: NSObject, ObservableObject {
     private func resolveFallbackPlayableURL(for item: DownloadItem) -> URL? {
         let folder = localHLSFolder(title: item.title, episode: item.episode)
         if fm.fileExists(atPath: folder.path) {
-            if let playlist = ensurePlaylist(forFolder: folder) {
+            if let playlist = ensurePlaylist(forFolder: folder, prefix: nil) {
                 return playlist
             }
         }
@@ -528,13 +539,13 @@ final class DownloadManager: NSObject, ObservableObject {
         return nil
     }
 
-    private func ensurePlaylist(forFolder folder: URL) -> URL? {
+    private func ensurePlaylist(forFolder folder: URL, prefix: String?) -> URL? {
         let playlist = folder.appendingPathComponent("playlist.m3u8")
         if fm.fileExists(atPath: playlist.path) {
             return playlist
         }
 
-        let segments = collectSegments(in: folder)
+        let segments = collectSegments(in: folder, prefix: prefix)
 
         if segments.isEmpty {
             return nil
@@ -563,11 +574,11 @@ final class DownloadManager: NSObject, ObservableObject {
         }
     }
 
-    private func hasSegments(in folder: URL) -> Bool {
-        !collectSegments(in: folder).isEmpty
+    private func hasSegments(in folder: URL, prefix: String? = nil) -> Bool {
+        !collectSegments(in: folder, prefix: prefix).isEmpty
     }
 
-    private func collectSegments(in folder: URL) -> [URL] {
+    private func collectSegments(in folder: URL, prefix: String?) -> [URL] {
         guard fm.fileExists(atPath: folder.path) else { return [] }
         guard let enumerator = fm.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else {
             return []
@@ -576,6 +587,9 @@ final class DownloadManager: NSObject, ObservableObject {
         var segments: [URL] = []
         for case let fileURL as URL in enumerator {
             guard fileURL.pathExtension.lowercased() == "ts" else { continue }
+            if let prefix, !fileURL.deletingPathExtension().lastPathComponent.hasPrefix(prefix) {
+                continue
+            }
             segments.append(fileURL)
         }
         return segments.sorted { $0.lastPathComponent < $1.lastPathComponent }
