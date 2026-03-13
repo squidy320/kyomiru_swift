@@ -493,7 +493,7 @@ final class DownloadManager: NSObject, ObservableObject {
         }
 
         if localFile.hasDirectoryPath {
-            if let playlist = ensurePlaylist(forFolder: localFile) {
+            if let playlist = ensurePlaylist(forFolder: localFile, prefix: nil) {
                 return playlist
             }
             return localFile
