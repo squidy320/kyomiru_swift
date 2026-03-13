@@ -20,7 +20,7 @@ struct PlayerView: View {
             MPVVideoView(player: player)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
-                .onTapGesture { showControls() }
+                .onTapGesture { toggleControls() }
 
             if !player.isReady {
                 loadingOverlay
@@ -30,6 +30,8 @@ struct PlayerView: View {
                 controlsOverlay
                     .transition(.opacity)
             }
+
+            persistentCloseButton
         }
         .onAppear(perform: startPlayback)
         .onDisappear(perform: stopPlayback)
@@ -152,6 +154,28 @@ struct PlayerView: View {
                 .clipShape(Capsule())
             }
         }
+    }
+
+    private var persistentCloseButton: some View {
+        VStack {
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.15))
+                        .clipShape(Circle())
+                }
+                Spacer()
+            }
+            .padding(.top, 12)
+            .padding(.horizontal, 12)
+            Spacer()
+        }
+        .opacity(controlsVisible ? 0 : 0.7)
+        .allowsHitTesting(!controlsVisible)
     }
 
     private var centerControls: some View {
@@ -277,10 +301,11 @@ struct PlayerView: View {
     }
 
     private func toggleControls() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            controlsVisible.toggle()
+        if controlsVisible {
+            hideControls()
+        } else {
+            showControls()
         }
-        scheduleAutoHide()
     }
 
     private func showControls() {
@@ -290,6 +315,14 @@ struct PlayerView: View {
             }
         }
         scheduleAutoHide()
+    }
+
+    private func hideControls() {
+        autoHideTask?.cancel()
+        autoHideToken += 1
+        withAnimation(.easeInOut(duration: 0.2)) {
+            controlsVisible = false
+        }
     }
 
     private func scheduleAutoHide() {

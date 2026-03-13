@@ -428,8 +428,10 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     func playableURL(for item: DownloadItem) -> URL? {
-        guard let local = item.localFile else { return nil }
-        return resolvePlayableURL(localFile: local)
+        if let local = item.localFile {
+            return resolvePlayableURL(localFile: local, item: item)
+        }
+        return resolveFallbackPlayableURL(for: item)
     }
 
     func markWatched(mediaTitle: String, episode: Int) {
@@ -462,8 +464,17 @@ final class DownloadManager: NSObject, ObservableObject {
         return base.appendingPathComponent(indexKey)
     }
 
-    private func resolvePlayableURL(localFile: URL) -> URL {
+    private func resolvePlayableURL(localFile: URL, item: DownloadItem) -> URL {
         let ext = localFile.pathExtension.lowercased()
+        let exists = fm.fileExists(atPath: localFile.path)
+        AppLog.debug(.downloads, "offline resolve path=\(localFile.path) exists=\(exists) isDir=\(localFile.hasDirectoryPath)")
+
+        if !exists {
+            if let fallback = resolveFallbackPlayableURL(for: item) {
+                return fallback
+            }
+        }
+
         if ext == "m3u8" {
             return localFile
         }
@@ -484,6 +495,28 @@ final class DownloadManager: NSObject, ObservableObject {
         }
 
         return localFile
+    }
+
+    private func resolveFallbackPlayableURL(for item: DownloadItem) -> URL? {
+        let folder = localHLSFolder(title: item.title, episode: item.episode)
+        if fm.fileExists(atPath: folder.path) {
+            if let playlist = ensurePlaylist(forFolder: folder) {
+                return playlist
+            }
+        }
+
+        let mergedTs = localMergedHLSFileURL(for: item.title, episode: item.episode)
+        if fm.fileExists(atPath: mergedTs.path) {
+            return mergedTs
+        }
+
+        let mp4 = localFileURL(for: item.title, episode: item.episode)
+        if fm.fileExists(atPath: mp4.path) {
+            return mp4
+        }
+
+        AppLog.error(.downloads, "offline resolve failed title=\(item.title) ep=\(item.episode)")
+        return nil
     }
 
     private func ensurePlaylist(forFolder folder: URL) -> URL? {
