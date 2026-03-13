@@ -196,14 +196,6 @@ private final class MPVCore {
     private var renderContext: OpaquePointer?
     private var renderCoordinator: MPVRenderCoordinator?
     private var eventTimer: DispatchSourceTimer?
-    private static let logCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<mpv_log_message>?) -> Void = { _, msg in
-        guard let msg else { return }
-        let level = String(cString: msg.pointee.level)
-        let text = String(cString: msg.pointee.text).trimmingCharacters(in: .whitespacesAndNewlines)
-        if !text.isEmpty {
-            AppLog.debug(.player, "mpv[\(level)]: \(text)")
-        }
-    }
 
     init() {
         queue.sync {
@@ -235,7 +227,6 @@ private final class MPVCore {
 #else
             mpv_request_log_messages(handle, "warn")
 #endif
-            mpv_set_log_callback(handle, MPVCore.logCallback, nil)
 
             var apiType = UnsafePointer<CChar>(strdup(MPV_RENDER_API_TYPE_SW))
             defer { free(UnsafeMutablePointer(mutating: apiType)) }
@@ -468,7 +459,6 @@ private final class MPVRenderCoordinator {
             lastLogTime = now
             AppLog.debug(.player, "mpv update=\(updateRaw) size=\(Int(lastSize.width))x\(Int(lastSize.height)) layer=\(layer.status.rawValue)")
         }
-#endif
 #endif
         let frameMask = UInt64(MPV_RENDER_UPDATE_FRAME.rawValue)
         if (updateRaw & frameMask) != 0 {
