@@ -165,7 +165,7 @@ struct LibraryView: View {
         case .all:
             status = .planning
         }
-        let count = appState.services.mediaTracker.count(for: status)
+        let count = appState.services.libraryStore.count(for: status)
         return "\(filter.title) (\(count))"
     }
 
@@ -234,7 +234,7 @@ struct LibraryView: View {
                 )
             }
         }
-        appState.services.mediaTracker.setItems(mediaItems)
+        appState.services.libraryStore.setItems(mediaItems)
     }
 
     private func statusForSection(_ title: String) -> MediaStatus {

@@ -3,16 +3,11 @@ import Foundation
 typealias AniListService = AniListClient
 typealias MediaRemuxer = MediaConversionManager
 
-final class LibraryStore {
-    static let shared = LibraryStore()
-    private init() {}
-}
-
 struct DependencyContainer: Sendable {
     let aniListService: AniListService
     let downloadManager: DownloadManager
     let mediaRemuxer: MediaRemuxer
-    let libraryStore: LibraryStore
+    let libraryStore: MediaTracker
 }
 
 actor AppDependencyContainer {
@@ -21,13 +16,13 @@ actor AppDependencyContainer {
     let aniListService: AniListService
     let downloadManager: DownloadManager
     let mediaRemuxer: MediaRemuxer
-    let libraryStore: LibraryStore
+    let libraryStore: MediaTracker
 
     init(
         aniListService: AniListService = AniListClient(cacheStore: CacheStore()),
         downloadManager: DownloadManager = .shared,
         mediaRemuxer: MediaRemuxer = .shared,
-        libraryStore: LibraryStore = .shared
+        libraryStore: MediaTracker = MediaTracker()
     ) {
         self.aniListService = aniListService
         self.downloadManager = downloadManager

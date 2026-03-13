@@ -10,7 +10,7 @@ final class AppServices {
     let offlineManager: OfflineManager
     let metadataService: MetadataService
     let downloadManager: DownloadManager
-    let libraryStore: LibraryStore
+    let libraryStore: MediaTracker
     let episodeService: EpisodeService
 
     init() {
@@ -21,7 +21,7 @@ final class AppServices {
         self.offlineManager = OfflineManager()
         self.metadataService = MetadataService()
         self.downloadManager = DownloadManager.shared
-        self.libraryStore = LibraryStore.shared
+        self.libraryStore = MediaTracker()
         self.episodeService = EpisodeService()
     }
 }

@@ -599,7 +599,6 @@ private final class MPVRenderCoordinator {
             case .unknown: layerStatusText = "unknown"
             case .failed: layerStatusText = "failed"
             case .rendering: layerStatusText = "rendering"
-            case .completed: layerStatusText = "completed"
             @unknown default: layerStatusText = "unknown"
             }
             layerErrorText = layer.error?.localizedDescription

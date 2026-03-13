@@ -65,7 +65,7 @@ struct DetailsView: View {
             AppLog.debug(.ui, "details view load mediaId=\(media.id)")
             await loadEpisodes()
             await loadRelated()
-            isBookmarked = (appState.services.mediaTracker.item(forExternalId: media.id)?.status ?? .planning) != .planning
+            isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let episode = selectedEpisode, !sources.isEmpty {
@@ -123,7 +123,7 @@ struct DetailsView: View {
         }
         .sheet(isPresented: $showListManager) {
             ListManagerView(item: detailItem, viewModel: listManagerModel) { updated in
-                appState.services.mediaTracker.upsert(updated)
+                appState.services.libraryStore.upsert(updated)
                 isBookmarked = updated.status != MediaStatus.planning
             }
             .presentationDetents([PresentationDetent.medium])
@@ -317,7 +317,7 @@ struct DetailsView: View {
     }
 
     private func makeListManagerModel() -> ListManagerViewModel {
-        if let existing = appState.services.mediaTracker.item(forExternalId: media.id) {
+        if let existing = appState.services.libraryStore.item(forExternalId: media.id) {
             return ListManagerViewModel(item: existing)
         }
         return ListManagerViewModel(item: detailItem)

@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct UIConstants {
+public struct UIConstants {
     static let cardWidth: CGFloat = 120
     static let cardHeight: CGFloat = 180
     static let episodeCardHeight: CGFloat = 110
