@@ -414,27 +414,19 @@ private final class MPVRenderCoordinator {
 
     func scheduleRender() {
         queue.async {
-            let now = CACurrentMediaTime()
-            let elapsed = now - self.lastRenderTime
-
-            if elapsed < self.minRenderInterval {
-                let remaining = self.minRenderInterval - elapsed
-                if self.isRenderScheduled { return }
-                self.isRenderScheduled = true
-                self.queue.asyncAfter(deadline: .now() + remaining) { [weak self] in
-                    guard let self else { return }
-                    self.lastRenderTime = CACurrentMediaTime()
-                    self.performRenderUpdate()
-                    self.isRenderScheduled = false
-                }
-                return
-            }
-
             if self.isRenderScheduled { return }
             self.isRenderScheduled = true
-            self.lastRenderTime = now
-            self.performRenderUpdate()
-            self.isRenderScheduled = false
+
+            let now = CACurrentMediaTime()
+            let elapsed = now - self.lastRenderTime
+            let remaining = max(self.minRenderInterval - elapsed, 0)
+
+            self.queue.asyncAfter(deadline: .now() + remaining) { [weak self] in
+                guard let self else { return }
+                self.isRenderScheduled = false
+                self.lastRenderTime = CACurrentMediaTime()
+                self.performRenderUpdate()
+            }
         }
     }
 
