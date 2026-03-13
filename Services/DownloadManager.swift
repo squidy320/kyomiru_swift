@@ -3,6 +3,12 @@ import AVFoundation
 
 actor OfflineDownloadManager {
     typealias ProgressHandler = @Sendable (Double) -> Void
+    private struct ResolvedPlaylist {
+        let lines: [String]
+        let segmentURLs: [URL]
+        let mapURL: URL?
+        let isFmp4: Bool
+    }
 
     private let session: URLSession
     private let fm = FileManager.default
@@ -21,12 +27,16 @@ actor OfflineDownloadManager {
     ) async throws -> URL {
         let playlistData = try await fetchData(url: playlistURL, headers: headers)
         let resolved = try await resolveSegments(from: playlistData, baseURL: playlistURL, headers: headers)
-        let segmentURLs = resolved.segments
+        let segmentURLs = resolved.segmentURLs
         let finalOutputURL = resolved.isFmp4
             ? outputURL.deletingPathExtension().appendingPathExtension("mp4")
             : outputURL
         guard !segmentURLs.isEmpty else {
             throw URLError(.cannotParseResponse)
+        }
+
+        if resolved.isFmp4 {
+            return try await storeAsLocalHLS(resolved: resolved, outputURL: outputURL, headers: headers, progress: progress)
         }
 
         let tempFolder = fm.temporaryDirectory.appendingPathComponent("hls-\(UUID().uuidString)", isDirectory: true)
@@ -78,11 +88,13 @@ actor OfflineDownloadManager {
         return data
     }
 
-    private func resolveSegments(from data: Data, baseURL: URL, headers: [String: String]) async throws -> (segments: [URL], isFmp4: Bool) {
+    private func resolveSegments(from data: Data, baseURL: URL, headers: [String: String]) async throws -> ResolvedPlaylist {
         guard let text = String(data: data, encoding: .utf8) else {
             throw URLError(.cannotDecodeContentData)
         }
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+        let lines = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         let mediaLines = lines.filter { !$0.hasPrefix("#") && !$0.isEmpty }
         let mapLine = lines.first { $0.hasPrefix("#EXT-X-MAP:") }
         let mapURL: URL? = {
@@ -107,10 +119,71 @@ actor OfflineDownloadManager {
             URL(string: String(line), relativeTo: baseURL)?.absoluteURL
         }
         let isFmp4 = mapURL != nil || segments.contains { $0.pathExtension.lowercased() == "m4s" }
-        if let mapURL {
-            return ([mapURL] + segments, isFmp4)
+        return ResolvedPlaylist(
+            lines: lines,
+            segmentURLs: segments,
+            mapURL: mapURL,
+            isFmp4: isFmp4
+        )
+    }
+
+    private func storeAsLocalHLS(
+        resolved: ResolvedPlaylist,
+        outputURL: URL,
+        headers: [String: String],
+        progress: ProgressHandler?
+    ) async throws -> URL {
+        let baseFolder = outputURL.deletingPathExtension().appendingPathExtension("hls")
+        try? fm.removeItem(at: baseFolder)
+        try? fm.createDirectory(at: baseFolder, withIntermediateDirectories: true)
+
+        var rewrittenLines: [String] = []
+        var segmentIndex = 0
+        let total = max(resolved.segmentURLs.count + (resolved.mapURL == nil ? 0 : 1), 1)
+        var completed = 0
+
+        func writeProgress() {
+            let value = Double(completed) / Double(total)
+            progress?(value)
         }
-        return (segments, isFmp4)
+
+        for line in resolved.lines {
+            if line.hasPrefix("#EXT-X-MAP:"),
+               let mapURL = resolved.mapURL {
+                let ext = mapURL.pathExtension.isEmpty ? "mp4" : mapURL.pathExtension
+                let localName = "init.\(ext)"
+                let data = try await fetchData(url: mapURL, headers: headers)
+                let localURL = baseFolder.appendingPathComponent(localName)
+                try data.write(to: localURL, options: .atomic)
+                completed += 1
+                writeProgress()
+                let replaced = line.replacingOccurrences(of: "URI=\"", with: "URI=\"\(localName)")
+                rewrittenLines.append(replaced)
+                continue
+            }
+
+            if !line.hasPrefix("#") && !line.isEmpty {
+                guard segmentIndex < resolved.segmentURLs.count else { continue }
+                let segmentURL = resolved.segmentURLs[segmentIndex]
+                segmentIndex += 1
+                let ext = segmentURL.pathExtension.isEmpty ? "m4s" : segmentURL.pathExtension
+                let localName = String(format: "seg_%05d.%@", segmentIndex - 1, ext)
+                let data = try await fetchData(url: segmentURL, headers: headers)
+                let localURL = baseFolder.appendingPathComponent(localName)
+                try data.write(to: localURL, options: .atomic)
+                completed += 1
+                writeProgress()
+                rewrittenLines.append(localName)
+                continue
+            }
+
+            rewrittenLines.append(line)
+        }
+
+        let playlistURL = baseFolder.appendingPathComponent("playlist.m3u8")
+        let playlistText = rewrittenLines.joined(separator: "\n")
+        try playlistText.data(using: .utf8)?.write(to: playlistURL, options: .atomic)
+        return playlistURL
     }
 }
 
@@ -354,6 +427,11 @@ final class DownloadManager: NSObject, ObservableObject {
         }
     }
 
+    func playableURL(for item: DownloadItem) -> URL? {
+        guard let local = item.localFile else { return nil }
+        return resolvePlayableURL(localFile: local)
+    }
+
     func markWatched(mediaTitle: String, episode: Int) {
         AppLog.debug(.downloads, "mark watched title=\(mediaTitle) ep=\(episode)")
         NotificationCenter.default.post(
@@ -382,6 +460,75 @@ final class DownloadManager: NSObject, ObservableObject {
     private func indexURL() -> URL {
         let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         return base.appendingPathComponent(indexKey)
+    }
+
+    private func resolvePlayableURL(localFile: URL) -> URL {
+        let ext = localFile.pathExtension.lowercased()
+        if ext == "m3u8" {
+            return localFile
+        }
+
+        if localFile.hasDirectoryPath {
+            if let playlist = ensurePlaylist(forFolder: localFile) {
+                return playlist
+            }
+            return localFile
+        }
+
+        if ext == "ts" {
+            let folder = localFile.deletingLastPathComponent()
+            let playlist = folder.appendingPathComponent("playlist.m3u8")
+            if fm.fileExists(atPath: playlist.path) {
+                return playlist
+            }
+        }
+
+        return localFile
+    }
+
+    private func ensurePlaylist(forFolder folder: URL) -> URL? {
+        let playlist = folder.appendingPathComponent("playlist.m3u8")
+        if fm.fileExists(atPath: playlist.path) {
+            return playlist
+        }
+
+        guard let enumerator = fm.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else {
+            return nil
+        }
+
+        var segments: [URL] = []
+        for case let fileURL as URL in enumerator {
+            guard fileURL.pathExtension.lowercased() == "ts" else { continue }
+            segments.append(fileURL)
+        }
+
+        if segments.isEmpty {
+            return nil
+        }
+
+        segments.sort { $0.lastPathComponent < $1.lastPathComponent }
+
+        var lines: [String] = []
+        lines.append("#EXTM3U")
+        lines.append("#EXT-X-VERSION:3")
+        lines.append("#EXT-X-TARGETDURATION:10")
+        lines.append("#EXT-X-MEDIA-SEQUENCE:0")
+
+        for segment in segments {
+            lines.append("#EXTINF:10.0,")
+            lines.append(segment.lastPathComponent)
+        }
+        lines.append("#EXT-X-ENDLIST")
+
+        let text = lines.joined(separator: "\n")
+        do {
+            try text.data(using: .utf8)?.write(to: playlist, options: .atomic)
+            AppLog.debug(.downloads, "offline playlist generated path=\(playlist.path)")
+            return playlist
+        } catch {
+            AppLog.error(.downloads, "offline playlist write failed path=\(playlist.path) error=\(error.localizedDescription)")
+            return nil
+        }
     }
 }
 

@@ -86,7 +86,7 @@ struct DownloadsView: View {
             Color.clear.frame(height: tabBarInset)
         }
         .fullScreenCover(isPresented: $showPlayer) {
-            if let item = selectedItem, let fileURL = item.localFile {
+            if let item = selectedItem, let fileURL = manager.playableURL(for: item) {
                 let format = fileURL.pathExtension.lowercased()
                 let source = SoraSource(
                     id: "local|\(item.id)",

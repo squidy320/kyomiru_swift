@@ -12,6 +12,7 @@ struct PlayerView: View {
     @State private var isScrubbing = false
     @State private var scrubValue: Double = 0
     @State private var autoHideTask: Task<Void, Never>?
+    @State private var autoHideToken: Int = 0
     private let progressTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -293,9 +294,11 @@ struct PlayerView: View {
 
     private func scheduleAutoHide() {
         autoHideTask?.cancel()
+        autoHideToken += 1
+        let token = autoHideToken
         autoHideTask = Task {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            if player.isPlaying {
+            if token == autoHideToken, player.isPlaying {
                 await MainActor.run {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         controlsVisible = false
