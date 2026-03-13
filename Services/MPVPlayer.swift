@@ -164,7 +164,7 @@ struct MPVVideoView: View {
                     Text("MPV Debug")
                         .font(.system(size: 12, weight: .semibold))
                     Text("frames: \(stats.framesRendered)")
-                    Text("lastUpdate: \(String(format: \"%.2f\", stats.secondsSinceUpdate))s")
+                    Text("lastUpdate: \(String(format: "%.2f", stats.secondsSinceUpdate))s")
                     Text("size: \(stats.videoSize)")
                     Text("layer: \(stats.layerStatus)")
                     if let error = stats.layerError {
