@@ -14,6 +14,9 @@ final class MPVPlayerModel: ObservableObject {
     @Published var duration: Double = 0
     @Published var rate: Double = 1
     @Published var errorMessage: String?
+#if DEBUG
+    @Published var debugStats: MPVDebugStats?
+#endif
 
     private let core = MPVCore()
     private var statusTimer: Timer?
@@ -140,6 +143,9 @@ final class MPVPlayerModel: ObservableObject {
 #if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
 #endif
+#if DEBUG
+        debugStats = core.renderStats()
+#endif
     }
 }
 
@@ -147,10 +153,33 @@ struct MPVVideoView: View {
     @ObservedObject var player: MPVPlayerModel
 
     var body: some View {
-        SampleBufferDisplayRepresentable { layer in
-            player.attach(layer: layer)
+        ZStack(alignment: .topLeading) {
+            SampleBufferDisplayRepresentable { layer in
+                player.attach(layer: layer)
+            }
+            .background(Color.black)
+#if DEBUG
+            if let stats = player.debugStats {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("MPV Debug")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("frames: \(stats.framesRendered)")
+                    Text("lastUpdate: \(String(format: \"%.2f\", stats.secondsSinceUpdate))s")
+                    Text("size: \(stats.videoSize)")
+                    Text("layer: \(stats.layerStatus)")
+                    if let error = stats.layerError {
+                        Text("error: \(error)")
+                    }
+                }
+                .font(.system(size: 11))
+                .foregroundColor(.white)
+                .padding(8)
+                .background(Color.black.opacity(0.65))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .padding(8)
+            }
+#endif
         }
-        .background(Color.black)
     }
 }
 
@@ -164,10 +193,14 @@ private final class MPVCore {
     init() {
         queue.sync {
             handle = mpv_create()
-            guard let handle else { return }
+            guard let handle else {
+                AppLog.error(.player, "mpv_create failed")
+                return
+            }
 
             mpv_set_option_string(handle, "vo", "libmpv")
-            mpv_set_option_string(handle, "hwdec", "auto")
+            // SW renderer needs CPU-accessible frames; hwdec can produce GPU-only surfaces.
+            mpv_set_option_string(handle, "hwdec", "no")
             mpv_set_option_string(handle, "keep-open", "yes")
             mpv_set_option_string(handle, "osc", "no")
             mpv_set_option_string(handle, "input-default-bindings", "no")
@@ -176,6 +209,7 @@ private final class MPVCore {
             mpv_set_option_string(handle, "cache", "yes")
 
             if mpv_initialize(handle) < 0 {
+                AppLog.error(.player, "mpv_initialize failed")
                 mpv_destroy(handle)
                 self.handle = nil
                 return
@@ -189,16 +223,19 @@ private final class MPVCore {
             ]
             var context: OpaquePointer?
             if mpv_render_context_create(&context, handle, &params) < 0 {
+                AppLog.error(.player, "mpv_render_context_create failed")
                 mpv_terminate_destroy(handle)
                 self.handle = nil
                 return
             }
             guard let context else {
+                AppLog.error(.player, "mpv_render_context_create returned nil context")
                 mpv_terminate_destroy(handle)
                 self.handle = nil
                 return
             }
             renderContext = context
+            AppLog.debug(.player, "mpv render context created")
 
             let coordinator = MPVRenderCoordinator(handle: handle, renderContext: context)
             renderCoordinator = coordinator
@@ -208,6 +245,7 @@ private final class MPVCore {
                 coordinator.scheduleRender()
             }
             mpv_render_context_set_update_callback(context, callback, Unmanaged.passUnretained(coordinator).toOpaque())
+            AppLog.debug(.player, "mpv update callback set")
 
             startEventLoop()
         }
@@ -299,6 +337,13 @@ private final class MPVCore {
         }
     }
 
+#if DEBUG
+    func renderStats() -> MPVDebugStats? {
+        guard let coordinator = renderCoordinator else { return nil }
+        return coordinator.snapshot()
+    }
+#endif
+
     private func command(_ args: [String]) {
         guard let handle = handle else { return }
         var cStrings = args.map { strdup($0) }
@@ -337,10 +382,15 @@ private final class MPVRenderCoordinator {
     private var formatDescription: CMVideoFormatDescription?
     private var lastSize: CGSize = .zero
     private var isRendering = false
-    private var formatCString = Array("bgr0".utf8CString)
+    private var formatCString = Array("bgra".utf8CString)
     private var minRenderInterval: CFTimeInterval = 1.0 / 30.0
     private var lastRenderTime: CFTimeInterval = 0
     private var isRenderScheduled = false
+#if DEBUG
+    private var framesRendered: Int = 0
+    private var lastUpdateTime: CFTimeInterval = 0
+    private var lastLogTime: CFTimeInterval = 0
+#endif
 
     init(handle: OpaquePointer, renderContext: OpaquePointer) {
         self.handle = handle
@@ -392,8 +442,19 @@ private final class MPVRenderCoordinator {
         guard let layer = displayLayer else { return }
         if layer.status == .failed {
             layer.flushAndRemoveImage()
+#if DEBUG
+            AppLog.error(.player, "display layer failed: \(layer.error?.localizedDescription ?? "unknown")")
+#endif
         }
         let updateRaw = mpv_render_context_update(renderContext)
+#if DEBUG
+        lastUpdateTime = CACurrentMediaTime()
+        let now = lastUpdateTime
+        if now - lastLogTime > 2.0 {
+            lastLogTime = now
+            AppLog.debug(.player, "mpv update=\(updateRaw) size=\(Int(lastSize.width))x\(Int(lastSize.height)) layer=\(layer.status.rawValue)")
+        }
+#endif
         let frameMask = UInt64(MPV_RENDER_UPDATE_FRAME.rawValue)
         if (updateRaw & frameMask) != 0 {
             renderFrame()
@@ -409,6 +470,13 @@ private final class MPVRenderCoordinator {
         let size = resolveVideoSize(layer: layer)
         if size.width <= 1 || size.height <= 1 {
             // Try again shortly once mpv has a valid size.
+#if DEBUG
+            let now = CACurrentMediaTime()
+            if now - lastLogTime > 2.0 {
+                lastLogTime = now
+                AppLog.debug(.player, "mpv video size not ready (width=\(size.width) height=\(size.height))")
+            }
+#endif
             queue.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                 self?.scheduleRender()
             }
@@ -490,6 +558,9 @@ private final class MPVRenderCoordinator {
             layer.flush()
         }
         layer.enqueue(sampleBuffer)
+#if DEBUG
+        framesRendered += 1
+#endif
     }
 
     private func resolveVideoSize(layer: AVSampleBufferDisplayLayer) -> CGSize {
@@ -504,7 +575,53 @@ private final class MPVRenderCoordinator {
         }
         return CGSize(width: CGFloat(width), height: CGFloat(height))
     }
+
+#if DEBUG
+    func snapshot() -> MPVDebugStats {
+        let sizeText: String
+        if lastSize.width > 0 && lastSize.height > 0 {
+            sizeText = "\(Int(lastSize.width))x\(Int(lastSize.height))"
+        } else {
+            sizeText = "0x0"
+        }
+
+        let layerStatusText: String
+        let layerErrorText: String?
+        if let layer = displayLayer {
+            switch layer.status {
+            case .unknown: layerStatusText = "unknown"
+            case .failed: layerStatusText = "failed"
+            case .rendering: layerStatusText = "rendering"
+            case .completed: layerStatusText = "completed"
+            @unknown default: layerStatusText = "unknown"
+            }
+            layerErrorText = layer.error?.localizedDescription
+        } else {
+            layerStatusText = "nil"
+            layerErrorText = nil
+        }
+
+        let since = max(CACurrentMediaTime() - lastUpdateTime, 0)
+        return MPVDebugStats(
+            framesRendered: framesRendered,
+            secondsSinceUpdate: since,
+            videoSize: sizeText,
+            layerStatus: layerStatusText,
+            layerError: layerErrorText
+        )
+    }
+#endif
 }
+
+#if DEBUG
+struct MPVDebugStats: Equatable {
+    let framesRendered: Int
+    let secondsSinceUpdate: Double
+    let videoSize: String
+    let layerStatus: String
+    let layerError: String?
+}
+#endif
 
 #else
 
