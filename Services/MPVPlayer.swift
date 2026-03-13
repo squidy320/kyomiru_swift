@@ -164,6 +164,7 @@ struct MPVVideoView: View {
                 player.attach(layer: layer)
             }
             .background(Color.black)
+            .allowsHitTesting(false)
             if let stats = player.debugStats {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("MPV Debug")
@@ -418,6 +419,7 @@ private final class MPVRenderCoordinator {
     private var firstFrameHostTime: CFTimeInterval?
     private var lastFrameHostTime: CFTimeInterval?
     private var fpsEstimate: Double = 0
+    private var configuredLayer: AVSampleBufferDisplayLayer?
 
     init(handle: OpaquePointer, renderContext: OpaquePointer) {
         self.handle = handle
@@ -431,12 +433,16 @@ private final class MPVRenderCoordinator {
 
     func setDisplayLayer(_ layer: AVSampleBufferDisplayLayer) {
         queue.async {
+            let isNewLayer = self.configuredLayer !== layer
             self.displayLayer = layer
-            DispatchQueue.main.async {
-                self.displayLayer?.videoGravity = .resizeAspect
-                self.displayLayer?.backgroundColor = CGColor(gray: 0, alpha: 1)
-                self.displayLayer?.flushAndRemoveImage()
-                self.configureTimebaseIfNeeded()
+            if isNewLayer {
+                self.configuredLayer = layer
+                DispatchQueue.main.async {
+                    self.displayLayer?.videoGravity = .resizeAspect
+                    self.displayLayer?.backgroundColor = CGColor(gray: 0, alpha: 1)
+                    self.displayLayer?.flushAndRemoveImage()
+                    self.configureTimebaseIfNeeded()
+                }
             }
             self.scheduleRender()
         }

@@ -67,7 +67,7 @@ struct SampleBufferDisplayRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: SampleBufferDisplayView, context: Context) {
-        onLayerReady(uiView.displayLayer)
+        // Avoid reattaching the layer on every SwiftUI update to prevent flashing.
     }
 }
 #else
@@ -81,7 +81,7 @@ struct SampleBufferDisplayRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: SampleBufferDisplayView, context: Context) {
-        onLayerReady(nsView.displayLayer)
+        // Avoid reattaching the layer on every SwiftUI update to prevent flashing.
     }
 }
 #endif
