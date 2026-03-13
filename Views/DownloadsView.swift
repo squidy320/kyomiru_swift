@@ -87,18 +87,20 @@ struct DownloadsView: View {
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let item = selectedItem, let fileURL = manager.playableURL(for: item) {
-                AppLog.debug(.downloads, "offline play resolved url=\(fileURL.path)")
-                let format = fileURL.pathExtension.lowercased()
-                let source = SoraSource(
-                    id: "local|\(item.id)",
-                    url: fileURL,
-                    quality: "Local",
-                    subOrDub: "Sub",
-                    format: format.isEmpty ? "mp4" : format,
-                    headers: [:]
-                )
-                let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
-                PlayerView(episode: episode, sources: [source], mediaId: 0)
+                Group {
+                    let _ = AppLog.debug(.downloads, "offline play resolved url=\(fileURL.path)")
+                    let format = fileURL.pathExtension.lowercased()
+                    let source = SoraSource(
+                        id: "local|\(item.id)",
+                        url: fileURL,
+                        quality: "Local",
+                        subOrDub: "Sub",
+                        format: format.isEmpty ? "mp4" : format,
+                        headers: [:]
+                    )
+                    let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
+                    PlayerView(episode: episode, sources: [source], mediaId: 0)
+                }
             }
         }
         .onChange(of: showPlayer) { _, _ in

@@ -540,8 +540,6 @@ final class DownloadManager: NSObject, ObservableObject {
             return nil
         }
 
-        segments.sort { $0.lastPathComponent < $1.lastPathComponent }
-
         var lines: [String] = []
         lines.append("#EXTM3U")
         lines.append("#EXT-X-VERSION:3")
