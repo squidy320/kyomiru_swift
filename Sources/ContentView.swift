@@ -4,16 +4,37 @@ struct ContentView: View {
     @StateObject private var appState = AppState()
 
     var body: some View {
-        ZStack {
-            Theme.backgroundGradient
-                .ignoresSafeArea()
-            mainContent
-        }
-        .safeAreaInset(edge: .bottom) {
-            BottomNavigationBar(
-                selection: $appState.selectedTab
-            )
-            .frame(height: UIConstants.bottomBarHeight)
+        TabView(selection: $appState.selectedTab) {
+            DiscoveryView()
+                .tabItem {
+                    Image(systemName: "house")
+                    Text("Home")
+                }
+                .tag(AppTab.home)
+            LibraryView()
+                .tabItem {
+                    Image(systemName: "books.vertical")
+                    Text("Library")
+                }
+                .tag(AppTab.library)
+            AlertsView()
+                .tabItem {
+                    Image(systemName: "bell")
+                    Text("Alerts")
+                }
+                .tag(AppTab.notifications)
+            DownloadsView()
+                .tabItem {
+                    Image(systemName: "arrow.down.circle")
+                    Text("Downloads")
+                }
+                .tag(AppTab.downloads)
+            SettingsView()
+                .tabItem {
+                    Image(systemName: "gearshape")
+                    Text("Settings")
+                }
+                .tag(AppTab.settings)
         }
         .environmentObject(appState)
         .environmentObject(appState.authState)
@@ -24,55 +45,5 @@ struct ContentView: View {
             TrackingSyncService.shared.start(auth: appState.authState, client: appState.services.aniListClient)
             AppLog.debug(.ui, "root view task complete")
         }
-    }
-
-    @ViewBuilder
-    private var mainContent: some View {
-        switch appState.selectedTab {
-        case .home:
-            DiscoveryView()
-        case .library:
-            LibraryView()
-        case .notifications:
-            AlertsView()
-        case .downloads:
-            DownloadsView()
-        case .settings:
-            SettingsView()
-        }
-    }
-}
-
-private struct BottomNavigationBar: View {
-    @Binding var selection: AppTab
-
-    var body: some View {
-        ZStack {
-            Theme.baseBackground
-                .ignoresSafeArea()
-            HStack(spacing: UIConstants.interCardSpacing) {
-                navItem(title: "Home", systemImage: "house", tab: .home)
-                navItem(title: "Library", systemImage: "books.vertical", tab: .library)
-                navItem(title: "Alerts", systemImage: "bell", tab: .notifications)
-                navItem(title: "Downloads", systemImage: "arrow.down.circle", tab: .downloads)
-                navItem(title: "Settings", systemImage: "gearshape", tab: .settings)
-            }
-            .padding(.horizontal, UIConstants.standardPadding)
-            .padding(.vertical, UIConstants.standardPadding)
-        }
-    }
-
-    private func navItem(title: String, systemImage: String, tab: AppTab) -> some View {
-        let isSelected = selection == tab
-        return Button {
-            selection = tab
-        } label: {
-            VStack(spacing: UIConstants.interCardSpacing) {
-                Image(systemName: systemImage)
-                Text(title)
-            }
-            .foregroundColor(isSelected ? Theme.accent : Theme.textSecondary)
-        }
-        .buttonStyle(.plain)
     }
 }
