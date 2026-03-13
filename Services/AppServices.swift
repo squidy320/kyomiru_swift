@@ -9,6 +9,9 @@ final class AppServices {
     let playbackEngine: PlaybackEngine
     let offlineManager: OfflineManager
     let metadataService: MetadataService
+    let downloadManager: DownloadManager
+    let libraryStore: LibraryStore
+    let episodeService: EpisodeService
 
     init() {
         self.aniListClient = AniListClient(cacheStore: cacheStore)
@@ -17,5 +20,8 @@ final class AppServices {
         self.playbackEngine = PlaybackEngine()
         self.offlineManager = OfflineManager()
         self.metadataService = MetadataService()
+        self.downloadManager = DownloadManager.shared
+        self.libraryStore = LibraryStore.shared
+        self.episodeService = EpisodeService()
     }
 }

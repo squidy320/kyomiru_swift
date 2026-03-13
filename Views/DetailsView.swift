@@ -24,14 +24,13 @@ struct DetailsView: View {
     @State private var selectedEpisodeTab: EpisodeTab = .currentSeries
     @State private var isBookmarked = false
     @State private var relatedSections: [AniListRelatedSection] = []
-    private let episodeService = EpisodeService()
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         ZStack {
             Theme.baseBackground.ignoresSafeArea()
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
                     header
 
                     actionRow
@@ -54,13 +53,10 @@ struct DetailsView: View {
                         episodeGrid
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.top, UIConstants.smallPadding)
+                .padding(.bottom, UIConstants.bottomBarHeight)
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            Color.clear.frame(height: tabBarInset)
         }
         .navigationBarBackButtonHidden(!isPad)
         .navigationTitle(isPad ? media.title.best : "")
@@ -89,14 +85,14 @@ struct DetailsView: View {
                 },
                 onDownload: { source in
                     if source.format.lowercased() == "m3u8" {
-                        DownloadManager.shared.enqueueHLS(
+                        appState.services.downloadManager.enqueueHLS(
                             title: media.title.best,
                             episode: selectedEpisode?.number ?? 0,
                             url: source.url,
                             headers: source.headers
                         )
                     } else {
-                        DownloadManager.shared.enqueue(
+                        appState.services.downloadManager.enqueue(
                             title: media.title.best,
                             episode: selectedEpisode?.number ?? 0,
                             url: source.url
@@ -118,7 +114,7 @@ struct DetailsView: View {
                 onSelect: { match in
                     Task {
                         _ = await appState.services.metadataService.manualMatch(local: detailItem, remoteId: match.session)
-                        episodeService.setManualMatch(media: media, match: match)
+                        appState.services.episodeService.setManualMatch(media: media, match: match)
                         AppLog.debug(.matching, "manual match selected mediaId=\(media.id) session=\(match.session)")
                         await loadEpisodes()
                     }
@@ -144,7 +140,7 @@ struct DetailsView: View {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(.white)
-                            .frame(width: 36, height: 36)
+                            .frame(width: UIConstants.toolbarIconSize, height: UIConstants.toolbarIconSize)
                             .background(
                                 Circle().fill(Color.black.opacity(0.4))
                             )
@@ -159,7 +155,7 @@ struct DetailsView: View {
                     Text("Loading streams...")
                         .foregroundColor(Theme.textSecondary)
                 }
-                .padding(14)
+                .padding(UIConstants.overlayPadding)
             }
         }
     }
@@ -178,23 +174,23 @@ struct DetailsView: View {
             imageURL: media.bannerURL ?? media.coverURL,
             pills: pills,
             tags: tags,
-            height: 260
+            height: UIConstants.heroHeightCompact
         )
     }
 
     private var actionRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: UIConstants.interCardSpacing) {
             Button {
                 playFirstEpisode()
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: UIConstants.smallPadding) {
                     Image(systemName: "play.fill")
                     Text("Play")
                 }
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.black)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.horizontal, UIConstants.buttonHorizontalPadding)
+                .padding(.vertical, UIConstants.buttonVerticalPadding)
                 .background(
                     Capsule(style: .continuous)
                         .fill(Theme.accent)
@@ -209,7 +205,7 @@ struct DetailsView: View {
                 Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
+                    .frame(width: UIConstants.circleButtonSize, height: UIConstants.circleButtonSize)
                     .background(
                         Circle().fill(Color.white.opacity(0.08))
                     )
@@ -219,14 +215,14 @@ struct DetailsView: View {
             Button {
                 openMatchPicker()
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: UIConstants.tinyPadding) {
                     Image(systemName: "link")
                     Text("Manual Match")
                 }
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.horizontal, UIConstants.interCardSpacing)
+                .padding(.vertical, UIConstants.buttonVerticalPadding)
                 .background(
                     Capsule(style: .continuous)
                         .fill(Color.white.opacity(0.08))
@@ -237,14 +233,14 @@ struct DetailsView: View {
             Button {
                 downloadAllEpisodes()
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: UIConstants.tinyPadding) {
                     Image(systemName: "arrow.down")
                     Text(appState.services.offlineManager.isDownloading(detailItem) ? "Downloading" : "Download All")
                 }
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.horizontal, UIConstants.interCardSpacing)
+                .padding(.vertical, UIConstants.buttonVerticalPadding)
                 .background(
                     Capsule(style: .continuous)
                         .fill(Color.white.opacity(0.08))
@@ -257,7 +253,7 @@ struct DetailsView: View {
 
     private var episodeTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            HStack(spacing: UIConstants.interCardSpacing) {
                 ForEach(EpisodeTab.allCases) { tab in
                     FilterChip(
                         title: tab.title,
@@ -271,13 +267,13 @@ struct DetailsView: View {
 
     private var episodeGrid: some View {
         let cards = episodeCards()
-        return VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
             if selectedEpisodeTab != .currentSeries {
                 Text(selectedEpisodeTab.title)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
             }
-            LazyVStack(spacing: 12) {
+            LazyVStack(spacing: UIConstants.interCardSpacing) {
                 ForEach(cards) { card in
                     if let related = card.relatedMedia {
                         NavigationLink {
@@ -299,10 +295,6 @@ struct DetailsView: View {
                 }
             }
         }
-    }
-
-    private var tabBarInset: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
 
     private var detailItem: MediaItem {
@@ -335,7 +327,7 @@ struct DetailsView: View {
         isLoading = true
         errorMessage = nil
         do {
-            let result = try await episodeService.loadEpisodes(media: media)
+            let result = try await appState.services.episodeService.loadEpisodes(media: media)
             episodes = result.episodes
         } catch {
             errorMessage = "Failed to load episodes."
@@ -359,9 +351,9 @@ struct DetailsView: View {
             do {
                 let candidates: [SoraAnimeMatch]
                 if trimmed.isEmpty {
-                    candidates = try await episodeService.searchCandidates(media: media)
+                    candidates = try await appState.services.episodeService.searchCandidates(media: media)
                 } else {
-                    candidates = try await episodeService.searchCandidates(query: trimmed)
+                    candidates = try await appState.services.episodeService.searchCandidates(query: trimmed)
                 }
                 matchCandidates = candidates
                 if candidates.isEmpty {
@@ -381,7 +373,7 @@ struct DetailsView: View {
         Task {
             isLoadingSources = true
             do {
-                sources = try await episodeService.loadSources(for: episode)
+                sources = try await appState.services.episodeService.loadSources(for: episode)
                 if sources.isEmpty {
                     errorMessage = "No streams available."
                 } else {
@@ -517,17 +509,17 @@ struct DetailsView: View {
             appState.services.offlineManager.beginDownload(for: detailItem)
             for ep in episodes {
                 do {
-                    let sources = try await episodeService.loadSources(for: ep)
+                    let sources = try await appState.services.episodeService.loadSources(for: ep)
                     guard let best = sources.first else { continue }
                     if best.format.lowercased() == "m3u8" {
-                        DownloadManager.shared.enqueueHLS(
+                        appState.services.downloadManager.enqueueHLS(
                             title: media.title.best,
                             episode: ep.number,
                             url: best.url,
                             headers: best.headers
                         )
                     } else {
-                        DownloadManager.shared.enqueue(
+                        appState.services.downloadManager.enqueue(
                             title: media.title.best,
                             episode: ep.number,
                             url: best.url
@@ -583,28 +575,28 @@ private struct EpisodeRow: View {
     let card: EpisodeCardModel
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: UIConstants.interCardSpacing) {
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous)
                     .fill(Color.white.opacity(0.06))
-                    .frame(width: 140, height: 80)
+                    .frame(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
                 if let imageURL = card.imageURL {
                     CachedImage(url: imageURL) { img in
                         img.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
                         Color.white.opacity(0.08)
                     }
-                    .frame(width: 140, height: 80)
+                    .frame(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
                     .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous))
                 }
                 if let score = card.score {
                     RatingBadge(score: score)
-                        .padding(6)
+                        .padding(UIConstants.ratingBadgePadding)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
                 Text(card.title)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
@@ -625,9 +617,9 @@ private struct EpisodeRow: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(UIConstants.rowPadding)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
                 .fill(Color.white.opacity(0.06))
         )
     }
@@ -666,12 +658,12 @@ private struct ListManagerView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: UIConstants.standardPadding) {
                 Text(viewModel.title)
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.white)
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
                     Text("Status")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(Theme.textSecondary)
@@ -683,7 +675,7 @@ private struct ListManagerView: View {
                     .pickerStyle(.segmented)
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
                     Text("Episodes Watched")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(Theme.textSecondary)
@@ -697,7 +689,7 @@ private struct ListManagerView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
                     Text("Your Rating")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(Theme.textSecondary)
@@ -712,7 +704,7 @@ private struct ListManagerView: View {
 
                 Spacer()
             }
-            .padding(16)
+            .padding(UIConstants.standardPadding)
             .background(Theme.baseBackground.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -756,7 +748,7 @@ private struct SourcePickerSheet: View {
                     }
                 }
                 ForEach(filteredSources()) { source in
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
                         Text("\(source.quality) - \(source.subOrDub)")
                         Text(source.format.uppercased())
                             .font(.system(size: 12))
@@ -779,7 +771,7 @@ private struct SourcePickerSheet: View {
                             }
                         }
                     }
-                    .padding(.vertical, 6)
+                    .padding(.vertical, UIConstants.tinyPadding)
                 }
             }
             .navigationTitle("\(media.title.best) ??? Ep \(episode?.number ?? 0)")
@@ -853,7 +845,7 @@ private struct MatchPickerSheet: View {
         NavigationStack {
             List {
                 Section {
-                    HStack(spacing: 10) {
+                    HStack(spacing: UIConstants.mediumPadding) {
                         TextField("Search titles...", text: $query)
                             .textInputAutocapitalization(.words)
                             .disableAutocorrection(true)
@@ -873,17 +865,17 @@ private struct MatchPickerSheet: View {
                         .foregroundColor(.secondary)
                 } else {
                     ForEach(candidates) { match in
-                        HStack(spacing: 12) {
+                        HStack(spacing: UIConstants.interCardSpacing) {
                             if let url = match.imageURL {
                                 CachedImage(url: url) { img in
                                     img.resizable().scaledToFill()
                                 } placeholder: {
                                     Color.white.opacity(0.1)
                                 }
-                                .frame(width: 42, height: 56)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .frame(width: UIConstants.sourceRowImageWidth, height: UIConstants.sourceRowImageHeight)
+                                .clipShape(RoundedRectangle(cornerRadius: UIConstants.smallCornerRadius, style: .continuous))
                             }
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: UIConstants.microPadding) {
                                 Text(match.title)
                                     .font(.system(size: 16, weight: .semibold))
                                 if let year = match.year {
@@ -899,7 +891,7 @@ private struct MatchPickerSheet: View {
                             }
                             .buttonStyle(.borderedProminent)
                         }
-                        .padding(.vertical, 6)
+                        .padding(.vertical, UIConstants.tinyPadding)
                     }
                 }
             }

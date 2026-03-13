@@ -18,7 +18,7 @@ struct DiscoveryView: View {
             Theme.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
                         if UIDevice.current.userInterfaceIdiom != .pad {
                             Text("Discovery")
                                 .font(.system(size: 28, weight: .heavy))
@@ -47,12 +47,12 @@ struct DiscoveryView: View {
                             }
                         } else {
                             ForEach(sections) { section in
-                                VStack(alignment: .leading, spacing: 12) {
+                                VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
                                     Text(section.title)
                                         .font(.system(size: 18, weight: .bold))
                                         .foregroundColor(.white)
                                     ScrollView(.horizontal, showsIndicators: false) {
-                                        LazyHStack(spacing: 16) {
+                                        LazyHStack(spacing: UIConstants.interCardSpacing) {
                                             ForEach(section.items, id: \.id) { media in
                                                 NavigationLink {
                                                     DetailsView(media: media)
@@ -63,29 +63,26 @@ struct DiscoveryView: View {
                                                         imageURL: media.coverURL,
                                                         score: media.averageScore
                                                     )
-                                                    .frame(width: 150)
+                                                    .frame(width: UIConstants.posterCardWidth)
                                                 }
                                                 .buttonStyle(.plain)
                                             }
                                         }
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
+                                        .padding(.horizontal, UIConstants.tinyPadding)
+                                        .padding(.vertical, UIConstants.heroTopPadding)
                                     }
                                     .scrollClipDisabled()
                                 }
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, UIConstants.standardPadding)
+                    .padding(.top, UIConstants.smallPadding)
+                    .padding(.bottom, UIConstants.bottomBarHeight)
                 }
                 .navigationTitle(isPad ? "Discovery" : "")
                 .navigationBarTitleDisplayMode(.inline)
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            Color.clear.frame(height: tabBarInset)
         }
         .task {
             AppLog.debug(.ui, "discovery view load")
@@ -104,10 +101,6 @@ struct DiscoveryView: View {
             }
         }
     }
-    private var tabBarInset: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
-    }
-
     private var heroCarousel: some View {
         let items = heroItems()
         if items.isEmpty {
@@ -117,7 +110,8 @@ struct DiscoveryView: View {
                     subtitle: "Top rated, new releases, and hot anime",
                     imageURL: nil,
                     pills: [],
-                    tags: []
+                    tags: [],
+                    height: UIConstants.heroHeight
                 )
             )
         }
@@ -134,9 +128,9 @@ struct DiscoveryView: View {
                     .tag(index)
                 }
             }
-            .frame(height: 350)
             .tabViewStyle(.page(indexDisplayMode: .always))
-            .padding(.top, 2)
+            .frame(height: UIConstants.heroHeight)
+            .padding(.top, UIConstants.heroTopPadding)
             .onReceive(heroTimer) { _ in
                 guard !items.isEmpty else { return }
                 withAnimation(.easeInOut(duration: 0.4)) {
@@ -163,17 +157,17 @@ struct DiscoveryView: View {
             imageURL: heroMedia.bannerURL ?? heroMedia.coverURL,
             pills: pills,
             tags: tags,
-            height: 350
+            height: UIConstants.heroHeight
         )
     }
 
     private var searchResultsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
             Text("Search Results")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(.white)
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 16) {
+                LazyHStack(spacing: UIConstants.interCardSpacing) {
                     ForEach(searchResults, id: \.id) { media in
                         NavigationLink {
                             DetailsView(media: media)
@@ -184,13 +178,13 @@ struct DiscoveryView: View {
                                 imageURL: media.coverURL,
                                 score: media.averageScore
                             )
-                            .frame(width: 150)
+                            .frame(width: UIConstants.posterCardWidth)
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
+                .padding(.horizontal, UIConstants.tinyPadding)
+                .padding(.vertical, UIConstants.heroTopPadding)
             }
             .scrollClipDisabled()
         }

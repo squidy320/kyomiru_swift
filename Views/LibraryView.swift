@@ -15,7 +15,7 @@ struct LibraryView: View {
             Theme.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
                         if UIDevice.current.userInterfaceIdiom != .pad {
                             LibraryTopBar(
                                 title: "Library",
@@ -34,7 +34,7 @@ struct LibraryView: View {
                         SearchField(placeholder: "Search in library...", text: $filterText)
 
                         ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(spacing: 16) {
+                            LazyHStack(spacing: UIConstants.interCardSpacing) {
                                 ForEach(LibraryFilter.allCases) { filter in
                                     FilterChip(
                                         title: filterTitle(filter),
@@ -43,17 +43,17 @@ struct LibraryView: View {
                                     )
                                 }
                             }
-                            .padding(.vertical, 4)
+                            .padding(.vertical, UIConstants.microPadding)
                         }
                         .scrollClipDisabled()
 
                         if !continueWatchingItems().isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
                                 Text("Continue Watching")
                                     .font(.system(size: 18, weight: .bold))
                                     .foregroundColor(.white)
                                 ScrollView(.horizontal, showsIndicators: false) {
-                                    LazyHStack(spacing: 16) {
+                                    LazyHStack(spacing: UIConstants.interCardSpacing) {
                                         ForEach(continueWatchingItems()) { item in
                                             ContinueWatchingCard(
                                                 title: item.title,
@@ -63,10 +63,11 @@ struct LibraryView: View {
                                                 imageURL: item.imageURL,
                                                 episodeBadge: item.episodeBadge
                                             )
+                                            .frame(height: UIConstants.episodeCardHeight)
                                         }
                                     }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
+                                    .padding(.horizontal, UIConstants.tinyPadding)
+                                    .padding(.vertical, UIConstants.heroTopPadding)
                                 }
                                 .scrollClipDisabled()
                             }
@@ -98,16 +99,13 @@ struct LibraryView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, UIConstants.standardPadding)
+                    .padding(.top, UIConstants.smallPadding)
+                    .padding(.bottom, UIConstants.bottomBarHeight)
                 }
                 .navigationTitle(isPad ? "Library" : "")
                 .navigationBarTitleDisplayMode(.inline)
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            Color.clear.frame(height: tabBarInset)
         }
         .task {
             AppLog.debug(.ui, "library view load")
@@ -119,10 +117,6 @@ struct LibraryView: View {
             }
             await loadLibrary()
         }
-    }
-
-    private var tabBarInset: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
 
     private func filteredSections() -> [AniListLibrarySection] {
@@ -154,7 +148,7 @@ struct LibraryView: View {
             imageURL: heroMedia?.bannerURL ?? heroMedia?.coverURL,
             pills: pills,
             tags: tags,
-            height: 260
+            height: UIConstants.heroHeightCompact
         )
     }
 
@@ -292,8 +286,8 @@ private struct LibraryTopBar: View {
     let onAvatarTap: () -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .center, spacing: UIConstants.interCardSpacing) {
+            VStack(alignment: .leading, spacing: UIConstants.microPadding) {
                 Text(title)
                     .font(.system(size: 28, weight: .heavy))
                     .foregroundColor(Theme.textPrimary)
@@ -306,14 +300,14 @@ private struct LibraryTopBar: View {
                 ZStack {
                     Circle()
                         .fill(Color.white.opacity(0.08))
-                        .frame(width: 38, height: 38)
+                        .frame(width: UIConstants.avatarSize, height: UIConstants.avatarSize)
                     if let url = avatarURL {
                         CachedImage(url: url) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {
                             ProgressView()
                         }
-                        .frame(width: 38, height: 38)
+                        .frame(width: UIConstants.avatarSize, height: UIConstants.avatarSize)
                         .clipShape(Circle())
                     } else {
                         Image(systemName: "person.fill")
@@ -332,7 +326,7 @@ private struct LibrarySection: View {
     let filterText: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
             Text(section.title)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(.white)
@@ -344,7 +338,7 @@ private struct LibrarySection: View {
                 }
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 16) {
+                    LazyHStack(spacing: UIConstants.interCardSpacing) {
                         ForEach(section.items, id: \.id) { entry in
                             NavigationLink {
                                 DetailsView(media: entry.media)
@@ -355,18 +349,18 @@ private struct LibrarySection: View {
                                     imageURL: entry.media.coverURL,
                                     score: entry.media.averageScore
                                 )
-                                .frame(width: 150)
+                                .frame(width: UIConstants.posterCardWidth)
                             }
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, UIConstants.tinyPadding)
+                    .padding(.vertical, UIConstants.heroTopPadding)
                 }
                 .scrollClipDisabled()
             }
         }
-        .padding(.bottom, 4)
+        .padding(.bottom, UIConstants.microPadding)
     }
 }
 
