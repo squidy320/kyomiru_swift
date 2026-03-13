@@ -542,7 +542,7 @@ private final class MPVRenderCoordinator {
         }
         guard let formatDescription else { return }
 
-        let timing = makeTimingInfo()
+        var timing = makeTimingInfo()
         var sampleBuffer: CMSampleBuffer?
         let result = CMSampleBufferCreateForImageBuffer(allocator: kCFAllocatorDefault,
                                                         imageBuffer: pixelBuffer,
