@@ -5,13 +5,11 @@ struct MediaPosterCard: View {
     let subtitle: String?
     let imageURL: URL?
     let score: Int?
-    private let cardHeight: CGFloat = 220
-    private let cardWidth: CGFloat = 150
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                     .fill(Color.white.opacity(0.06))
 
                 if let imageURL {
@@ -21,7 +19,7 @@ struct MediaPosterCard: View {
                         Color.white.opacity(0.08)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
                 }
 
                 LinearGradient(
@@ -31,7 +29,7 @@ struct MediaPosterCard: View {
                 )
                 .frame(height: 120)
 
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
                     Text(title)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.white)
@@ -42,16 +40,16 @@ struct MediaPosterCard: View {
                             .foregroundColor(Theme.textSecondary)
                     }
                 }
-                .padding(12)
+                .padding(UIConstants.rowPadding)
             }
-            .frame(maxWidth: .infinity, maxHeight: cardHeight)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(maxWidth: .infinity, maxHeight: UIConstants.posterCardHeight)
+            .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
 
             RatingBadge(score: score)
-                .padding(10)
+                .padding(UIConstants.mediumPadding)
         }
-        .frame(width: cardWidth, height: cardHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .frame(width: UIConstants.posterCardWidth, height: UIConstants.posterCardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
     }
 }
 
@@ -62,12 +60,9 @@ struct ContinueWatchingCard: View {
     let timeRemainingText: String
     let imageURL: URL?
     let episodeBadge: String?
-    private let cardWidth: CGFloat = 260
-    private let cardHeight: CGFloat = 140
-
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.06))
 
             if let imageURL {
@@ -77,7 +72,7 @@ struct ContinueWatchingCard: View {
                     Color.white.opacity(0.08)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
             }
 
             LinearGradient(
@@ -86,9 +81,9 @@ struct ContinueWatchingCard: View {
                 endPoint: .top
             )
             .frame(height: 90)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
                 Text(title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
@@ -105,22 +100,22 @@ struct ContinueWatchingCard: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(Theme.textSecondary)
             }
-            .padding(12)
+            .padding(UIConstants.rowPadding)
         }
-        .frame(width: cardWidth, height: cardHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .frame(width: UIConstants.continueCardWidth, height: UIConstants.continueCardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
         .overlay(alignment: .topTrailing) {
             if let episodeBadge {
                 Text(episodeBadge)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, UIConstants.microPadding)
                     .background(
                         Capsule(style: .continuous)
                             .fill(Color.black.opacity(0.6))
                     )
-                    .padding(10)
+                    .padding(UIConstants.mediumPadding)
             }
         }
     }

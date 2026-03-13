@@ -63,7 +63,7 @@ struct LibraryView: View {
                                                 imageURL: item.imageURL,
                                                 episodeBadge: item.episodeBadge
                                             )
-                                            .frame(height: UIConstants.episodeCardHeight)
+                                            .frame(height: UIConstants.continueCardHeight)
                                         }
                                     }
                                     .padding(.horizontal, UIConstants.tinyPadding)
