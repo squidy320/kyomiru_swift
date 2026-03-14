@@ -177,7 +177,7 @@ struct MPVVideoView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             SampleBufferDisplayRepresentable { view in
-                guard let hostLayer = view.layer else { return }
+                let hostLayer = view.layer
                 player.attach(layer: view.displayLayer, hostLayer: hostLayer)
             }
             .background(Color.black)
