@@ -429,9 +429,17 @@ final class DownloadManager: NSObject, ObservableObject {
 
     func playableURL(for item: DownloadItem) -> URL? {
         if let local = item.localFile {
-            return resolvePlayableURL(localFile: local, item: item)
+            let resolved = resolvePlayableURL(localFile: local, item: item)
+            if resolved == nil {
+                AppLog.error(.downloads, "offline resolve failed localFile=\(local.path) title=\(item.title) ep=\(item.episode)")
+            }
+            return resolved
         }
-        return resolveFallbackPlayableURL(for: item)
+        let resolved = resolveFallbackPlayableURL(for: item)
+        if resolved == nil {
+            AppLog.error(.downloads, "offline resolve failed no localFile title=\(item.title) ep=\(item.episode)")
+        }
+        return resolved
     }
 
     func markWatched(mediaTitle: String, episode: Int) {
@@ -475,6 +483,15 @@ final class DownloadManager: NSObject, ObservableObject {
                 AppLog.debug(.downloads, "offline resolve using playlist path=\(playlist.path)")
                 return playlist
             }
+            let candidateFolders = [
+                localHLSFolder(title: item.title, episode: item.episode),
+                localFile.deletingPathExtension(),
+                localFile.deletingLastPathComponent()
+            ]
+            for folder in candidateFolders {
+                let count = countSegments(in: folder, prefix: nil)
+                AppLog.debug(.downloads, "offline resolve candidate folder=\(folder.path) segments=\(count)")
+            }
         }
 
         if !exists {
@@ -484,11 +501,13 @@ final class DownloadManager: NSObject, ObservableObject {
         }
 
         if ext == "m3u8" {
+            AppLog.debug(.downloads, "offline resolve using m3u8 path=\(localFile.path)")
             return localFile
         }
 
         if localFile.hasDirectoryPath {
             if let playlist = ensurePlaylist(forFolder: localFile, prefix: nil) {
+                AppLog.debug(.downloads, "offline resolve using playlist path=\(playlist.path)")
                 return playlist
             }
             return localFile
@@ -504,6 +523,7 @@ final class DownloadManager: NSObject, ObservableObject {
             }
             let playlist = folder.appendingPathComponent("playlist.m3u8")
             if fm.fileExists(atPath: playlist.path) {
+                AppLog.debug(.downloads, "offline resolve using existing playlist path=\(playlist.path)")
                 return playlist
             }
         }
@@ -516,17 +536,20 @@ final class DownloadManager: NSObject, ObservableObject {
         let folder = localHLSFolder(title: item.title, episode: item.episode)
         if fm.fileExists(atPath: folder.path) {
             if let playlist = ensurePlaylist(forFolder: folder, prefix: nil) {
+                AppLog.debug(.downloads, "offline fallback using playlist path=\(playlist.path)")
                 return playlist
             }
         }
 
         let mergedTs = localMergedHLSFileURL(for: item.title, episode: item.episode)
         if fm.fileExists(atPath: mergedTs.path) {
+            AppLog.debug(.downloads, "offline fallback using merged ts path=\(mergedTs.path)")
             return mergedTs
         }
 
         let mp4 = localFileURL(for: item.title, episode: item.episode)
         if fm.fileExists(atPath: mp4.path) {
+            AppLog.debug(.downloads, "offline fallback using mp4 path=\(mp4.path)")
             return mp4
         }
 
