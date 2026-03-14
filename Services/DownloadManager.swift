@@ -245,7 +245,8 @@ actor OfflineDownloadManager {
         if suffix.hasPrefix("\"") {
             if let end = suffix.dropFirst().firstIndex(of: "\"") {
                 let tail = suffix[end...]
-                return prefix + "\"\(localName)\"" + tail
+                let quote = "\""
+                return prefix + quote + localName + quote + tail
             }
         } else if let end = suffix.firstIndex(of: ",") {
             let tail = suffix[end...]
