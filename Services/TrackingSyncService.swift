@@ -21,7 +21,8 @@ final class TrackingSyncService {
     }
 
     private func updateProgress(auth: AuthState, client: AniListClient, title: String, episode: Int) async {
-        guard auth.isSignedIn, let token = auth.token else { return }
+        let token = await MainActor.run { auth.token }
+        guard let token, !token.isEmpty else { return }
         do {
             let media = try await client.searchAnime(query: title).first
             if let media {

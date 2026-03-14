@@ -10,9 +10,10 @@ struct DependencyContainer {
     let libraryStore: MediaTracker
 }
 
-@MainActor
 actor AppDependencyContainer {
-    static let shared = AppDependencyContainer()
+    static func shared() async -> AppDependencyContainer {
+        await AppDependencyContainer()
+    }
 
     let aniListService: AniListService
     let downloadManager: DownloadManager
@@ -24,9 +25,13 @@ actor AppDependencyContainer {
         downloadManager: DownloadManager? = nil,
         mediaRemuxer: MediaRemuxer? = nil,
         libraryStore: MediaTracker? = nil
-    ) {
+    ) async {
         self.aniListService = aniListService ?? AniListClient(cacheStore: CacheStore())
-        self.downloadManager = downloadManager ?? .shared
+        if let downloadManager {
+            self.downloadManager = downloadManager
+        } else {
+            self.downloadManager = await MainActor.run { DownloadManager.shared }
+        }
         self.mediaRemuxer = mediaRemuxer ?? .shared
         self.libraryStore = libraryStore ?? MediaTracker()
     }
