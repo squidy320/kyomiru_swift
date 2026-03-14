@@ -3,13 +3,14 @@ import Foundation
 typealias AniListService = AniListClient
 typealias MediaRemuxer = MediaConversionManager
 
-struct DependencyContainer: Sendable {
+struct DependencyContainer {
     let aniListService: AniListService
     let downloadManager: DownloadManager
     let mediaRemuxer: MediaRemuxer
     let libraryStore: MediaTracker
 }
 
+@MainActor
 actor AppDependencyContainer {
     static let shared = AppDependencyContainer()
 
@@ -19,15 +20,15 @@ actor AppDependencyContainer {
     let libraryStore: MediaTracker
 
     init(
-        aniListService: AniListService = AniListClient(cacheStore: CacheStore()),
-        downloadManager: DownloadManager = .shared,
-        mediaRemuxer: MediaRemuxer = .shared,
-        libraryStore: MediaTracker = MediaTracker()
+        aniListService: AniListService? = nil,
+        downloadManager: DownloadManager? = nil,
+        mediaRemuxer: MediaRemuxer? = nil,
+        libraryStore: MediaTracker? = nil
     ) {
-        self.aniListService = aniListService
-        self.downloadManager = downloadManager
-        self.mediaRemuxer = mediaRemuxer
-        self.libraryStore = libraryStore
+        self.aniListService = aniListService ?? AniListClient(cacheStore: CacheStore())
+        self.downloadManager = downloadManager ?? .shared
+        self.mediaRemuxer = mediaRemuxer ?? .shared
+        self.libraryStore = libraryStore ?? MediaTracker()
     }
 
     func container() -> DependencyContainer {

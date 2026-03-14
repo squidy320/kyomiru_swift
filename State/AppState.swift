@@ -8,6 +8,7 @@ enum AppTab: Hashable {
     case settings
 }
 
+@MainActor
 final class AppState: ObservableObject {
     @Published var selectedTab: AppTab = .home
     @Published var settings = SettingsState()

@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 final class AuthState: ObservableObject {
     @Published var isLoading = false
     @Published var token: String? = nil

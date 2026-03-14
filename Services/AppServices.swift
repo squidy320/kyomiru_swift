@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 final class AppServices {
     let keychain = KeychainService()
     let cacheStore = CacheStore()

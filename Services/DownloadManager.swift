@@ -370,12 +370,13 @@ final class DownloadManager: NSObject, ObservableObject {
                 playlistURL: url,
                 headers: headers,
                 outputURL: output,
-                preferLocalHLS: MPVSupport.isAvailable
-            ) { [weak self] value in
+                progress: { [weak self] value in
                 Task { @MainActor in
                     self?.updateProgress(id: id, progress: value)
                 }
-            }
+            },
+                preferLocalHLS: MPVSupport.isAvailable
+            )
             if MPVSupport.isAvailable {
                 updateStatus(id: id, status: "Completed", localFile: localFile)
                 AppLog.debug(.downloads, "hls download complete id=\(id) (mpv)")
