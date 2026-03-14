@@ -577,8 +577,11 @@ final class DownloadManager: NSObject, ObservableObject {
         }
 
         if ext == "m3u8" {
-            AppLog.debug(.downloads, "offline resolve using m3u8 path=\(localFile.path)")
-            return localFile
+            if hasLocalPlaylistSegments(localFile) {
+                AppLog.debug(.downloads, "offline resolve using m3u8 path=\(localFile.path)")
+                return localFile
+            }
+            AppLog.error(.downloads, "offline resolve playlist missing segments path=\(localFile.path)")
         }
 
         if localFile.hasDirectoryPath {
@@ -685,7 +688,8 @@ final class DownloadManager: NSObject, ObservableObject {
 
         var segments: [URL] = []
         for case let fileURL as URL in enumerator {
-            guard fileURL.pathExtension.lowercased() == "ts" else { continue }
+            let ext = fileURL.pathExtension.lowercased()
+            guard ext == "ts" || ext == "m4s" else { continue }
             if prefix == nil, isEpisodeLikeSegment(fileURL) {
                 continue
             }
@@ -695,6 +699,24 @@ final class DownloadManager: NSObject, ObservableObject {
             segments.append(fileURL)
         }
         return segments.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    private func hasLocalPlaylistSegments(_ playlistURL: URL) -> Bool {
+        guard let text = try? String(contentsOf: playlistURL) else { return false }
+        let base = playlistURL.deletingLastPathComponent()
+        let lines = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        var hits = 0
+        for line in lines {
+            guard !line.isEmpty, !line.hasPrefix("#") else { continue }
+            let candidate = URL(string: line, relativeTo: base)?.absoluteURL
+                ?? base.appendingPathComponent(line)
+            if fm.fileExists(atPath: candidate.path) {
+                hits += 1
+            }
+        }
+        return hits > 0
     }
 
     private func isMergedEpisodeFile(_ url: URL, item: DownloadItem) -> Bool {
