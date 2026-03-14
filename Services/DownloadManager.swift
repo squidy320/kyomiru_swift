@@ -470,13 +470,8 @@ final class DownloadManager: NSObject, ObservableObject {
         AppLog.debug(.downloads, "offline resolve path=\(localFile.path) exists=\(exists) isDir=\(localFile.hasDirectoryPath)")
 
         if item.isHls {
-            let folder = localHLSFolder(title: item.title, episode: item.episode)
-            if hasSegments(in: folder), let playlist = ensurePlaylist(forFolder: folder, prefix: nil) {
-                AppLog.debug(.downloads, "offline resolve using playlist path=\(playlist.path)")
-                return playlist
-            }
-            let sibling = localFile.deletingPathExtension()
-            if hasSegments(in: sibling), let playlist = ensurePlaylist(forFolder: sibling, prefix: nil) {
+            if let segmentFolder = findSegmentFolder(for: item, localFile: localFile),
+               let playlist = ensurePlaylist(forFolder: segmentFolder, prefix: nil) {
                 AppLog.debug(.downloads, "offline resolve using playlist path=\(playlist.path)")
                 return playlist
             }
@@ -502,7 +497,7 @@ final class DownloadManager: NSObject, ObservableObject {
         if ext == "ts" {
             let folder = localFile.deletingLastPathComponent()
             let baseName = localFile.deletingPathExtension().lastPathComponent
-            if hasSegments(in: folder, prefix: baseName),
+            if countSegments(in: folder, prefix: baseName) > 1,
                let playlist = ensurePlaylist(forFolder: folder, prefix: baseName) {
                 AppLog.debug(.downloads, "offline resolve using playlist path=\(playlist.path)")
                 return playlist
@@ -575,7 +570,11 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func hasSegments(in folder: URL, prefix: String? = nil) -> Bool {
-        !collectSegments(in: folder, prefix: prefix).isEmpty
+        countSegments(in: folder, prefix: prefix) > 0
+    }
+
+    private func countSegments(in folder: URL, prefix: String? = nil) -> Int {
+        collectSegments(in: folder, prefix: prefix).count
     }
 
     private func collectSegments(in folder: URL, prefix: String?) -> [URL] {
@@ -593,6 +592,56 @@ final class DownloadManager: NSObject, ObservableObject {
             segments.append(fileURL)
         }
         return segments.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    private func findSegmentFolder(for item: DownloadItem, localFile: URL) -> URL? {
+        let titleFolder = localFile.deletingLastPathComponent()
+        let sibling = localFile.deletingPathExtension()
+        let candidates = [
+            localHLSFolder(title: item.title, episode: item.episode),
+            sibling,
+            titleFolder
+        ]
+
+        var bestFolder: URL?
+        var bestCount = 0
+        for folder in candidates {
+            let count = countSegments(in: folder, prefix: nil)
+            if count > bestCount {
+                bestCount = count
+                bestFolder = folder
+            }
+        }
+
+        if bestCount >= 2, let bestFolder {
+            AppLog.debug(.downloads, "offline resolve segments folder=\(bestFolder.path) count=\(bestCount)")
+            return bestFolder
+        }
+
+        if let auto = findBestSegmentFolder(in: titleFolder) {
+            AppLog.debug(.downloads, "offline resolve segments folder=\(auto.path) count=\(countSegments(in: auto))")
+            return auto
+        }
+
+        return nil
+    }
+
+    private func findBestSegmentFolder(in root: URL) -> URL? {
+        guard fm.fileExists(atPath: root.path) else { return nil }
+        guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey], options: [.skipsHiddenFiles]) else {
+            return nil
+        }
+
+        var counts: [URL: Int] = [:]
+        for case let fileURL as URL in enumerator {
+            guard fileURL.pathExtension.lowercased() == "ts" else { continue }
+            let folder = fileURL.deletingLastPathComponent()
+            counts[folder, default: 0] += 1
+        }
+
+        let sorted = counts.sorted { $0.value > $1.value }
+        guard let best = sorted.first, best.value >= 2 else { return nil }
+        return best.key
     }
 }
 
@@ -759,4 +808,8 @@ actor MediaConversionManager {
         return "Export failed (\(domain)) code=\(code) \(message)"
     }
 }
+
+
+
+
 
