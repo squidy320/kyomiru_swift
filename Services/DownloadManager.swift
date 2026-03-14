@@ -149,6 +149,7 @@ actor OfflineDownloadManager {
         var completed = 0
         var keyIndex = 0
         var keyMap: [URL: String] = [:]
+        var segmentsWritten = 0
 
         func writeProgress() {
             let value = Double(completed) / Double(total)
@@ -201,6 +202,7 @@ actor OfflineDownloadManager {
                 completed += 1
                 writeProgress()
                 rewrittenLines.append(localName)
+                segmentsWritten += 1
                 continue
             }
 
@@ -210,6 +212,7 @@ actor OfflineDownloadManager {
         let playlistURL = baseFolder.appendingPathComponent("playlist.m3u8")
         let playlistText = rewrittenLines.joined(separator: "\n")
         try playlistText.data(using: .utf8)?.write(to: playlistURL, options: .atomic)
+        AppLog.debug(.downloads, "offline hls stored folder=\(baseFolder.path) segments=\(segmentsWritten) keys=\(keyMap.count) map=\(resolved.mapURL != nil)")
         return playlistURL
     }
 

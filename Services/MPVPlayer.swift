@@ -278,9 +278,19 @@ private final class MPVCore {
             if url.isFileURL {
                 let path = url.path
                 let exists = FileManager.default.fileExists(atPath: path)
+                let ext = url.pathExtension.lowercased()
                 AppLog.debug(.player, "mpv loadfile local exists=\(exists) path=\(path)")
                 if !exists {
                     AppLog.error(.player, "mpv loadfile missing local file path=\(path)")
+                }
+                if ext == "ts" {
+                    mpv_set_property_string(handle, "demuxer", "lavf")
+                    mpv_set_property_string(handle, "demuxer-lavf-format", "mpegts")
+                    mpv_set_property_string(handle, "demuxer-lavf-o", "fflags=+genpts")
+                } else {
+                    mpv_set_property_string(handle, "demuxer", "")
+                    mpv_set_property_string(handle, "demuxer-lavf-format", "")
+                    mpv_set_property_string(handle, "demuxer-lavf-o", "")
                 }
             } else {
                 AppLog.debug(.player, "mpv loadfile remote url=\(url.absoluteString)")
