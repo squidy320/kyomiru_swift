@@ -477,6 +477,11 @@ final class DownloadManager: NSObject, ObservableObject {
         let exists = fm.fileExists(atPath: localFile.path)
         AppLog.debug(.downloads, "offline resolve path=\(localFile.path) exists=\(exists) isDir=\(localFile.hasDirectoryPath)")
 
+        if ext == "ts", isMergedEpisodeFile(localFile, item: item) {
+            AppLog.debug(.downloads, "offline resolve using merged episode ts path=\(localFile.path)")
+            return localFile
+        }
+
         if item.isHls {
             if let segmentFolder = findSegmentFolder(for: item, localFile: localFile),
                let playlist = ensurePlaylist(forFolder: segmentFolder, prefix: nil) {
@@ -566,6 +571,7 @@ final class DownloadManager: NSObject, ObservableObject {
         let segments = collectSegments(in: folder, prefix: prefix)
 
         if segments.isEmpty {
+            AppLog.debug(.downloads, "offline playlist not generated (no segments) folder=\(folder.path)")
             return nil
         }
 
@@ -609,12 +615,27 @@ final class DownloadManager: NSObject, ObservableObject {
         var segments: [URL] = []
         for case let fileURL as URL in enumerator {
             guard fileURL.pathExtension.lowercased() == "ts" else { continue }
+            if prefix == nil, isEpisodeLikeSegment(fileURL) {
+                continue
+            }
             if let prefix, !fileURL.deletingPathExtension().lastPathComponent.hasPrefix(prefix) {
                 continue
             }
             segments.append(fileURL)
         }
         return segments.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    private func isMergedEpisodeFile(_ url: URL, item: DownloadItem) -> Bool {
+        let name = url.deletingPathExtension().lastPathComponent
+        return name == "E\(item.episode)"
+    }
+
+    private func isEpisodeLikeSegment(_ url: URL) -> Bool {
+        let name = url.deletingPathExtension().lastPathComponent
+        guard name.hasPrefix("E") else { return false }
+        let digits = name.dropFirst()
+        return !digits.isEmpty && digits.allSatisfy { $0.isNumber }
     }
 
     private func findSegmentFolder(for item: DownloadItem, localFile: URL) -> URL? {
@@ -636,7 +657,7 @@ final class DownloadManager: NSObject, ObservableObject {
             }
         }
 
-        if bestCount >= 2, let bestFolder {
+        if bestCount >= 3, let bestFolder {
             AppLog.debug(.downloads, "offline resolve segments folder=\(bestFolder.path) count=\(bestCount)")
             return bestFolder
         }
@@ -663,7 +684,7 @@ final class DownloadManager: NSObject, ObservableObject {
         }
 
         let sorted = counts.sorted { $0.value > $1.value }
-        guard let best = sorted.first, best.value >= 2 else { return nil }
+        guard let best = sorted.first, best.value >= 3 else { return nil }
         return best.key
     }
 }
