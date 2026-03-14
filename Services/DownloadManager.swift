@@ -8,6 +8,7 @@ actor OfflineDownloadManager {
         let segmentURLs: [URL]
         let mapURL: URL?
         let isFmp4: Bool
+        let baseURL: URL
     }
 
     private let session: URLSession
@@ -23,7 +24,8 @@ actor OfflineDownloadManager {
         playlistURL: URL,
         headers: [String: String],
         outputURL: URL,
-        progress: ProgressHandler?
+        progress: ProgressHandler?,
+        preferLocalHLS: Bool
     ) async throws -> URL {
         let playlistData = try await fetchData(url: playlistURL, headers: headers)
         let resolved = try await resolveSegments(from: playlistData, baseURL: playlistURL, headers: headers)
@@ -35,7 +37,7 @@ actor OfflineDownloadManager {
             throw URLError(.cannotParseResponse)
         }
 
-        if resolved.isFmp4 {
+        if preferLocalHLS || resolved.isFmp4 {
             return try await storeAsLocalHLS(resolved: resolved, outputURL: outputURL, headers: headers, progress: progress)
         }
 
@@ -123,7 +125,8 @@ actor OfflineDownloadManager {
             lines: lines,
             segmentURLs: segments,
             mapURL: mapURL,
-            isFmp4: isFmp4
+            isFmp4: isFmp4,
+            baseURL: baseURL
         )
     }
 
@@ -139,8 +142,13 @@ actor OfflineDownloadManager {
 
         var rewrittenLines: [String] = []
         var segmentIndex = 0
-        let total = max(resolved.segmentURLs.count + (resolved.mapURL == nil ? 0 : 1), 1)
+        let keyURLs = collectKeyURLs(from: resolved)
+        let total = max(resolved.segmentURLs.count
+                        + (resolved.mapURL == nil ? 0 : 1)
+                        + keyURLs.count, 1)
         var completed = 0
+        var keyIndex = 0
+        var keyMap: [URL: String] = [:]
 
         func writeProgress() {
             let value = Double(completed) / Double(total)
@@ -148,6 +156,25 @@ actor OfflineDownloadManager {
         }
 
         for line in resolved.lines {
+            if line.hasPrefix("#EXT-X-KEY:"),
+               let keyURL = extractKeyURL(from: line, baseURL: resolved.baseURL) {
+                if let localName = keyMap[keyURL] {
+                    rewrittenLines.append(replaceKeyURI(in: line, with: localName))
+                } else {
+                    let ext = keyURL.pathExtension.isEmpty ? "key" : keyURL.pathExtension
+                    let localName = String(format: "key_%03d.%@", keyIndex, ext)
+                    keyIndex += 1
+                    let data = try await fetchData(url: keyURL, headers: headers)
+                    let localURL = baseFolder.appendingPathComponent(localName)
+                    try data.write(to: localURL, options: .atomic)
+                    keyMap[keyURL] = localName
+                    completed += 1
+                    writeProgress()
+                    rewrittenLines.append(replaceKeyURI(in: line, with: localName))
+                }
+                continue
+            }
+
             if line.hasPrefix("#EXT-X-MAP:"),
                let mapURL = resolved.mapURL {
                 let ext = mapURL.pathExtension.isEmpty ? "mp4" : mapURL.pathExtension
@@ -184,6 +211,47 @@ actor OfflineDownloadManager {
         let playlistText = rewrittenLines.joined(separator: "\n")
         try playlistText.data(using: .utf8)?.write(to: playlistURL, options: .atomic)
         return playlistURL
+    }
+
+    private func collectKeyURLs(from resolved: ResolvedPlaylist) -> [URL] {
+        var urls: [URL] = []
+        for line in resolved.lines {
+            guard line.hasPrefix("#EXT-X-KEY:"),
+                  let url = extractKeyURL(from: line, baseURL: resolved.baseURL) else { continue }
+            if !urls.contains(url) {
+                urls.append(url)
+            }
+        }
+        return urls
+    }
+
+    private func extractKeyURL(from line: String, baseURL: URL) -> URL? {
+        guard let range = line.range(of: "URI=") else { return nil }
+        var value = String(line[range.upperBound...])
+        if let comma = value.firstIndex(of: ",") {
+            value = String(value[..<comma])
+        }
+        value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("\"") { value.removeFirst() }
+        if value.hasSuffix("\"") { value.removeLast() }
+        guard !value.isEmpty else { return nil }
+        return URL(string: value, relativeTo: baseURL)?.absoluteURL
+    }
+
+    private func replaceKeyURI(in line: String, with localName: String) -> String {
+        guard let range = line.range(of: "URI=") else { return line }
+        let prefix = line[..<range.upperBound]
+        let suffix = line[range.upperBound...]
+        if suffix.hasPrefix("\"") {
+            if let end = suffix.dropFirst().firstIndex(of: "\"") {
+                let tail = suffix[end...]
+                return prefix + "\"\(localName)\"" + tail
+            }
+        } else if let end = suffix.firstIndex(of: ",") {
+            let tail = suffix[end...]
+            return prefix + localName + tail
+        }
+        return prefix + localName
     }
 }
 
@@ -300,7 +368,8 @@ final class DownloadManager: NSObject, ObservableObject {
             let localFile = try await offlineManager.downloadAndMerge(
                 playlistURL: url,
                 headers: headers,
-                outputURL: output
+                outputURL: output,
+                preferLocalHLS: MPVSupport.isAvailable
             ) { [weak self] value in
                 Task { @MainActor in
                     self?.updateProgress(id: id, progress: value)
