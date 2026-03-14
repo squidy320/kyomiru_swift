@@ -58,11 +58,11 @@ final class SampleBufferDisplayView: PlatformView {
 
 #if os(iOS)
 struct SampleBufferDisplayRepresentable: UIViewRepresentable {
-    let onLayerReady: (AVSampleBufferDisplayLayer) -> Void
+    let onViewReady: (SampleBufferDisplayView) -> Void
 
     func makeUIView(context: Context) -> SampleBufferDisplayView {
         let view = SampleBufferDisplayView()
-        onLayerReady(view.displayLayer)
+        onViewReady(view)
         return view
     }
 
@@ -72,11 +72,11 @@ struct SampleBufferDisplayRepresentable: UIViewRepresentable {
 }
 #else
 struct SampleBufferDisplayRepresentable: NSViewRepresentable {
-    let onLayerReady: (AVSampleBufferDisplayLayer) -> Void
+    let onViewReady: (SampleBufferDisplayView) -> Void
 
     func makeNSView(context: Context) -> SampleBufferDisplayView {
         let view = SampleBufferDisplayView()
-        onLayerReady(view.displayLayer)
+        onViewReady(view)
         return view
     }
 

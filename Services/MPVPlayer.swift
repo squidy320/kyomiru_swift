@@ -16,15 +16,24 @@ final class MPVPlayerModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var debugStats: MPVDebugStats?
 
-    private let core = MPVCore()
+    private var core: MPVCore?
     private var statusTimer: Timer?
     private var wantsDebugStats = false
+    private var pendingLoad: (url: URL, headers: [String: String], startTime: Double?)?
 #if os(iOS) && !targetEnvironment(macCatalyst)
     private var pipController: PiPController?
 #endif
 
-    func attach(layer: AVSampleBufferDisplayLayer) {
-        core.attach(layer: layer)
+    func attach(layer: AVSampleBufferDisplayLayer, hostLayer: CALayer) {
+        if core == nil {
+            core = MPVCore(hostLayer: hostLayer)
+        }
+        core?.attach(displayLayer: layer, hostLayer: hostLayer)
+        if let pending = pendingLoad {
+            core?.load(url: pending.url, headers: pending.headers, startTime: pending.startTime)
+            pendingLoad = nil
+            startStatusTimer()
+        }
 #if os(iOS) && !targetEnvironment(macCatalyst)
         if pipController == nil {
             pipController = PiPController(
@@ -41,6 +50,10 @@ final class MPVPlayerModel: ObservableObject {
     }
 
     func load(url: URL, headers: [String: String], startTime: Double?) {
+        guard let core else {
+            pendingLoad = (url, headers, startTime)
+            return
+        }
         core.load(url: url, headers: headers, startTime: startTime)
         startStatusTimer()
     }
@@ -57,7 +70,7 @@ final class MPVPlayerModel: ObservableObject {
     }
 
     func play() {
-        core.setPaused(false)
+        core?.setPaused(false)
         isPlaying = true
         scheduleAutoRefresh()
 #if os(iOS) && !targetEnvironment(macCatalyst)
@@ -66,7 +79,7 @@ final class MPVPlayerModel: ObservableObject {
     }
 
     func pause() {
-        core.setPaused(true)
+        core?.setPaused(true)
         isPlaying = false
 #if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
@@ -74,7 +87,7 @@ final class MPVPlayerModel: ObservableObject {
     }
 
     func seek(to seconds: Double) {
-        core.seek(to: seconds)
+        core?.seek(to: seconds)
         scheduleAutoRefresh()
 #if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
@@ -82,7 +95,7 @@ final class MPVPlayerModel: ObservableObject {
     }
 
     func seekBy(_ delta: Double) {
-        core.seekBy(delta)
+        core?.seekBy(delta)
         scheduleAutoRefresh()
 #if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
@@ -91,7 +104,7 @@ final class MPVPlayerModel: ObservableObject {
 
     func setRate(_ value: Double) {
         rate = value
-        core.setRate(value)
+        core?.setRate(value)
 #if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.invalidatePlaybackState()
 #endif
@@ -100,7 +113,9 @@ final class MPVPlayerModel: ObservableObject {
     func shutdown() {
         statusTimer?.invalidate()
         statusTimer = nil
-        core.shutdown()
+        core?.shutdown()
+        core = nil
+        pendingLoad = nil
 #if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.stopPictureInPicture()
         pipController = nil
@@ -134,6 +149,7 @@ final class MPVPlayerModel: ObservableObject {
     }
 
     private func refreshStatus() {
+        guard let core else { return }
         let newPosition = core.getDoubleProperty("time-pos") ?? 0
         let newDuration = core.getDoubleProperty("duration") ?? 0
         let paused = core.getFlagProperty("pause") ?? false
@@ -160,8 +176,9 @@ struct MPVVideoView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            SampleBufferDisplayRepresentable { layer in
-                player.attach(layer: layer)
+            SampleBufferDisplayRepresentable { view in
+                guard let hostLayer = view.layer else { return }
+                player.attach(layer: view.displayLayer, hostLayer: hostLayer)
             }
             .background(Color.black)
             .allowsHitTesting(false)
@@ -199,7 +216,7 @@ private final class MPVCore {
     private var renderCoordinator: MPVRenderCoordinator?
     private var eventTimer: DispatchSourceTimer?
 
-    init() {
+    init(hostLayer: CALayer) {
         queue.sync {
             handle = mpv_create()
             guard let handle else {
@@ -207,9 +224,12 @@ private final class MPVCore {
                 return
             }
 
+            let pointer = Unmanaged.passUnretained(hostLayer).toOpaque()
+            var wid = Int64(bitPattern: UInt64(UInt(bitPattern: pointer)))
+            mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &wid)
+
             mpv_set_option_string(handle, "vo", "libmpv")
-            // SW renderer needs CPU-accessible frames; hwdec can produce GPU-only surfaces.
-            mpv_set_option_string(handle, "hwdec", "no")
+            mpv_set_option_string(handle, "hwdec", "videotoolbox")
             mpv_set_option_string(handle, "keep-open", "yes")
             mpv_set_option_string(handle, "osc", "no")
             mpv_set_option_string(handle, "input-default-bindings", "no")
@@ -266,9 +286,10 @@ private final class MPVCore {
         }
     }
 
-    func attach(layer: AVSampleBufferDisplayLayer) {
+    func attach(displayLayer: AVSampleBufferDisplayLayer, hostLayer: CALayer) {
         queue.async {
-            self.renderCoordinator?.setDisplayLayer(layer)
+            self.renderCoordinator?.setDisplayLayer(displayLayer)
+            self.setWindowIDIfNeeded(hostLayer: hostLayer)
         }
     }
 
@@ -386,6 +407,13 @@ private final class MPVCore {
         cArgs.withUnsafeMutableBufferPointer { buffer in
             _ = mpv_command(handle, buffer.baseAddress)
         }
+    }
+
+    private func setWindowIDIfNeeded(hostLayer: CALayer) {
+        guard let handle else { return }
+        let pointer = Unmanaged.passUnretained(hostLayer).toOpaque()
+        var wid = Int64(bitPattern: UInt64(UInt(bitPattern: pointer)))
+        mpv_set_property(handle, "wid", MPV_FORMAT_INT64, &wid)
     }
 
     private func startEventLoop() {
@@ -725,7 +753,7 @@ final class MPVPlayerModel: ObservableObject {
     @Published var rate: Double = 1
     @Published var errorMessage: String? = "mpv is not bundled with this build."
 
-    func attach(layer: AVSampleBufferDisplayLayer) {}
+    func attach(layer: AVSampleBufferDisplayLayer, hostLayer: CALayer) {}
     func load(url: URL, headers: [String: String], startTime: Double?) {
         errorMessage = "mpv is not bundled with this build."
     }

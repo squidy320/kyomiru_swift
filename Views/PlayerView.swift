@@ -260,7 +260,9 @@ struct PlayerView: View {
         )
         if let source = sources.first {
             let saved = PlaybackHistoryStore.shared.position(for: episode.id)
-            player.load(url: source.url, headers: source.headers, startTime: saved)
+            let resolved = PlaybackService.resolvePlayableURL(for: source.url)
+            let headers = resolved.isFileURL ? [:] : source.headers
+            player.load(url: resolved, headers: headers, startTime: saved)
         }
         scheduleAutoHide()
 #if os(iOS)
