@@ -333,11 +333,13 @@ actor OfflineDownloadManager {
         }
 
         var outLength = 0
-        var out = Data(count: data.count + kCCBlockSizeAES128)
+        let outCapacity = data.count + kCCBlockSizeAES128
+        var out = Data(count: outCapacity)
         let status = out.withUnsafeMutableBytes { outBytes in
-            data.withUnsafeBytes { dataBytes in
-                key.withUnsafeBytes { keyBytes in
-                    ivData.withUnsafeBytes { ivBytes in
+            let outBase = outBytes.baseAddress
+            return data.withUnsafeBytes { dataBytes in
+                return key.withUnsafeBytes { keyBytes in
+                    return ivData.withUnsafeBytes { ivBytes in
                         CCCrypt(
                             CCOperation(kCCDecrypt),
                             CCAlgorithm(kCCAlgorithmAES),
@@ -345,7 +347,7 @@ actor OfflineDownloadManager {
                             keyBytes.baseAddress, kCCKeySizeAES128,
                             ivBytes.baseAddress,
                             dataBytes.baseAddress, data.count,
-                            outBytes.baseAddress, out.count,
+                            outBase, outCapacity,
                             &outLength
                         )
                     }
