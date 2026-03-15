@@ -16,8 +16,9 @@
         2523BB6A1CCC401CB2F04C4E /* AniListAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */; };
         7D6DD7FBD32C414EA5ABECFF /* AniListClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */; };
         F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A834867881B451BADAD93AA /* AppServices.swift */; };
-        EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D61DF5D7C6F4CDAB259605A /* CacheService.swift */; };
-        A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */; };
+		EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D61DF5D7C6F4CDAB259605A /* CacheService.swift */; };
+		A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */; };
+		B1C2D3E4F5061728394A5B6D /* NetworkRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* NetworkRetry.swift */; };
 		314C57A12C82496CA605168E /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 161229ED682D48179B328B0A /* DownloadManager.swift */; };
 		1C8D9E8A5B544EAA8D7083E1 /* MPVSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D7C4F7B1B4C8EA2B3D4E5 /* MPVSupport.swift */; };
 		8E7C6B5A4D3C2B1A0F9E8D7C /* MPVPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C6B5A4D3C2B1A0F9E8D7C6B /* MPVPlayer.swift */; };
@@ -80,8 +81,9 @@
         8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListAuthService.swift; sourceTree = "<group>"; };
         7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListClient.swift; sourceTree = "<group>"; };
         5A834867881B451BADAD93AA /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
-        9D61DF5D7C6F4CDAB259605A /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
+		9D61DF5D7C6F4CDAB259605A /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
 		8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheStore.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5D /* NetworkRetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRetry.swift; sourceTree = "<group>"; };
 		161229ED682D48179B328B0A /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		8B2D7C4F7B1B4C8EA2B3D4E5 /* MPVSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPVSupport.swift; sourceTree = "<group>"; };
 		7C6B5A4D3C2B1A0F9E8D7C6B /* MPVPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPVPlayer.swift; sourceTree = "<group>"; };
@@ -182,6 +184,7 @@
                 5A834867881B451BADAD93AA /* AppServices.swift */,
                 9D61DF5D7C6F4CDAB259605A /* CacheService.swift */,
                 8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */,
+				A1B2C3D4E5F60718293A4B5D /* NetworkRetry.swift */,
 				161229ED682D48179B328B0A /* DownloadManager.swift */,
 				8B2D7C4F7B1B4C8EA2B3D4E5 /* MPVSupport.swift */,
 				7C6B5A4D3C2B1A0F9E8D7C6B /* MPVPlayer.swift */,
@@ -348,9 +351,10 @@
                 C6D7E8F901A2B3C4D5E6F708 /* MediaTracker.swift in Sources */,
                 2523BB6A1CCC401CB2F04C4E /* AniListAuthService.swift in Sources */,
                 7D6DD7FBD32C414EA5ABECFF /* AniListClient.swift in Sources */,
-                F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */,
-                EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */,
+				F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */,
+				EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */,
 				A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */,
+				B1C2D3E4F5061728394A5B6D /* NetworkRetry.swift in Sources */,
 				314C57A12C82496CA605168E /* DownloadManager.swift in Sources */,
 				1C8D9E8A5B544EAA8D7083E1 /* MPVSupport.swift in Sources */,
 				8E7C6B5A4D3C2B1A0F9E8D7C /* MPVPlayer.swift in Sources */,

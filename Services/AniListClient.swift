@@ -510,7 +510,7 @@ final class AniListClient {
         let body: [String: Any] = ["query": query, "variables": variables]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await NetworkRetry.withRetries(label: "anilist-graphql") {
+        let (data, response): (Data, URLResponse) = try await NetworkRetry.withRetries(label: "anilist-graphql") {
             let (data, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse, http.statusCode >= 500 || http.statusCode == 429 {
                 throw URLError(.badServerResponse)
