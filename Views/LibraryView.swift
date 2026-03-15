@@ -205,9 +205,13 @@ struct LibraryView: View {
                 return leftDate > rightDate
             }
         case .score:
-            return items.sorted { (lhs.media.averageScore ?? 0) > (rhs.media.averageScore ?? 0) }
+            return items.sorted { lhs, rhs in
+                (lhs.media.averageScore ?? 0) > (rhs.media.averageScore ?? 0)
+            }
         case .alphabetical:
-            return items.sorted { lhs.media.title.best.lowercased() < rhs.media.title.best.lowercased() }
+            return items.sorted { lhs, rhs in
+                lhs.media.title.best.lowercased() < rhs.media.title.best.lowercased()
+            }
         }
     }
 
