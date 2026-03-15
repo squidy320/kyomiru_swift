@@ -182,23 +182,11 @@ final class MPVPlayerModel: ObservableObject {
         let canStart = pipController.isPictureInPicturePossible
         AppLog.debug(.player, "pip start requested possible=\(canStart)")
         core?.startPiPRendering(displayLayer: sampleLayer)
-        // Retry briefly and pause if PiP never activates.
+        // Wait for the first rendered frame before starting PiP.
         pipStartTask = Task { [weak self] in
             guard let self, let pipController = self.pipController else { return }
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            if pipController.isPictureInPictureActive {
-                AppLog.debug(.player, "pip active after retry")
-                return
-            }
-            if pipController.isPictureInPicturePossible, self.pipPendingStart {
-                AppLog.debug(.player, "pip retry start possible=true")
-                pipController.startPictureInPicture()
-                try? await Task.sleep(nanoseconds: 350_000_000)
-                if pipController.isPictureInPictureActive {
-                    AppLog.debug(.player, "pip active after second start")
-                    return
-                }
-            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if pipController.isPictureInPictureActive { return }
             AppLog.debug(.player, "pip failed to activate; pausing and stopping pip render")
             self.core?.stopPiPRendering()
             self.pause()
@@ -227,6 +215,7 @@ final class MPVPlayerModel: ObservableObject {
         if pipController.isPictureInPicturePossible {
             AppLog.debug(.player, "pip first frame ready; starting")
             pipController.startPictureInPicture()
+            return
         } else {
             AppLog.debug(.player, "pip first frame ready but pip not possible")
         }

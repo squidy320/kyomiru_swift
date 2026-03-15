@@ -65,6 +65,9 @@ struct SampleBufferDisplayRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> SampleBufferDisplayView {
         let view = SampleBufferDisplayView()
+        view.isUserInteractionEnabled = false
+        view.isOpaque = false
+        view.alpha = 0.01
         onViewReady(view)
         return view
     }
