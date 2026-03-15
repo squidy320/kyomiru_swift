@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CryptoKit
 
 actor OfflineDownloadManager {
     typealias ProgressHandler = @Sendable (Double) -> Void
@@ -24,6 +25,7 @@ actor OfflineDownloadManager {
         playlistURL: URL,
         headers: [String: String],
         outputURL: URL,
+        outputFolder: URL?,
         progress: ProgressHandler?,
         preferLocalHLS: Bool
     ) async throws -> URL {
@@ -38,46 +40,10 @@ actor OfflineDownloadManager {
         }
 
         if preferLocalHLS || resolved.isFmp4 {
-            return try await storeAsLocalHLS(resolved: resolved, outputURL: outputURL, headers: headers, progress: progress)
+            let folder = outputFolder ?? outputURL.deletingPathExtension().appendingPathExtension("hls")
+            return try await storeAsLocalHLS(resolved: resolved, outputFolder: folder, headers: headers, progress: progress)
         }
-
-        let tempFolder = fm.temporaryDirectory.appendingPathComponent("hls-\(UUID().uuidString)", isDirectory: true)
-        try? fm.createDirectory(at: tempFolder, withIntermediateDirectories: true)
-
-        let total = max(segmentURLs.count, 1)
-        var completed = 0
-
-        try await withThrowingTaskGroup(of: (Int, URL).self) { group in
-            for (index, segmentURL) in segmentURLs.enumerated() {
-                group.addTask {
-                    let data = try await self.fetchData(url: segmentURL, headers: headers)
-                    let localURL = tempFolder.appendingPathComponent(String(format: "seg_%05d.ts", index))
-                    try data.write(to: localURL, options: .atomic)
-                    return (index, localURL)
-                }
-            }
-
-            for try await _ in group {
-                completed += 1
-                let value = Double(completed) / Double(total)
-                progress?(value)
-            }
-        }
-
-        try? fm.removeItem(at: finalOutputURL)
-        fm.createFile(atPath: finalOutputURL.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: finalOutputURL)
-        defer { try? handle.close() }
-
-        for index in 0..<segmentURLs.count {
-            let localURL = tempFolder.appendingPathComponent(String(format: "seg_%05d.ts", index))
-            if let data = try? Data(contentsOf: localURL) {
-                try handle.write(contentsOf: data)
-            }
-        }
-
-        try? fm.removeItem(at: tempFolder)
-        return finalOutputURL
+        return try await mergeSegments(resolved: resolved, outputURL: finalOutputURL, headers: headers, progress: progress)
     }
 
     private func fetchData(url: URL, headers: [String: String]) async throws -> Data {
@@ -132,11 +98,11 @@ actor OfflineDownloadManager {
 
     private func storeAsLocalHLS(
         resolved: ResolvedPlaylist,
-        outputURL: URL,
+        outputFolder: URL,
         headers: [String: String],
         progress: ProgressHandler?
     ) async throws -> URL {
-        let baseFolder = outputURL.deletingPathExtension().appendingPathExtension("hls")
+        let baseFolder = outputFolder
         try? fm.removeItem(at: baseFolder)
         try? fm.createDirectory(at: baseFolder, withIntermediateDirectories: true)
 
@@ -193,9 +159,8 @@ actor OfflineDownloadManager {
             if !line.hasPrefix("#") && !line.isEmpty {
                 guard segmentIndex < resolved.segmentURLs.count else { continue }
                 let segmentURL = resolved.segmentURLs[segmentIndex]
+                let localName = "segment_\(segmentIndex).ts"
                 segmentIndex += 1
-                let ext = segmentURL.pathExtension.isEmpty ? "m4s" : segmentURL.pathExtension
-                let localName = String(format: "seg_%05d.%@", segmentIndex - 1, ext)
                 let data = try await fetchData(url: segmentURL, headers: headers)
                 let localURL = baseFolder.appendingPathComponent(localName)
                 try data.write(to: localURL, options: .atomic)
@@ -214,6 +179,46 @@ actor OfflineDownloadManager {
         try playlistText.data(using: .utf8)?.write(to: playlistURL, options: .atomic)
         AppLog.debug(.downloads, "offline hls stored folder=\(baseFolder.path) segments=\(segmentsWritten) keys=\(keyMap.count) map=\(resolved.mapURL != nil)")
         return playlistURL
+    }
+
+    private func mergeSegments(
+        resolved: ResolvedPlaylist,
+        outputURL: URL,
+        headers: [String: String],
+        progress: ProgressHandler?
+    ) async throws -> URL {
+        let segmentURLs = resolved.segmentURLs
+        guard !segmentURLs.isEmpty else {
+            throw URLError(.cannotParseResponse)
+        }
+
+        try? fm.removeItem(at: outputURL)
+        fm.createFile(atPath: outputURL.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: outputURL)
+        defer { try? handle.close() }
+
+        let total = max(segmentURLs.count, 1)
+        var completed = 0
+        var expectedBytes: Int64 = 0
+
+        for (index, segmentURL) in segmentURLs.enumerated() {
+            let data = try await fetchData(url: segmentURL, headers: headers)
+            expectedBytes += Int64(data.count)
+            try handle.write(contentsOf: data)
+            completed = index + 1
+            let value = Double(completed) / Double(total)
+            progress?(value)
+        }
+
+        try handle.synchronize()
+        let attrs = try fm.attributesOfItem(atPath: outputURL.path)
+        let fileBytes = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        if fileBytes != expectedBytes {
+            AppLog.error(.downloads, "hls merge size mismatch expected=\(expectedBytes) actual=\(fileBytes) path=\(outputURL.path)")
+            throw URLError(.cannotDecodeContentData)
+        }
+
+        return outputURL
     }
 
     private func collectKeyURLs(from resolved: ResolvedPlaylist) -> [URL] {
@@ -343,6 +348,23 @@ final class DownloadManager: NSObject, ObservableObject {
         return folder
     }
 
+    private func hashFolder(for url: URL, create: Bool = true) -> URL {
+        let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let folder = base
+            .appendingPathComponent("downloads", isDirectory: true)
+            .appendingPathComponent(sha256(url.absoluteString), isDirectory: true)
+        if create {
+            try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        return folder
+    }
+
+    private func sha256(_ string: String) -> String {
+        let data = Data(string.utf8)
+        let hash = SHA256.hash(data: data)
+        return hash.compactMap { String(format: "%02x", $0) }.joined()
+    }
+
     private func safe(_ text: String) -> String {
         text.replacingOccurrences(of: "/", with: "_")
     }
@@ -368,17 +390,19 @@ final class DownloadManager: NSObject, ObservableObject {
             guard let item = items.first(where: { $0.id == id }) else { return }
             AppLog.debug(.downloads, "hls download start id=\(id)")
             updateProgress(id: id, progress: 0)
-            let output = localMergedHLSFileURL(for: item.title, episode: item.episode)
+            let folder = hashFolder(for: url)
+            let output = folder.appendingPathComponent("merged.ts")
             let localFile = try await offlineManager.downloadAndMerge(
                 playlistURL: url,
                 headers: headers,
                 outputURL: output,
+                outputFolder: folder,
                 progress: { [weak self] value in
                 Task { @MainActor in
                     self?.updateProgress(id: id, progress: value)
                 }
             },
-                preferLocalHLS: MPVSupport.isAvailable
+                preferLocalHLS: true
             )
             if MPVSupport.isAvailable {
                 updateStatus(id: id, status: "Completed", localFile: localFile)
@@ -615,6 +639,18 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func resolveFallbackPlayableURL(for item: DownloadItem) -> URL? {
+        let hashFolder = hashFolder(for: item.url, create: false)
+        let hashPlaylist = hashFolder.appendingPathComponent("playlist.m3u8")
+        if fm.fileExists(atPath: hashPlaylist.path) {
+            AppLog.debug(.downloads, "offline fallback using hash playlist path=\(hashPlaylist.path)")
+            return hashPlaylist
+        }
+        let hashMerged = hashFolder.appendingPathComponent("merged.ts")
+        if fm.fileExists(atPath: hashMerged.path) {
+            AppLog.debug(.downloads, "offline fallback using hash merged ts path=\(hashMerged.path)")
+            return hashMerged
+        }
+
         let folder = localHLSFolder(title: item.title, episode: item.episode)
         if fm.fileExists(atPath: folder.path) {
             if let playlist = ensurePlaylist(forFolder: folder, prefix: nil) {
