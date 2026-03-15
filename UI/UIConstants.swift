@@ -7,18 +7,51 @@ public struct UIConstants {
     static let standardPadding: CGFloat = 16
     static let interCardSpacing: CGFloat = 12
     static let bottomBarHeight: CGFloat = 72
-    static let heroHeight: CGFloat = 350
-    static let heroHeightCompact: CGFloat = 260
+    static var heroHeight: CGFloat {
+        let width = UIScreen.main.bounds.width
+        if UIDevice.current.userInterfaceIdiom == .pad { return 420 }
+        if width <= 375 { return 300 }
+        if width <= 414 { return 330 }
+        return 350
+    }
+    static var heroHeightCompact: CGFloat {
+        let width = UIScreen.main.bounds.width
+        if UIDevice.current.userInterfaceIdiom == .pad { return 320 }
+        if width <= 375 { return 220 }
+        if width <= 414 { return 240 }
+        return 260
+    }
     static let smallPadding: CGFloat = 8
     static let tinyPadding: CGFloat = 6
     static let microPadding: CGFloat = 4
     static let heroTopPadding: CGFloat = 2
-    static let posterCardWidth: CGFloat = 150
-    static let posterCardHeight: CGFloat = 220
-    static let continueCardWidth: CGFloat = 260
-    static let continueCardHeight: CGFloat = 140
-    static let episodeThumbWidth: CGFloat = 140
-    static let episodeThumbHeight: CGFloat = 80
+    static var posterCardWidth: CGFloat {
+        let width = UIScreen.main.bounds.width
+        if UIDevice.current.userInterfaceIdiom == .pad { return 200 }
+        if width <= 375 { return 140 }
+        if width <= 414 { return 150 }
+        return 160
+    }
+    static var posterCardHeight: CGFloat {
+        posterCardWidth * 1.47
+    }
+    static var continueCardWidth: CGFloat {
+        let width = UIScreen.main.bounds.width
+        if UIDevice.current.userInterfaceIdiom == .pad { return 340 }
+        return max(240, min(300, width * 0.7))
+    }
+    static var continueCardHeight: CGFloat {
+        continueCardWidth * 0.54
+    }
+    static var episodeThumbWidth: CGFloat {
+        let width = UIScreen.main.bounds.width
+        if UIDevice.current.userInterfaceIdiom == .pad { return 180 }
+        if width <= 375 { return 120 }
+        return 140
+    }
+    static var episodeThumbHeight: CGFloat {
+        episodeThumbWidth * 0.57
+    }
     static let avatarSize: CGFloat = 38
     static let avatarFallbackSize: CGFloat = 42
     static let cornerRadiusSmall: CGFloat = 14

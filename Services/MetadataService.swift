@@ -157,7 +157,8 @@ final class EpisodeMetadataService {
         case .kitsu:
             mapped = await fetchFromKitsu(media: media)
         case .tmdb:
-            mapped = await fetchFromTMDB(media: media, seasonNumber: 1)
+            let primary = await fetchFromTMDB(media: media, seasonNumber: 1)
+            mapped = primary.isEmpty ? await fetchFromKitsu(media: media) : primary
         }
 
         if let data = try? JSONEncoder().encode(mapped) {

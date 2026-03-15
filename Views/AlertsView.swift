@@ -46,7 +46,16 @@ struct AlertsView: View {
                             }
                         } else {
                             ForEach(notifications) { item in
-                                AlertRow(item: item)
+                                if let media = item.media {
+                                    NavigationLink {
+                                        DetailsView(media: media)
+                                    } label: {
+                                        AlertRow(item: item)
+                                    }
+                                    .buttonStyle(.plain)
+                                } else {
+                                    AlertRow(item: item)
+                                }
                             }
                         }
                     }

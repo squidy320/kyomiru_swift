@@ -5,13 +5,11 @@ struct DownloadsView: View {
     @StateObject private var manager = DownloadManager.shared
     @State private var selectedItem: DownloadItem?
     @State private var showPlayer = false
-    @State private var filterCompleted = false
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     private var tabBarInset: CGFloat {
         UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
     }
-
 
     var body: some View {
         ZStack {
@@ -23,53 +21,41 @@ struct DownloadsView: View {
                             .font(.system(size: 28, weight: .heavy))
                             .foregroundColor(.white)
                     }
-                    Toggle("Completed Only", isOn: $filterCompleted)
-                        .foregroundColor(.white)
-                    let visible = manager.items.filter { filterCompleted ? $0.status == "Completed" : true }
-                    if visible.isEmpty {
+
+                    let completed = manager.items.filter { $0.status == "Completed" }
+                    if completed.isEmpty {
                         GlassCard {
                             Text("No downloads yet.")
                                 .foregroundColor(Theme.textSecondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     } else {
-                        ForEach(visible) { item in
-                            GlassCard {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("\(item.title) - EP \(item.episode)")
-                                        .foregroundColor(.white)
-                                    ProgressView(value: item.progress)
-                                    Text(item.status)
-                                        .foregroundColor(Theme.textSecondary)
-                                        .font(.system(size: 12))
-                                    if item.status == "Remuxing" {
-                                        HStack(spacing: 8) {
-                                            ProgressView()
-                                            Text("Remuxing to MP4…")
-                                                .foregroundColor(Theme.textSecondary)
-                                                .font(.system(size: 12, weight: .semibold))
-                                        }
-                                    }
-                                    if item.status == "Remux Failed" {
-                                        Button("Retry Remux") {
-                                            AppLog.debug(.downloads, "remux retry tapped id=\(item.id)")
-                                            DownloadManager.shared.retryRemux(itemId: item.id)
-                                        }
-                                        .buttonStyle(.bordered)
-                                    }
-                                    if let _ = item.localFile {
-                                        Button("Play Offline") {
+                        ForEach(groupedDownloads(completed), id: \.title) { group in
+                            VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                                Text(group.title)
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundColor(.white)
+                                ForEach(group.items) { item in
+                                    EpisodeRowView(
+                                        title: "Episode \(item.episode)",
+                                        runtimeText: nil,
+                                        description: nil,
+                                        thumbnailURL: nil,
+                                        isPlayable: true,
+                                        isWatched: false,
+                                        isDownloaded: true,
+                                        onTap: {
                                             AppLog.debug(.ui, "offline play tapped id=\(item.id)")
                                             selectedItem = item
                                             showPlayer = true
                                         }
-                                        .buttonStyle(.borderedProminent)
+                                    )
+                                    .contextMenu {
+                                        Button("Delete") {
+                                            AppLog.debug(.downloads, "download delete tapped id=\(item.id)")
+                                            DownloadManager.shared.delete(itemId: item.id)
+                                        }
                                     }
-                                    Button("Delete") {
-                                        AppLog.debug(.downloads, "download delete tapped id=\(item.id)")
-                                        DownloadManager.shared.delete(itemId: item.id)
-                                    }
-                                    .buttonStyle(.bordered)
                                 }
                             }
                         }
@@ -99,7 +85,7 @@ struct DownloadsView: View {
                         headers: [:]
                     )
                     let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
-                    PlayerView(episode: episode, sources: [source], mediaId: 0, malId: nil)
+                    PlayerView(episode: episode, sources: [source], mediaId: 0, malId: nil, mediaTitle: item.title)
                 }
             }
         }
@@ -114,6 +100,19 @@ struct DownloadsView: View {
     }
 }
 
+private struct DownloadGroup: Identifiable {
+    let id = UUID()
+    let title: String
+    let items: [DownloadItem]
+}
 
-
-
+private extension DownloadsView {
+    func groupedDownloads(_ items: [DownloadItem]) -> [DownloadGroup] {
+        let grouped = Dictionary(grouping: items, by: { $0.title })
+        let sortedKeys = grouped.keys.sorted { $0.lowercased() < $1.lowercased() }
+        return sortedKeys.map { key in
+            let episodes = grouped[key, default: []].sorted { $0.episode < $1.episode }
+            return DownloadGroup(title: key, items: episodes)
+        }
+    }
+}

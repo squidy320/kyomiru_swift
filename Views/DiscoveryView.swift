@@ -62,7 +62,8 @@ struct DiscoveryView: View {
                                                         subtitle: "New release",
                                                         imageURL: media.coverURL,
                                                         media: media,
-                                                        score: media.averageScore
+                                                        score: media.averageScore,
+                                                        isWatched: isWatched(media)
                                                     )
                                                     .frame(width: UIConstants.posterCardWidth)
                                                 }
@@ -172,18 +173,19 @@ struct DiscoveryView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: UIConstants.interCardSpacing) {
                     ForEach(searchResults, id: \.id) { media in
-                        NavigationLink {
-                            DetailsView(media: media)
-                        } label: {
-                            MediaPosterCard(
-                                title: media.title.best,
-                                subtitle: media.format ?? "Result",
-                                imageURL: media.coverURL,
-                                media: media,
-                                score: media.averageScore
-                            )
-                            .frame(width: UIConstants.posterCardWidth)
-                        }
+                    NavigationLink {
+                        DetailsView(media: media)
+                    } label: {
+                        MediaPosterCard(
+                            title: media.title.best,
+                            subtitle: media.format ?? "Result",
+                            imageURL: media.coverURL,
+                            media: media,
+                            score: media.averageScore,
+                            isWatched: isWatched(media)
+                        )
+                        .frame(width: UIConstants.posterCardWidth)
+                    }
                         .buttonStyle(.plain)
                     }
                 }
@@ -248,6 +250,13 @@ private extension DiscoveryView {
         }
         isLoading = false
         AppLog.debug(.network, "discovery load complete sections=\(sections.count)")
+    }
+
+    func isWatched(_ media: AniListMedia) -> Bool {
+        guard let item = appState.services.libraryStore.item(forExternalId: media.id) else { return false }
+        if item.status == .completed { return true }
+        if let total = media.episodes, total > 0, item.currentEpisode >= total { return true }
+        return false
     }
 }
 

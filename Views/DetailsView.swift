@@ -36,10 +36,6 @@ struct DetailsView: View {
 
                     actionRow
 
-                    if !relatedSections.isEmpty {
-                        RelationsCarouselView(sections: relatedSections)
-                    }
-
                     if isLoading {
                         GlassCard {
                             Text("Loading episodes...")
@@ -54,6 +50,9 @@ struct DetailsView: View {
                         }
                     } else {
                         episodeList
+                        if !relatedSections.isEmpty {
+                            RelationsCarouselView(sections: relatedSections)
+                        }
                     }
                 }
                 .padding(.horizontal, UIConstants.standardPadding)
@@ -72,7 +71,7 @@ struct DetailsView: View {
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let episode = selectedEpisode, !sources.isEmpty {
-                PlayerView(episode: episode, sources: sources, mediaId: media.id, malId: media.idMal)
+                PlayerView(episode: episode, sources: sources, mediaId: media.id, malId: media.idMal, mediaTitle: media.title.best)
             }
         }
         .sheet(isPresented: $showSourceSheet) {
@@ -311,6 +310,8 @@ struct DetailsView: View {
                     description: meta?.summary,
                     thumbnailURL: meta?.thumbnailURL ?? episodeThumbnailURL(for: episode),
                     isPlayable: true,
+                    isWatched: isEpisodeWatched(episode.number),
+                    isDownloaded: isEpisodeDownloaded(episode.number),
                     onTap: {
                         selectEpisode(episode)
                     }
@@ -396,6 +397,22 @@ struct DetailsView: View {
         Task {
             isLoadingSources = true
             do {
+                if let local = DownloadManager.shared.downloadedItem(title: media.title.best, episode: episode.number),
+                   let localURL = DownloadManager.shared.playableURL(for: local) {
+                    let format = localURL.pathExtension.lowercased()
+                    let source = SoraSource(
+                        id: "local|\(local.id)",
+                        url: localURL,
+                        quality: "Local",
+                        subOrDub: "Sub",
+                        format: format.isEmpty ? "mp4" : format,
+                        headers: [:]
+                    )
+                    sources = [source]
+                    showPlayer = true
+                    isLoadingSources = false
+                    return
+                }
                 async let sourceTask = appState.services.episodeService.loadSources(for: episode)
                 async let skipTask: Void = {
                     guard let malId = media.idMal else { return }
@@ -498,6 +515,15 @@ struct DetailsView: View {
     private func runtimeText(from meta: EpisodeMetadata?) -> String? {
         guard let minutes = meta?.runtimeMinutes, minutes > 0 else { return nil }
         return "\(minutes)m"
+    }
+
+    private func isEpisodeWatched(_ number: Int) -> Bool {
+        guard let item = appState.services.libraryStore.item(forExternalId: media.id) else { return false }
+        return number <= item.currentEpisode
+    }
+
+    private func isEpisodeDownloaded(_ number: Int) -> Bool {
+        DownloadManager.shared.downloadedItem(title: media.title.best, episode: number) != nil
     }
 
     private func progressFraction(for episodeId: String, fallbackKey: String) -> Double? {

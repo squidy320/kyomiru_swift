@@ -29,8 +29,6 @@ struct LibraryView: View {
                             )
                         }
 
-                        libraryHero
-
                         SearchField(placeholder: "Search in library...", text: $filterText)
 
                         if !continueWatchingItems().isEmpty {
@@ -47,7 +45,8 @@ struct LibraryView: View {
                                                 progress: item.progressFraction,
                                                 timeRemainingText: item.timeRemainingText,
                                                 imageURL: item.imageURL,
-                                                episodeBadge: item.episodeBadge
+                                                episodeBadge: item.episodeBadge,
+                                                media: item.media
                                             )
                                             .frame(height: UIConstants.continueCardHeight)
                                         }
@@ -161,27 +160,6 @@ struct LibraryView: View {
         }
     }
 
-    private var libraryHero: some View {
-        let heroMedia = sections.first(where: { $0.title.lowercased().contains("watching") })?.items.first?.media
-            ?? sections.first?.items.first?.media
-        let score = heroMedia?.averageScore ?? 91
-        let pills = [
-            HeroPill(icon: "hand.thumbsup.fill", text: "\(score)% Match"),
-            HeroPill(icon: "star.fill", text: "Score \(score)%"),
-            HeroPill(icon: "shield.fill", text: (heroMedia?.isAdult ?? false) ? "TV-MA" : "TV-14"),
-        ]
-        let tags = Array(heroMedia?.genres.prefix(2) ?? ["Action", "Drama"])
-        return HeroHeader(
-            title: heroMedia?.title.best ?? "86 EIGHTY-SIX",
-            subtitle: "Continue watching your synced lists",
-            imageURL: heroMedia?.bannerURL ?? heroMedia?.coverURL,
-            media: heroMedia,
-            pills: pills,
-            tags: tags,
-            height: UIConstants.heroHeightCompact
-        )
-    }
-
     private func formatMatches(_ media: AniListMedia, filter: LibraryFormatFilter) -> Bool {
         guard let format = media.format?.lowercased() else { return filter == .all }
         switch filter {
@@ -235,7 +213,8 @@ struct LibraryView: View {
                 progressFraction: progress,
                 timeRemainingText: formatRemaining(remaining),
                 imageURL: entry.media.bannerURL ?? entry.media.coverURL,
-                episodeBadge: "EP \(episodeNumber)"
+                episodeBadge: "EP \(episodeNumber)",
+                media: entry.media
             )
         }
     }
@@ -370,6 +349,7 @@ private struct LibraryTopBar: View {
 private struct LibrarySection: View {
     let section: AniListLibrarySection
     let filterText: String
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
@@ -394,7 +374,8 @@ private struct LibrarySection: View {
                                     subtitle: "Ep \(entry.progress)",
                                     imageURL: entry.media.coverURL,
                                     media: entry.media,
-                                    score: entry.media.averageScore
+                                    score: entry.media.averageScore,
+                                    isWatched: isWatched(entry.media)
                                 )
                                 .frame(width: UIConstants.posterCardWidth)
                             }
@@ -409,6 +390,13 @@ private struct LibrarySection: View {
         }
         .padding(.bottom, UIConstants.microPadding)
     }
+
+    private func isWatched(_ media: AniListMedia) -> Bool {
+        guard let item = appState.services.libraryStore.item(forExternalId: media.id) else { return false }
+        if item.status == .completed { return true }
+        if let total = media.episodes, total > 0, item.currentEpisode >= total { return true }
+        return false
+    }
 }
 
 private struct ContinueItem: Identifiable {
@@ -419,6 +407,7 @@ private struct ContinueItem: Identifiable {
     let timeRemainingText: String
     let imageURL: URL?
     let episodeBadge: String?
+    let media: AniListMedia?
 }
 
 private struct LibrarySettingsSheet: View {

@@ -735,6 +735,15 @@ final class DownloadManager: NSObject, ObservableObject {
         return resolved
     }
 
+    func downloadedItem(title: String, episode: Int) -> DownloadItem? {
+        let key = normalizeTitle(title)
+        return items.first(where: {
+            $0.status == "Completed" &&
+            $0.episode == episode &&
+            normalizeTitle($0.title) == key
+        })
+    }
+
     func markWatched(mediaTitle: String, episode: Int) {
         AppLog.debug(.downloads, "mark watched title=\(mediaTitle) ep=\(episode)")
         NotificationCenter.default.post(
@@ -974,6 +983,12 @@ final class DownloadManager: NSObject, ObservableObject {
         guard name.hasPrefix("E") else { return false }
         let digits = name.dropFirst()
         return !digits.isEmpty && digits.allSatisfy { $0.isNumber }
+    }
+
+    private func normalizeTitle(_ title: String) -> String {
+        let lowered = title.lowercased()
+        let filtered = lowered.filter { $0.isLetter || $0.isNumber }
+        return filtered
     }
 
     private func findSegmentFolder(for item: DownloadItem, localFile: URL) -> URL? {

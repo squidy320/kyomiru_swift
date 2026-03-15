@@ -23,7 +23,7 @@ final class AppServices {
         self.playbackEngine = PlaybackEngine()
         self.offlineManager = OfflineManager()
         self.metadataService = MetadataService(cacheStore: cacheStore)
-        self.episodeMetadataService = EpisodeMetadataService(cacheStore: cacheStore)
+        self.episodeMetadataService = EpisodeMetadataService(cacheStore: cacheStore, provider: .tmdb)
         self.aniSkipService = AniSkipService()
         self.downloadManager = DownloadManager.shared
         self.libraryStore = MediaTracker()

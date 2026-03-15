@@ -6,6 +6,7 @@ struct MediaPosterCard: View {
     let imageURL: URL?
     let media: AniListMedia?
     let score: Int?
+    let isWatched: Bool
     @EnvironmentObject private var appState: AppState
     @State private var imdbPosterURL: URL?
 
@@ -50,6 +51,21 @@ struct MediaPosterCard: View {
 
             RatingBadge(score: score)
                 .padding(UIConstants.mediumPadding)
+
+            if isWatched {
+                Text("Watched")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.black.opacity(0.6))
+                    )
+                    .padding(.leading, UIConstants.mediumPadding)
+                    .padding(.top, UIConstants.mediumPadding)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
         }
         .frame(width: UIConstants.posterCardWidth, height: UIConstants.posterCardHeight)
         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
@@ -67,13 +83,16 @@ struct ContinueWatchingCard: View {
     let timeRemainingText: String
     let imageURL: URL?
     let episodeBadge: String?
+    let media: AniListMedia?
+    @EnvironmentObject private var appState: AppState
+    @State private var imdbImageURL: URL?
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.06))
 
-            if let imageURL {
-                CachedImage(url: imageURL) { img in
+            if let resolved = imdbImageURL ?? imageURL {
+                CachedImage(url: resolved) { img in
                     img.resizable().scaledToFill()
                 } placeholder: {
                     Color.white.opacity(0.08)
@@ -125,6 +144,10 @@ struct ContinueWatchingCard: View {
                     .padding(UIConstants.mediumPadding)
             }
         }
+        .task(id: media?.id) {
+            guard let media else { return }
+            imdbImageURL = await appState.services.metadataService.backdropURL(for: media)
+        }
     }
 }
 
@@ -134,6 +157,8 @@ struct EpisodeRowView: View {
     let description: String?
     let thumbnailURL: URL?
     let isPlayable: Bool
+    let isWatched: Bool
+    let isDownloaded: Bool
     let onTap: (() -> Void)?
     @State private var isExpanded = false
 
@@ -157,12 +182,19 @@ struct EpisodeRowView: View {
                         .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous))
                     }
+                    if isDownloaded {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundColor(.white)
+                            .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
+                            .padding(6)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
                     Text(title)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.white)
+                        .opacity(isWatched ? 0.45 : 1.0)
                         .lineLimit(isExpanded ? 3 : 2)
                     if let runtimeText {
                         Text(runtimeText)

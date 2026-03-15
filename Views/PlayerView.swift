@@ -8,6 +8,7 @@ struct PlayerView: View {
     let sources: [SoraSource]
     let mediaId: Int
     let malId: Int?
+    let mediaTitle: String?
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -291,7 +292,7 @@ struct PlayerView: View {
         )
         if let source = sources.first {
             let saved = PlaybackHistoryStore.shared.position(for: episode.id)
-            let resolved = PlaybackService.resolvePlayableURL(for: source.url)
+            let resolved = PlaybackService.resolvePlayableURL(for: source.url, title: mediaTitle, episode: episode.number)
             let headers = resolved.isFileURL ? [:] : source.headers
             player.load(url: resolved, headers: headers, startTime: saved)
         }
