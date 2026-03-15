@@ -44,6 +44,7 @@ final class MPVPlayerModel: ObservableObject {
     private var pendingLoad: (url: URL, headers: [String: String], startTime: Double?)?
     private var sampleLayer: AVSampleBufferDisplayLayer?
     private var pipStartTask: Task<Void, Never>?
+    private var pipPendingStart = false
 #if os(iOS) && !targetEnvironment(macCatalyst)
     private var pipController: PiPController?
 #endif
@@ -51,6 +52,9 @@ final class MPVPlayerModel: ObservableObject {
     func attachMetal(layer: CALayer) {
         if core == nil {
             core = MPVCore(hostLayer: layer)
+        }
+        core?.setPiPFirstFrameHandler { [weak self] in
+            self?.handlePiPFirstFrame()
         }
         if let pending = pendingLoad {
             core?.load(url: pending.url, headers: pending.headers, startTime: pending.startTime)
@@ -145,6 +149,7 @@ final class MPVPlayerModel: ObservableObject {
 #if os(iOS) && !targetEnvironment(macCatalyst)
         pipStartTask?.cancel()
         pipStartTask = nil
+        pipPendingStart = false
 #endif
 #if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.stopPictureInPicture()
@@ -171,14 +176,12 @@ final class MPVPlayerModel: ObservableObject {
 #if os(iOS) && !targetEnvironment(macCatalyst)
     func startPictureInPictureIfPossible() -> Bool {
         guard let sampleLayer else { return false }
-        core?.startPiPRendering(displayLayer: sampleLayer)
         guard let pipController else { return false }
         pipStartTask?.cancel()
+        pipPendingStart = true
         let canStart = pipController.isPictureInPicturePossible
         AppLog.debug(.player, "pip start requested possible=\(canStart)")
-        if canStart {
-            pipController.startPictureInPicture()
-        }
+        core?.startPiPRendering(displayLayer: sampleLayer)
         // Retry briefly and pause if PiP never activates.
         pipStartTask = Task { [weak self] in
             guard let self, let pipController = self.pipController else { return }
@@ -187,7 +190,7 @@ final class MPVPlayerModel: ObservableObject {
                 AppLog.debug(.player, "pip active after retry")
                 return
             }
-            if pipController.isPictureInPicturePossible {
+            if pipController.isPictureInPicturePossible, self.pipPendingStart {
                 AppLog.debug(.player, "pip retry start possible=true")
                 pipController.startPictureInPicture()
                 try? await Task.sleep(nanoseconds: 350_000_000)
@@ -199,6 +202,7 @@ final class MPVPlayerModel: ObservableObject {
             AppLog.debug(.player, "pip failed to activate; pausing and stopping pip render")
             self.core?.stopPiPRendering()
             self.pause()
+            self.pipPendingStart = false
         }
         return canStart
     }
@@ -206,10 +210,26 @@ final class MPVPlayerModel: ObservableObject {
     func stopPictureInPicture() {
         pipController?.stopPictureInPicture()
         core?.stopPiPRendering()
+        pipPendingStart = false
     }
 
     var isPictureInPictureActive: Bool {
         pipController?.isPictureInPictureActive ?? false
+    }
+
+    private func handlePiPFirstFrame() {
+        guard pipPendingStart else { return }
+        guard let pipController else { return }
+        if pipController.isPictureInPictureActive {
+            pipPendingStart = false
+            return
+        }
+        if pipController.isPictureInPicturePossible {
+            AppLog.debug(.player, "pip first frame ready; starting")
+            pipController.startPictureInPicture()
+        } else {
+            AppLog.debug(.player, "pip first frame ready but pip not possible")
+        }
     }
 #endif
 
@@ -300,6 +320,7 @@ private final class MPVCore {
     private var pipRenderContext: OpaquePointer?
     private var pipCoordinator: MPVRenderCoordinator?
     private var eventTimer: DispatchSourceTimer?
+    private var pipFirstFrameHandler: (() -> Void)?
 
     init(hostLayer: CALayer) {
         queue.sync {
@@ -477,6 +498,12 @@ private final class MPVCore {
             self.pipRenderContext = context
             let coordinator = MPVRenderCoordinator(handle: handle, renderContext: context)
             self.pipCoordinator = coordinator
+            coordinator.onFirstFrame = { [weak self] in
+                guard let self else { return }
+                DispatchQueue.main.async { [weak self] in
+                    self?.pipFirstFrameHandler?()
+                }
+            }
             coordinator.setDisplayLayer(displayLayer)
 
             let callback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ctx in
@@ -510,6 +537,7 @@ private final class MPVCore {
         if let coordinator = self.pipCoordinator {
             coordinator.deactivate()
             coordinator.stopDisplayLink()
+            coordinator.onFirstFrame = nil
         }
         if let context = self.pipRenderContext {
             mpv_render_context_set_update_callback(context, nil, nil)
@@ -517,6 +545,13 @@ private final class MPVCore {
         }
         self.pipRenderContext = nil
         self.pipCoordinator = nil
+        self.pipFirstFrameHandler = nil
+    }
+
+    func setPiPFirstFrameHandler(_ handler: @escaping () -> Void) {
+        queue.async {
+            self.pipFirstFrameHandler = handler
+        }
     }
 
     func renderStats() -> MPVDebugStats? {
@@ -589,6 +624,8 @@ private final class MPVRenderCoordinator {
     private var fpsEstimate: Double = 0
     private var formatCString = Array("bgra".utf8CString)
     private var didFlushForFormatChange = false
+    var onFirstFrame: (() -> Void)?
+    private var didSendFirstFrame = false
 
     init(handle: OpaquePointer, renderContext: OpaquePointer) {
         self.handle = handle
@@ -811,6 +848,10 @@ private final class MPVRenderCoordinator {
             self.framesEnqueued += 1
             self.lastEnqueueTime = CACurrentMediaTime()
             self.framesRendered += 1
+            if !self.didSendFirstFrame {
+                self.didSendFirstFrame = true
+                self.onFirstFrame?()
+            }
         }
     }
 
