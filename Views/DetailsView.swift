@@ -163,11 +163,21 @@ struct DetailsView: View {
     }
 
     private var header: some View {
-        return CinematicHeroView(
+        let episodesCount = media.episodes ?? 0
+        let pills = [
+            HeroPill(icon: "rectangle.stack.fill", text: episodesCount > 0 ? "\(episodesCount) EPS" : "Episodes"),
+            HeroPill(icon: "building.2.fill", text: media.studios.first ?? media.format ?? "Studio"),
+            HeroPill(icon: "star.fill", text: "Score \(media.averageScore ?? 0)")
+        ]
+        let tags = Array(media.genres.prefix(2))
+        return HeroHeader(
+            title: media.title.best,
+            subtitle: media.format,
+            imageURL: media.bannerURL ?? media.coverURL,
             media: media,
-            fallbackImageURL: media.bannerURL ?? media.coverURL,
-            genres: media.genres,
-            height: UIConstants.heroHeight
+            pills: pills,
+            tags: tags,
+            height: UIConstants.heroHeightCompact
         )
     }
 
