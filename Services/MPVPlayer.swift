@@ -177,6 +177,9 @@ final class MPVPlayerModel: ObservableObject {
     func startPictureInPictureIfPossible() -> Bool {
         guard let sampleLayer else { return false }
         guard let pipController else { return false }
+        if pipPendingStart || pipController.isPictureInPictureActive {
+            return pipController.isPictureInPicturePossible
+        }
         pipStartTask?.cancel()
         pipPendingStart = true
         let canStart = pipController.isPictureInPicturePossible

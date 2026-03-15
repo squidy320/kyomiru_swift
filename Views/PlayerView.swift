@@ -264,7 +264,12 @@ struct PlayerView: View {
 #if os(iOS) && !targetEnvironment(macCatalyst)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay, .allowBluetooth])
+            do {
+                try session.setCategory(.playback, mode: .moviePlayback, options: [])
+            } catch {
+                AppLog.error(.player, "audio session moviePlayback failed: \(error.localizedDescription)")
+                try session.setCategory(.playback, mode: .default, options: [])
+            }
             try session.setActive(true)
         } catch {
             AppLog.error(.player, "audio session setup failed: \(error.localizedDescription)")
