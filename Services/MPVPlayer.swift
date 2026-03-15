@@ -430,15 +430,18 @@ private final class MPVCore {
             guard let handle = self.handle else { return }
             if self.pipRenderContext != nil { return }
 
-            let apiType = MPV_RENDER_API_TYPE_SW
-            var params = [
-                mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE, data: UnsafeMutableRawPointer(mutating: apiType)),
-                mpv_render_param(type: MPV_RENDER_PARAM_INVALID, data: nil)
-            ]
             var context: OpaquePointer?
-            if mpv_render_context_create(&context, handle, &params) < 0 {
-                AppLog.error(.player, "mpv_render_context_create (PiP) failed")
-                return
+            var apiTypeCString = MPV_RENDER_API_TYPE_SW.utf8CString
+            apiTypeCString.withUnsafeMutableBufferPointer { buffer in
+                var params = [
+                    mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE,
+                                     data: UnsafeMutableRawPointer(buffer.baseAddress)),
+                    mpv_render_param(type: MPV_RENDER_PARAM_INVALID, data: nil)
+                ]
+                if mpv_render_context_create(&context, handle, &params) < 0 {
+                    AppLog.error(.player, "mpv_render_context_create (PiP) failed")
+                    return
+                }
             }
             guard let context else {
                 AppLog.error(.player, "mpv_render_context_create (PiP) returned nil")
@@ -607,7 +610,6 @@ private final class MPVRenderCoordinator {
         }
     }
 
-    @MainActor
     func onDisplayLinkTick() {
         pumpPiPFrame()
     }
