@@ -1,14 +1,28 @@
 import Foundation
 import AVFoundation
+import CommonCrypto
 
 actor OfflineDownloadManager {
     typealias ProgressHandler = @Sendable (Double) -> Void
+    private struct KeySpec: Hashable {
+        let url: URL
+        let iv: Data?
+    }
+
+    private struct SegmentInfo {
+        let url: URL
+        let key: KeySpec?
+        let sequence: Int
+    }
+
     private struct ResolvedPlaylist {
         let lines: [String]
-        let segmentURLs: [URL]
+        let segments: [SegmentInfo]
         let mapURL: URL?
         let isFmp4: Bool
         let baseURL: URL
+        let usesByteRange: Bool
+        let mediaSequence: Int
     }
 
     private let session: URLSession
@@ -30,7 +44,7 @@ actor OfflineDownloadManager {
     ) async throws -> URL {
         let playlistData = try await fetchData(url: playlistURL, headers: headers)
         let resolved = try await resolveSegments(from: playlistData, baseURL: playlistURL, headers: headers)
-        let segmentURLs = resolved.segmentURLs
+        let segmentURLs = resolved.segments.map { $0.url }
         let finalOutputURL = resolved.isFmp4
             ? outputURL.deletingPathExtension().appendingPathExtension("mp4")
             : outputURL
@@ -38,7 +52,10 @@ actor OfflineDownloadManager {
             throw URLError(.cannotParseResponse)
         }
 
-        if preferLocalHLS || resolved.isFmp4 {
+        if preferLocalHLS || resolved.isFmp4 || resolved.usesByteRange {
+            if resolved.usesByteRange && !preferLocalHLS {
+                AppLog.debug(.downloads, "byte-range playlist detected; forcing local HLS for reliable playback")
+            }
             let folder = outputFolder ?? outputURL.deletingPathExtension().appendingPathExtension("hls")
             return try await storeAsLocalHLS(resolved: resolved, outputFolder: folder, headers: headers, progress: progress)
         }
@@ -64,6 +81,9 @@ actor OfflineDownloadManager {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         let mediaLines = lines.filter { !$0.hasPrefix("#") && !$0.isEmpty }
         let mapLine = lines.first { $0.hasPrefix("#EXT-X-MAP:") }
+        let usesByteRange = lines.contains { $0.hasPrefix("#EXT-X-BYTERANGE") }
+        let mediaSequence = lines.first { $0.hasPrefix("#EXT-X-MEDIA-SEQUENCE:") }
+            .flatMap { Int($0.split(separator: ":").last ?? "") } ?? 0
         let mapURL: URL? = {
             guard let mapLine else { return nil }
             let parts = mapLine.split(separator: "URI=", maxSplits: 1, omittingEmptySubsequences: true)
@@ -82,16 +102,34 @@ actor OfflineDownloadManager {
             }
         }
 
-        let segments = mediaLines.compactMap { line in
-            URL(string: String(line), relativeTo: baseURL)?.absoluteURL
+        var segments: [SegmentInfo] = []
+        segments.reserveCapacity(mediaLines.count)
+        var currentKey: KeySpec?
+        var sequence = mediaSequence
+
+        for line in lines {
+            if line.hasPrefix("#EXT-X-KEY:") {
+                currentKey = parseKeySpec(from: line, baseURL: baseURL)
+                continue
+            }
+            if !line.hasPrefix("#") && !line.isEmpty {
+                if let url = URL(string: line, relativeTo: baseURL)?.absoluteURL {
+                    segments.append(SegmentInfo(url: url, key: currentKey, sequence: sequence))
+                    sequence += 1
+                }
+                continue
+            }
         }
-        let isFmp4 = mapURL != nil || segments.contains { $0.pathExtension.lowercased() == "m4s" }
+
+        let isFmp4 = mapURL != nil || segments.contains { $0.url.pathExtension.lowercased() == "m4s" }
         return ResolvedPlaylist(
             lines: lines,
-            segmentURLs: segments,
+            segments: segments,
             mapURL: mapURL,
             isFmp4: isFmp4,
-            baseURL: baseURL
+            baseURL: baseURL,
+            usesByteRange: usesByteRange,
+            mediaSequence: mediaSequence
         )
     }
 
@@ -108,7 +146,7 @@ actor OfflineDownloadManager {
         var rewrittenLines: [String] = []
         var segmentIndex = 0
         let keyURLs = collectKeyURLs(from: resolved)
-        let total = max(resolved.segmentURLs.count
+        let total = max(resolved.segments.count
                         + (resolved.mapURL == nil ? 0 : 1)
                         + keyURLs.count, 1)
         var completed = 0
@@ -156,8 +194,8 @@ actor OfflineDownloadManager {
             }
 
             if !line.hasPrefix("#") && !line.isEmpty {
-                guard segmentIndex < resolved.segmentURLs.count else { continue }
-                let segmentURL = resolved.segmentURLs[segmentIndex]
+                guard segmentIndex < resolved.segments.count else { continue }
+                let segmentURL = resolved.segments[segmentIndex].url
                 let localName = "segment_\(segmentIndex).ts"
                 segmentIndex += 1
                 let data = try await fetchData(url: segmentURL, headers: headers)
@@ -186,8 +224,8 @@ actor OfflineDownloadManager {
         headers: [String: String],
         progress: ProgressHandler?
     ) async throws -> URL {
-        let segmentURLs = resolved.segmentURLs
-        guard !segmentURLs.isEmpty else {
+        let segments = resolved.segments
+        guard !segments.isEmpty else {
             throw URLError(.cannotParseResponse)
         }
 
@@ -196,12 +234,27 @@ actor OfflineDownloadManager {
         let handle = try FileHandle(forWritingTo: outputURL)
         defer { try? handle.close() }
 
-        let total = max(segmentURLs.count, 1)
+        let total = max(segments.count, 1)
         var completed = 0
         var expectedBytes: Int64 = 0
+        var keyCache: [URL: Data] = [:]
+        let needsDecryption = segments.contains { $0.key != nil }
+        if needsDecryption {
+            AppLog.debug(.downloads, "hls merge decrypt: AES-128 key detected; decrypting segments before merge")
+        }
 
-        for (index, segmentURL) in segmentURLs.enumerated() {
-            let data = try await fetchData(url: segmentURL, headers: headers)
+        for (index, segment) in segments.enumerated() {
+            var data = try await fetchData(url: segment.url, headers: headers)
+            if let keySpec = segment.key {
+                let keyData: Data
+                if let cached = keyCache[keySpec.url] {
+                    keyData = cached
+                } else {
+                    keyData = try await fetchData(url: keySpec.url, headers: headers)
+                    keyCache[keySpec.url] = keyData
+                }
+                data = try decryptAES128(data: data, key: keyData, iv: keySpec.iv, sequence: segment.sequence)
+            }
             expectedBytes += Int64(data.count)
             try handle.write(contentsOf: data)
             completed = index + 1
@@ -212,7 +265,7 @@ actor OfflineDownloadManager {
         try handle.synchronize()
         let attrs = try fm.attributesOfItem(atPath: outputURL.path)
         let fileBytes = (attrs[.size] as? NSNumber)?.int64Value ?? 0
-        AppLog.debug(.downloads, "hls merge complete segments=\(segmentURLs.count) expectedBytes=\(expectedBytes) actualBytes=\(fileBytes)")
+        AppLog.debug(.downloads, "hls merge complete segments=\(segments.count) expectedBytes=\(expectedBytes) actualBytes=\(fileBytes)")
         if fileBytes != expectedBytes {
             AppLog.error(.downloads, "hls merge size mismatch expected=\(expectedBytes) actual=\(fileBytes) path=\(outputURL.path)")
             throw URLError(.cannotDecodeContentData)
@@ -246,6 +299,78 @@ actor OfflineDownloadManager {
         return URL(string: value, relativeTo: baseURL)?.absoluteURL
     }
 
+    private func parseKeySpec(from line: String, baseURL: URL) -> KeySpec? {
+        guard line.hasPrefix("#EXT-X-KEY:") else { return nil }
+        guard line.contains("METHOD=AES-128") else { return nil }
+        guard let url = extractKeyURL(from: line, baseURL: baseURL) else { return nil }
+        let iv = extractIV(from: line)
+        return KeySpec(url: url, iv: iv)
+    }
+
+    private func extractIV(from line: String) -> Data? {
+        guard let range = line.range(of: "IV=") else { return nil }
+        var value = String(line[range.upperBound...])
+        if let comma = value.firstIndex(of: ",") {
+            value = String(value[..<comma])
+        }
+        value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.lowercased().hasPrefix("0x") {
+            value = String(value.dropFirst(2))
+        }
+        guard value.count >= 2 else { return nil }
+        return Data(hexString: value)
+    }
+
+    private func decryptAES128(data: Data, key: Data, iv: Data?, sequence: Int) throws -> Data {
+        guard key.count == kCCKeySizeAES128 else {
+            AppLog.error(.downloads, "hls decrypt failed: key length \(key.count) != 16")
+            throw URLError(.cannotDecodeContentData)
+        }
+        let ivData = iv ?? makeIV(sequence: sequence)
+        guard ivData.count == kCCBlockSizeAES128 else {
+            AppLog.error(.downloads, "hls decrypt failed: iv length \(ivData.count) != 16")
+            throw URLError(.cannotDecodeContentData)
+        }
+
+        var outLength = 0
+        var out = Data(count: data.count + kCCBlockSizeAES128)
+        let status = out.withUnsafeMutableBytes { outBytes in
+            data.withUnsafeBytes { dataBytes in
+                key.withUnsafeBytes { keyBytes in
+                    ivData.withUnsafeBytes { ivBytes in
+                        CCCrypt(
+                            CCOperation(kCCDecrypt),
+                            CCAlgorithm(kCCAlgorithmAES),
+                            CCOptions(0),
+                            keyBytes.baseAddress, kCCKeySizeAES128,
+                            ivBytes.baseAddress,
+                            dataBytes.baseAddress, data.count,
+                            outBytes.baseAddress, out.count,
+                            &outLength
+                        )
+                    }
+                }
+            }
+        }
+        guard status == kCCSuccess else {
+            AppLog.error(.downloads, "hls decrypt failed status=\(status)")
+            throw URLError(.cannotDecodeContentData)
+        }
+        out.removeSubrange(outLength..<out.count)
+        return out
+    }
+
+    private func makeIV(sequence: Int) -> Data {
+        var iv = [UInt8](repeating: 0, count: 16)
+        let seq = UInt64(sequence).bigEndian
+        withUnsafeBytes(of: seq) { bytes in
+            for i in 0..<8 {
+                iv[8 + i] = bytes[i]
+            }
+        }
+        return Data(iv)
+    }
+
     private func replaceKeyURI(in line: String, with localName: String) -> String {
         guard let range = line.range(of: "URI=") else { return line }
         let prefix = line[..<range.upperBound]
@@ -261,6 +386,23 @@ actor OfflineDownloadManager {
             return prefix + localName + tail
         }
         return prefix + localName
+    }
+}
+
+private extension Data {
+    init?(hexString: String) {
+        let len = hexString.count
+        guard len % 2 == 0 else { return nil }
+        var data = Data(capacity: len / 2)
+        var index = hexString.startIndex
+        for _ in 0..<(len / 2) {
+            let nextIndex = hexString.index(index, offsetBy: 2)
+            let byteString = hexString[index..<nextIndex]
+            guard let num = UInt8(byteString, radix: 16) else { return nil }
+            data.append(num)
+            index = nextIndex
+        }
+        self = data
     }
 }
 
