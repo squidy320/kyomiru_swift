@@ -33,5 +33,10 @@
     <string>CHANGE_ME</string>
     <key>UILaunchScreen</key>
     <dict/>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+        <string>picture-in-picture</string>
+    </array>
 </dict>
 </plist>

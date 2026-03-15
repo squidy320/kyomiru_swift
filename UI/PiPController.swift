@@ -46,6 +46,7 @@ final class PiPController: NSObject {
             )
             let pip = AVPictureInPictureController(contentSource: source)
             pip.canStartPictureInPictureAutomaticallyFromInline = true
+            pip.requiresLinearPlayback = false
             pip.delegate = self
             controller = pip
         } else {

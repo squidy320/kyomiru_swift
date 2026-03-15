@@ -185,11 +185,10 @@ final class MPVPlayerModel: ObservableObject {
         // Wait for the first rendered frame before starting PiP.
         pipStartTask = Task { [weak self] in
             guard let self, let pipController = self.pipController else { return }
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
             if pipController.isPictureInPictureActive { return }
-            AppLog.debug(.player, "pip failed to activate; pausing and stopping pip render")
+            AppLog.debug(.player, "pip failed to activate; stopping pip render")
             self.core?.stopPiPRendering()
-            self.pause()
             self.pipPendingStart = false
         }
         return canStart
@@ -214,7 +213,9 @@ final class MPVPlayerModel: ObservableObject {
         }
         if pipController.isPictureInPicturePossible {
             AppLog.debug(.player, "pip first frame ready; starting")
+            pipController.invalidatePlaybackState()
             pipController.startPictureInPicture()
+            pipPendingStart = false
             return
         } else {
             AppLog.debug(.player, "pip first frame ready but pip not possible")
@@ -273,7 +274,7 @@ struct MPVVideoView: View {
                 player.attachSample(layer: view.displayLayer)
             }
             .background(Color.black)
-            .opacity(0) // Hidden; used for PiP rendering.
+            .opacity(0.01) // Keep in hierarchy for PiP while remaining effectively hidden.
             .allowsHitTesting(false)
 
             if let stats = player.debugStats {

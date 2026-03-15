@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import AVFoundation
+#endif
 
 struct PlayerView: View {
     let episode: SoraEpisode
@@ -45,9 +48,9 @@ struct PlayerView: View {
         }
         .onChange(of: scenePhase) { _, phase in
 #if os(iOS) && !targetEnvironment(macCatalyst)
-            if phase == .background {
+            if phase == .inactive {
                 isBackgrounding = true
-                AppLog.debug(.player, "player scenePhase background isPlaying=\(player.isPlaying)")
+                AppLog.debug(.player, "player scenePhase inactive isPlaying=\(player.isPlaying)")
                 if player.isPlaying {
                     _ = player.startPictureInPictureIfPossible()
                 }
@@ -60,6 +63,13 @@ struct PlayerView: View {
             }
 #endif
         }
+#if os(iOS) && !targetEnvironment(macCatalyst)
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+            guard player.isPlaying else { return }
+            AppLog.debug(.player, "player willResignActive -> request pip")
+            _ = player.startPictureInPictureIfPossible()
+        }
+#endif
         .alert("Playback Error", isPresented: Binding(
             get: { player.errorMessage != nil },
             set: { _ in player.errorMessage = nil }
@@ -251,6 +261,15 @@ struct PlayerView: View {
     private func startPlayback() {
         player.setDebugOverlayEnabled(appState.settings.showPlayerDebugOverlay)
         AppLog.debug(.player, "player appear episode=\(episode.id)")
+#if os(iOS) && !targetEnvironment(macCatalyst)
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay, .allowBluetooth])
+            try session.setActive(true)
+        } catch {
+            AppLog.error(.player, "audio session setup failed: \(error.localizedDescription)")
+        }
+#endif
         PlaybackHistoryStore.shared.saveLastEpisode(
             mediaId: mediaId,
             episodeId: episode.id,
