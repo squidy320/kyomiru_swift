@@ -30,8 +30,6 @@ struct PlayerView: View {
                 controlsOverlay
                     .transition(.opacity)
             }
-
-            persistentCloseButton
         }
         .onAppear(perform: startPlayback)
         .onDisappear(perform: stopPlayback)
@@ -125,16 +123,6 @@ struct PlayerView: View {
                     .clipShape(Circle())
             }
 
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "chevron.left.2")
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(Circle())
-            }
-
             VStack(alignment: .leading, spacing: 4) {
                 Text("Episode \(episode.number)")
                     .font(.system(size: 15, weight: .semibold))
@@ -177,28 +165,6 @@ struct PlayerView: View {
                 .clipShape(Capsule())
             }
         }
-    }
-
-    private var persistentCloseButton: some View {
-        VStack {
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 32, height: 32)
-                        .background(Color.white.opacity(0.15))
-                        .clipShape(Circle())
-                }
-                Spacer()
-            }
-            .padding(.top, 12)
-            .padding(.horizontal, 12)
-            Spacer()
-        }
-        .opacity(controlsVisible ? 0 : 0.7)
-        .allowsHitTesting(!controlsVisible)
     }
 
     private var centerControls: some View {
