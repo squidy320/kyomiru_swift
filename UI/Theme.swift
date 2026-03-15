@@ -35,6 +35,9 @@ actor ImageCache {
 
         let config = URLSessionConfiguration.default
         config.requestCachePolicy = .returnCacheDataElseLoad
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 90
+        config.waitsForConnectivity = true
         config.urlCache = URLCache(
             memoryCapacity: 50 * 1024 * 1024,
             diskCapacity: 200 * 1024 * 1024,

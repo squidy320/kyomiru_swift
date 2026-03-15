@@ -5,6 +5,7 @@
 //  Created by Francesco on 07/08/25.
 //
 
+import Foundation
 import JavaScriptCore
 
 extension JSValue {
@@ -237,32 +238,53 @@ extension JSContext {
                 }
             }
             
-            let session = URLSession.fetchData(allowRedirects: redirect.boolValue)
-            
-            let task = session.downloadTask(with: request) { tempFileURL, response, error in
-                defer { session.finishTasksAndInvalidate() }
-                
-                let callResolve: ([String: Any]) -> Void = { dict in
-                    DispatchQueue.main.async {
-                        if !resolve.isUndefined {
-                            resolve.call(withArguments: [dict])
-                        } else {
-                            LunaLogger.shared.log("Resolve callback is undefined", type: "Error")
+            let maxAttempts = 3
+            let baseDelay: TimeInterval = 0.8
+
+            func performDownload(attempt: Int) {
+                let session = URLSession.fetchData(allowRedirects: redirect.boolValue)
+                let task = session.downloadTask(with: request) { tempFileURL, response, error in
+                    defer { session.finishTasksAndInvalidate() }
+
+                    let callResolve: ([String: Any]) -> Void = { dict in
+                        DispatchQueue.main.async {
+                            if !resolve.isUndefined {
+                                resolve.call(withArguments: [dict])
+                            } else {
+                                LunaLogger.shared.log("Resolve callback is undefined", type: "Error")
+                            }
                         }
                     }
-                }
-                
-                if let error = error {
-                    LunaLogger.shared.log("Network error in fetchV2NativeFunction: \(error.localizedDescription)", type: "Error")
-                    callResolve(["error": error.localizedDescription])
-                    return
-                }
-                
-                guard let tempFileURL = tempFileURL else {
-                    LunaLogger.shared.log("No data in response", type: "Error")
-                    callResolve(["error": "No data"])
-                    return
-                }
+
+                    func retryOrFail(reason: String) {
+                        if attempt < maxAttempts {
+                            let delay = baseDelay * pow(2.0, Double(attempt - 1))
+                            LunaLogger.shared.log("fetchV2 retry \(attempt + 1)/\(maxAttempts) reason=\(reason)", type: "Warning")
+                            DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+                                performDownload(attempt: attempt + 1)
+                            }
+                        } else {
+                            callResolve(["error": reason])
+                        }
+                    }
+
+                    if let error = error {
+                        LunaLogger.shared.log("Network error in fetchV2NativeFunction: \(error.localizedDescription)", type: "Error")
+                        retryOrFail(reason: error.localizedDescription)
+                        return
+                    }
+
+                    if let http = response as? HTTPURLResponse,
+                       http.statusCode >= 500 || http.statusCode == 429 {
+                        retryOrFail(reason: "HTTP \(http.statusCode)")
+                        return
+                    }
+
+                    guard let tempFileURL = tempFileURL else {
+                        LunaLogger.shared.log("No data in response", type: "Error")
+                        retryOrFail(reason: "No data")
+                        return
+                    }
                 
                 var safeHeaders: [String: String] = [:]
                 if let httpResponse = response as? HTTPURLResponse {
@@ -314,6 +336,9 @@ extension JSContext {
                 }
             }
             task.resume()
+            }
+
+            performDownload(attempt: 1)
         }
         
         self.setObject(fetchV2NativeFunction, forKeyedSubscript: "fetchV2Native" as NSString)

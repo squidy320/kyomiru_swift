@@ -203,16 +203,25 @@ final class RedirectBlocker: NSObject, URLSessionTaskDelegate {
 extension URLSession {
     static var custom: URLSession {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 60
+        config.timeoutIntervalForRequest = 45
+        config.timeoutIntervalForResource = 120
+        config.waitsForConnectivity = true
         return URLSession(configuration: config)
     }
 
     static func fetchData(allowRedirects: Bool) -> URLSession {
         if allowRedirects {
-            return URLSession(configuration: .default)
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 45
+            config.timeoutIntervalForResource = 120
+            config.waitsForConnectivity = true
+            return URLSession(configuration: config)
         }
-        return URLSession(configuration: .default, delegate: RedirectBlocker(), delegateQueue: nil)
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 45
+        config.timeoutIntervalForResource = 120
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config, delegate: RedirectBlocker(), delegateQueue: nil)
     }
 
     static var randomUserAgent: String {

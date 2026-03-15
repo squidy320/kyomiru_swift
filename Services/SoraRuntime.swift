@@ -9,7 +9,7 @@ final class SoraRuntime {
     private var loadedService: Service?
     private var loadedAt: Date?
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .custom) {
         self.session = session
     }
 
@@ -351,7 +351,7 @@ final class SoraRuntime {
             request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
         }
         AppLog.debug(.network, "http get \(url.absoluteString)")
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await fetch(request, label: "animepahe-get")
         mergeCookies(from: response)
 
         if shouldBypassDdos(response: response, data: data) {
@@ -370,12 +370,22 @@ final class SoraRuntime {
             if let cookieHeader {
                 retry.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
             }
-            let (retryData, retryResponse) = try await session.data(for: retry)
+            let (retryData, retryResponse) = try await fetch(retry, label: "animepahe-get-retry")
             mergeCookies(from: retryResponse)
             return retryData
         }
 
         return data
+    }
+
+    private func fetch(_ request: URLRequest, label: String) async throws -> (Data, URLResponse) {
+        return try await NetworkRetry.withRetries(label: label) {
+            let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode >= 500 || http.statusCode == 429 {
+                throw URLError(.badServerResponse)
+            }
+            return (data, response)
+        }
     }
 
     private func shouldBypassDdos(response: URLResponse, data: Data) -> Bool {
@@ -396,7 +406,7 @@ final class SoraRuntime {
         var req = URLRequest(url: checkURL)
         req.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
         req.setValue("*/*", forHTTPHeaderField: "Accept")
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await fetch(req, label: "ddos-guard-check")
         mergeCookies(from: response)
 
         guard let js = String(data: data, encoding: .utf8) else { return }
@@ -419,7 +429,7 @@ final class SoraRuntime {
             if let cookieHeader {
                 step.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
             }
-            let (_, resp) = try await session.data(for: step)
+            let (_, resp) = try await fetch(step, label: "ddos-guard-wellknown")
             mergeCookies(from: resp)
         }
 
@@ -431,7 +441,7 @@ final class SoraRuntime {
             if let cookieHeader {
                 step.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
             }
-            let (_, resp) = try await session.data(for: step)
+            let (_, resp) = try await fetch(step, label: "ddos-guard-checkpath")
             mergeCookies(from: resp)
         }
     }
@@ -504,7 +514,7 @@ final class SoraRuntime {
         var manifestRequest = URLRequest(url: manifestURL)
         manifestRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
         manifestRequest.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (manifestData, _) = try await session.data(for: manifestRequest)
+        let (manifestData, _) = try await fetch(manifestRequest, label: "luna-manifest")
         let metadata = try JSONDecoder().decode(ServiceMetadata.self, from: manifestData)
         AppLog.debug(.network, "luna manifest loaded name=\(metadata.sourceName) version=\(metadata.version)")
         guard let scriptURL = URL(string: metadata.scriptUrl) else {
@@ -513,7 +523,7 @@ final class SoraRuntime {
         var scriptRequest = URLRequest(url: scriptURL)
         scriptRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
         scriptRequest.setValue("text/javascript,*/*", forHTTPHeaderField: "Accept")
-        let (scriptData, _) = try await session.data(for: scriptRequest)
+        let (scriptData, _) = try await fetch(scriptRequest, label: "luna-script")
         var script = String(data: scriptData, encoding: .utf8) ?? ""
         if script.isEmpty {
             throw URLError(.cannotDecodeContentData)

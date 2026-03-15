@@ -80,7 +80,13 @@ final class AniListAuthService: NSObject {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkRetry.withRetries(label: "anilist-auth") {
+            let (data, response) = try await URLSession.custom.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode >= 500 || http.statusCode == 429 {
+                throw URLError(.badServerResponse)
+            }
+            return (data, response)
+        }
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
             let payload = String(data: data, encoding: .utf8) ?? "no response body"

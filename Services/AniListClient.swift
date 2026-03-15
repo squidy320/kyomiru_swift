@@ -16,7 +16,7 @@ final class AniListClient {
     private var cachedAvailability: [Int: (entry: AniListEpisodeAvailability?, expires: Date)] = [:]
     private let requestGate = RequestGate(maxConcurrent: 4)
 
-    init(cacheStore: CacheStore, session: URLSession = .shared) {
+    init(cacheStore: CacheStore, session: URLSession = .custom) {
         self.cacheStore = cacheStore
         self.session = session
     }
@@ -510,7 +510,13 @@ final class AniListClient {
         let body: [String: Any] = ["query": query, "variables": variables]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await NetworkRetry.withRetries(label: "anilist-graphql") {
+            let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode >= 500 || http.statusCode == 429 {
+                throw URLError(.badServerResponse)
+            }
+            return (data, response)
+        }
         guard let http = response as? HTTPURLResponse, http.statusCode < 500 else {
             AppLog.error(.network, "graphql invalid response")
             throw AniListError.invalidResponse
