@@ -6,6 +6,7 @@ final class PlaybackHistoryStore {
     private let durationKey = "kyomiru.playback.duration"
     private let lastEpisodeKey = "kyomiru.playback.lastEpisode"
     private let lastEpisodeNumberKey = "kyomiru.playback.lastEpisodeNumber"
+    private let lastUpdatedKey = "kyomiru.playback.lastUpdated"
     private let defaults = UserDefaults.standard
 
     func save(position: Double, for episodeId: String) {
@@ -37,10 +38,13 @@ final class PlaybackHistoryStore {
     func saveLastEpisode(mediaId: Int, episodeId: String, episodeNumber: Int) {
         var idMap = defaults.dictionary(forKey: lastEpisodeKey) as? [String: String] ?? [:]
         var numberMap = defaults.dictionary(forKey: lastEpisodeNumberKey) as? [String: Int] ?? [:]
+        var updatedMap = defaults.dictionary(forKey: lastUpdatedKey) as? [String: TimeInterval] ?? [:]
         idMap[String(mediaId)] = episodeId
         numberMap[String(mediaId)] = episodeNumber
+        updatedMap[String(mediaId)] = Date().timeIntervalSince1970
         defaults.set(idMap, forKey: lastEpisodeKey)
         defaults.set(numberMap, forKey: lastEpisodeNumberKey)
+        defaults.set(updatedMap, forKey: lastUpdatedKey)
         AppLog.debug(.player, "last episode saved mediaId=\(mediaId) episode=\(episodeId)")
     }
 
@@ -52,6 +56,12 @@ final class PlaybackHistoryStore {
     func lastEpisodeNumber(for mediaId: Int) -> Int? {
         let map = defaults.dictionary(forKey: lastEpisodeNumberKey) as? [String: Int]
         return map?[String(mediaId)]
+    }
+
+    func lastUpdated(for mediaId: Int) -> Date? {
+        let map = defaults.dictionary(forKey: lastUpdatedKey) as? [String: TimeInterval]
+        guard let value = map?[String(mediaId)] else { return nil }
+        return Date(timeIntervalSince1970: value)
     }
 }
 

@@ -3,11 +3,11 @@ import UIKit
 
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
+    @StateObject private var librarySettings = LibrarySettingsManager()
     @State private var sections: [AniListLibrarySection] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var filterText: String = ""
-    @State private var selectedFilter: LibraryFilter = .all
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -32,20 +32,6 @@ struct LibraryView: View {
                         libraryHero
 
                         SearchField(placeholder: "Search in library...", text: $filterText)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(spacing: UIConstants.interCardSpacing) {
-                                ForEach(LibraryFilter.allCases) { filter in
-                                    FilterChip(
-                                        title: filterTitle(filter),
-                                        isSelected: selectedFilter == filter,
-                                        action: { selectedFilter = filter }
-                                    )
-                                }
-                            }
-                            .padding(.vertical, UIConstants.microPadding)
-                        }
-                        .scrollClipDisabled()
 
                         if !continueWatchingItems().isEmpty {
                             VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
@@ -105,7 +91,43 @@ struct LibraryView: View {
                 }
                 .navigationTitle(isPad ? "Library" : "")
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Picker("Sort By", selection: Binding(
+                                get: { librarySettings.sortOption },
+                                set: { librarySettings.sortOption = $0 }
+                            )) {
+                                ForEach(LibrarySortOption.allCases) { option in
+                                    Text(option.title).tag(option)
+                                }
+                            }
+
+                            Picker("Format", selection: Binding(
+                                get: { librarySettings.formatFilter },
+                                set: { librarySettings.formatFilter = $0 }
+                            )) {
+                                ForEach(LibraryFormatFilter.allCases) { option in
+                                    Text(option.title).tag(option)
+                                }
+                            }
+
+                            Divider()
+
+                            Button("Library Settings") {
+                                librarySettings.showSettingsSheet = true
+                            }
+                        } label: {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
             }
+        }
+        .sheet(isPresented: $librarySettings.showSettingsSheet) {
+            LibrarySettingsSheet(manager: librarySettings)
+                .presentationDetents([.medium, .large])
         }
         .task {
             AppLog.debug(.ui, "library view load")
@@ -121,13 +143,20 @@ struct LibraryView: View {
 
     private func filteredSections() -> [AniListLibrarySection] {
         let trimmed = filterText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let byChip = sections.filter { section in
-            guard selectedFilter != .all else { return true }
-            return section.title.lowercased().contains(selectedFilter.rawValue)
-        }
-        if trimmed.isEmpty { return byChip }
-        return byChip.map { section in
-            let items = section.items.filter { $0.media.title.best.lowercased().contains(trimmed) }
+        let sectionMap = Dictionary(grouping: sections, by: { statusForSection($0.title) })
+            .compactMapValues { $0.first }
+        let ordered = librarySettings.orderedCatalogs.compactMap { sectionMap[$0] }
+        let formatFilter = librarySettings.formatFilter
+
+        return ordered.map { section in
+            var items = section.items
+            if formatFilter != .all {
+                items = items.filter { formatMatches($0.media, filter: formatFilter) }
+            }
+            if !trimmed.isEmpty {
+                items = items.filter { $0.media.title.best.lowercased().contains(trimmed) }
+            }
+            items = sortItems(items, by: librarySettings.sortOption)
             return AniListLibrarySection(id: section.id, title: section.title, items: items)
         }
     }
@@ -153,21 +182,33 @@ struct LibraryView: View {
         )
     }
 
-    private func filterTitle(_ filter: LibraryFilter) -> String {
-        guard filter != .all else { return filter.title }
-        let status: MediaStatus
+    private func formatMatches(_ media: AniListMedia, filter: LibraryFormatFilter) -> Bool {
+        guard let format = media.format?.lowercased() else { return filter == .all }
         switch filter {
-        case .watching:
-            status = .watching
-        case .planning:
-            status = .planning
-        case .completed:
-            status = .completed
         case .all:
-            status = .planning
+            return true
+        case .tv:
+            return format.contains("tv")
+        case .movie:
+            return format.contains("movie")
+        case .ova:
+            return format.contains("ova")
         }
-        let count = appState.services.libraryStore.count(for: status)
-        return "\(filter.title) (\(count))"
+    }
+
+    private func sortItems(_ items: [AniListLibraryEntry], by option: LibrarySortOption) -> [AniListLibraryEntry] {
+        switch option {
+        case .lastUpdated:
+            return items.sorted { lhs, rhs in
+                let leftDate = PlaybackHistoryStore.shared.lastUpdated(for: lhs.media.id) ?? Date.distantPast
+                let rightDate = PlaybackHistoryStore.shared.lastUpdated(for: rhs.media.id) ?? Date.distantPast
+                return leftDate > rightDate
+            }
+        case .score:
+            return items.sorted { (lhs.media.averageScore ?? 0) > (rhs.media.averageScore ?? 0) }
+        case .alphabetical:
+            return items.sorted { lhs.media.title.best.lowercased() < rhs.media.title.best.lowercased() }
+        }
     }
 
     private func continueWatchingItems() -> [ContinueItem] {
@@ -374,4 +415,53 @@ private struct ContinueItem: Identifiable {
     let timeRemainingText: String
     let imageURL: URL?
     let episodeBadge: String?
+}
+
+private struct LibrarySettingsSheet: View {
+    @ObservedObject var manager: LibrarySettingsManager
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Visible Catalogs") {
+                    ForEach(MediaStatus.allCases, id: \.self) { status in
+                        Toggle(statusTitle(status), isOn: Binding(
+                            get: { manager.visibleStatuses.contains(status) },
+                            set: { manager.setVisibility(status, isVisible: $0) }
+                        ))
+                    }
+                }
+
+                Section("Catalog Order") {
+                    ForEach(manager.catalogOrder, id: \.self) { status in
+                        HStack {
+                            Text(statusTitle(status))
+                            Spacer()
+                            Image(systemName: "line.3.horizontal")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .onMove { indices, destination in
+                        manager.move(from: indices, to: destination)
+                    }
+                }
+            }
+            .navigationTitle("Library Settings")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    EditButton()
+                }
+            }
+        }
+    }
+
+    private func statusTitle(_ status: MediaStatus) -> String {
+        switch status {
+        case .watching: return "Watching"
+        case .planning: return "Plan to Watch"
+        case .completed: return "Completed"
+        case .paused: return "Paused"
+        case .dropped: return "Dropped"
+        }
+    }
 }

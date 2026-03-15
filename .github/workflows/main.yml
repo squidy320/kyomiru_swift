@@ -38,6 +38,16 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set :ANILIST_CLIENT_ID $ANILIST_CLIENT_ID" Resources/Info.plist
           /usr/libexec/PlistBuddy -c "Set :ANILIST_CLIENT_SECRET $ANILIST_CLIENT_SECRET" Resources/Info.plist
 
+      - name: Inject OMDb API Key
+        env:
+          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+        run: |
+          if [ -z "$OMDB_API_KEY" ]; then
+            echo "OMDb API key missing. Using placeholder to keep CI green."
+            OMDB_API_KEY="CHANGE_ME"
+          fi
+          /usr/libexec/PlistBuddy -c "Set :OMDB_API_KEY $OMDB_API_KEY" Resources/Info.plist
+
       - name: Resolve Swift Packages
         run: |
           xcodebuild -resolvePackageDependencies \

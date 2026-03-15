@@ -24,6 +24,7 @@ struct DetailsView: View {
     @State private var selectedEpisodeTab: EpisodeTab = .currentSeries
     @State private var isBookmarked = false
     @State private var relatedSections: [AniListRelatedSection] = []
+    @State private var episodeMetadata: [Int: EpisodeMetadata] = [:]
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -35,7 +36,9 @@ struct DetailsView: View {
 
                     actionRow
 
-                    episodeTabs
+                    if !relatedSections.isEmpty {
+                        RelationsCarouselView(sections: relatedSections)
+                    }
 
                     if isLoading {
                         GlassCard {
@@ -50,7 +53,7 @@ struct DetailsView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     } else {
-                        episodeGrid
+                        episodeList
                     }
                 }
                 .padding(.horizontal, UIConstants.standardPadding)
@@ -298,6 +301,24 @@ struct DetailsView: View {
         }
     }
 
+    private var episodeList: some View {
+        LazyVStack(spacing: UIConstants.interCardSpacing) {
+            ForEach(episodes, id: \.id) { episode in
+                let meta = episodeMetadata[episode.number]
+                EpisodeRowView(
+                    title: meta?.title ?? "Episode \(episode.number)",
+                    runtimeText: runtimeText(from: meta),
+                    description: meta?.summary,
+                    thumbnailURL: meta?.thumbnailURL ?? episodeThumbnailURL(for: episode),
+                    isPlayable: true,
+                    onTap: {
+                        selectEpisode(episode)
+                    }
+                )
+            }
+        }
+    }
+
     private var detailItem: MediaItem {
         MediaItem(
             externalId: media.id,
@@ -330,6 +351,7 @@ struct DetailsView: View {
         do {
             let result = try await appState.services.episodeService.loadEpisodes(media: media)
             episodes = result.episodes
+            episodeMetadata = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: result.episodes)
         } catch {
             errorMessage = "Failed to load episodes."
             AppLog.error(.network, "details episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
@@ -471,6 +493,11 @@ struct DetailsView: View {
     private func episodeSubtitle() -> String {
         let minutes = 24
         return "Tap to play - \(minutes)m"
+    }
+
+    private func runtimeText(from meta: EpisodeMetadata?) -> String? {
+        guard let minutes = meta?.runtimeMinutes, minutes > 0 else { return nil }
+        return "\(minutes)m"
     }
 
     private func progressFraction(for episodeId: String, fallbackKey: String) -> Double? {

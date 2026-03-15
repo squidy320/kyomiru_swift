@@ -10,6 +10,7 @@ final class AppServices {
     let playbackEngine: PlaybackEngine
     let offlineManager: OfflineManager
     let metadataService: MetadataService
+    let episodeMetadataService: EpisodeMetadataService
     let aniSkipService: AniSkipService
     let downloadManager: DownloadManager
     let libraryStore: MediaTracker
@@ -22,6 +23,7 @@ final class AppServices {
         self.playbackEngine = PlaybackEngine()
         self.offlineManager = OfflineManager()
         self.metadataService = MetadataService(cacheStore: cacheStore)
+        self.episodeMetadataService = EpisodeMetadataService(cacheStore: cacheStore)
         self.aniSkipService = AniSkipService()
         self.downloadManager = DownloadManager.shared
         self.libraryStore = MediaTracker()
