@@ -2,12 +2,20 @@ import AVFoundation
 import Foundation
 import SwiftUI
 import QuartzCore
+#if os(iOS)
+import Metal
+#endif
 
 #if canImport(Libmpv)
 import Libmpv
 
 @MainActor
 final class MPVPlayerModel: ObservableObject {
+    enum RendererMode: Equatable {
+        case metal
+        case software
+    }
+
     @Published var isPlaying = false
     @Published var isReady = false
     @Published var position: Double = 0
@@ -15,26 +23,32 @@ final class MPVPlayerModel: ObservableObject {
     @Published var rate: Double = 1
     @Published var errorMessage: String?
     @Published var debugStats: MPVDebugStats?
+    @Published private(set) var rendererMode: RendererMode = .metal
 
     private var core: MPVCore?
+    private var desiredMode: RendererMode = .metal
+    private var metalLayer: CAMetalLayer?
+    private var sampleLayer: AVSampleBufferDisplayLayer?
+    private var lastLoad: (url: URL, headers: [String: String], startTime: Double?)?
     private var statusTimer: Timer?
     private var wantsDebugStats = false
-    private var pendingLoad: (url: URL, headers: [String: String], startTime: Double?)?
 #if os(iOS) && !targetEnvironment(macCatalyst)
     private var pipController: PiPController?
 #endif
 
-    func attach(layer: AVSampleBufferDisplayLayer, hostLayer: CALayer) {
-        if core == nil {
-            AppLog.debug(.player, "mpv attach: creating core hostLayer=\(Unmanaged.passUnretained(hostLayer).toOpaque())")
-            core = MPVCore(hostLayer: hostLayer)
+    var usesMetal: Bool { rendererMode == .metal }
+
+    func attachMetal(layer: CAMetalLayer) {
+        metalLayer = layer
+        if desiredMode == .metal, rendererMode != .metal || core == nil {
+            switchRenderer(to: .metal)
         }
-        core?.attach(displayLayer: layer, hostLayer: hostLayer)
-        if let pending = pendingLoad {
-            AppLog.debug(.player, "mpv attach: draining pending load url=\(pending.url)")
-            core?.load(url: pending.url, headers: pending.headers, startTime: pending.startTime)
-            pendingLoad = nil
-            startStatusTimer()
+    }
+
+    func attachSample(layer: AVSampleBufferDisplayLayer) {
+        sampleLayer = layer
+        if rendererMode == .software {
+            core?.attach(displayLayer: layer, hostLayer: nil)
         }
 #if os(iOS) && !targetEnvironment(macCatalyst)
         if pipController == nil {
@@ -45,21 +59,26 @@ final class MPVPlayerModel: ObservableObject {
                 pause: { [weak self] in self?.pause() },
                 currentTime: { [weak self] in self?.position ?? 0 },
                 duration: { [weak self] in self?.duration ?? 0 },
-                skipBy: { [weak self] delta in self?.seekBy(delta) }
+                skipBy: { [weak self] delta in self?.seekBy(delta) },
+                onStop: { [weak self] in self?.switchRenderer(to: .metal) }
             )
         }
 #endif
     }
 
     func load(url: URL, headers: [String: String], startTime: Double?) {
-        guard let core else {
-            AppLog.debug(.player, "mpv load: core not ready, queueing url=\(url)")
-            pendingLoad = (url, headers, startTime)
-            return
+        lastLoad = (url, headers, startTime)
+        if core == nil {
+            if desiredMode == .metal, metalLayer != nil {
+                switchRenderer(to: .metal)
+            } else if desiredMode == .software, sampleLayer != nil {
+                switchRenderer(to: .software)
+            }
         }
-        AppLog.debug(.player, "mpv load: url=\(url) headers=\(headers.count) start=\(startTime ?? 0)")
-        core.load(url: url, headers: headers, startTime: startTime)
-        startStatusTimer()
+        core?.load(url: url, headers: headers, startTime: startTime)
+        if core != nil {
+            startStatusTimer()
+        }
     }
 
     func togglePlay() {
@@ -119,7 +138,7 @@ final class MPVPlayerModel: ObservableObject {
         statusTimer = nil
         core?.shutdown()
         core = nil
-        pendingLoad = nil
+        lastLoad = nil
 #if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.stopPictureInPicture()
         pipController = nil
@@ -128,6 +147,9 @@ final class MPVPlayerModel: ObservableObject {
 
 #if os(iOS) && !targetEnvironment(macCatalyst)
     func startPictureInPictureIfPossible() -> Bool {
+        if rendererMode != .software {
+            switchRenderer(to: .software)
+        }
         guard let pipController, pipController.isPictureInPicturePossible else { return false }
         pipController.startPictureInPicture()
         return true
@@ -135,6 +157,9 @@ final class MPVPlayerModel: ObservableObject {
 
     func stopPictureInPicture() {
         pipController?.stopPictureInPicture()
+        if rendererMode == .software {
+            switchRenderer(to: .metal)
+        }
     }
 #endif
 
@@ -173,6 +198,39 @@ final class MPVPlayerModel: ObservableObject {
             debugStats = core.renderStats()
         }
     }
+
+    private func switchRenderer(to mode: RendererMode) {
+        desiredMode = mode
+        if mode == .metal, metalLayer == nil {
+            AppLog.error(.player, "mpv switch: missing metal layer")
+            return
+        }
+        if mode == .software, sampleLayer == nil {
+            AppLog.error(.player, "mpv switch: missing sample layer")
+            return
+        }
+
+        let resumeTime = core?.getDoubleProperty("time-pos")
+        let wasPaused = core?.getFlagProperty("pause") ?? false
+        let resumeRate = core?.getDoubleProperty("speed") ?? rate
+        core?.shutdown()
+        core = nil
+
+        rendererMode = mode
+        let hostLayer: CALayer? = (mode == .metal) ? metalLayer : nil
+        core = MPVCore(renderer: mode, hostLayer: hostLayer)
+        if mode == .software, let sampleLayer {
+            core?.attach(displayLayer: sampleLayer, hostLayer: nil)
+        }
+
+        if let lastLoad {
+            let start = resumeTime ?? lastLoad.startTime
+            core?.load(url: lastLoad.url, headers: lastLoad.headers, startTime: start)
+            core?.setRate(resumeRate)
+            core?.setPaused(wasPaused)
+            startStatusTimer()
+        }
+    }
 }
 
 struct MPVVideoView: View {
@@ -180,12 +238,20 @@ struct MPVVideoView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            SampleBufferDisplayRepresentable { view in
-                let hostLayer = view.layer
-                AppLog.debug(.player, "mpv view: displayLayer=\(Unmanaged.passUnretained(view.displayLayer).toOpaque()) hostLayer=\(Unmanaged.passUnretained(hostLayer).toOpaque())")
-                player.attach(layer: view.displayLayer, hostLayer: hostLayer)
+#if os(iOS)
+            MetalLayerRepresentable { layer in
+                player.attachMetal(layer: layer)
             }
             .background(Color.black)
+            .opacity(player.usesMetal ? 1 : 0)
+            .allowsHitTesting(false)
+#endif
+
+            SampleBufferDisplayRepresentable { view in
+                player.attachSample(layer: view.displayLayer)
+            }
+            .background(Color.black)
+            .opacity(player.usesMetal ? 0 : 1)
             .allowsHitTesting(false)
             if let stats = player.debugStats {
                 VStack(alignment: .leading, spacing: 6) {
@@ -220,8 +286,10 @@ private final class MPVCore {
     private var renderContext: OpaquePointer?
     private var renderCoordinator: MPVRenderCoordinator?
     private var eventTimer: DispatchSourceTimer?
+    private let renderer: MPVPlayerModel.RendererMode
 
-    init(hostLayer: CALayer) {
+    init(renderer: MPVPlayerModel.RendererMode, hostLayer: CALayer?) {
+        self.renderer = renderer
         queue.sync {
             handle = mpv_create()
             guard let handle else {
@@ -229,13 +297,22 @@ private final class MPVCore {
                 return
             }
 
-            let pointer = Unmanaged.passUnretained(hostLayer).toOpaque()
-            var wid = Int64(bitPattern: UInt64(UInt(bitPattern: pointer)))
-            mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &wid)
-            AppLog.debug(.player, "mpv init: set wid=\(wid)")
+            if let hostLayer {
+                let pointer = Unmanaged.passUnretained(hostLayer).toOpaque()
+                var wid = Int64(bitPattern: UInt64(UInt(bitPattern: pointer)))
+                mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &wid)
+                AppLog.debug(.player, "mpv init: set wid=\(wid)")
+            }
 
-            mpv_set_option_string(handle, "vo", "libmpv")
-            mpv_set_option_string(handle, "hwdec", "videotoolbox")
+            switch renderer {
+            case .metal:
+                mpv_set_option_string(handle, "vo", "gpu")
+                mpv_set_option_string(handle, "gpu-context", "moltenvk")
+                mpv_set_option_string(handle, "hwdec", "videotoolbox")
+            case .software:
+                mpv_set_option_string(handle, "vo", "libmpv")
+                mpv_set_option_string(handle, "hwdec", "no")
+            }
             mpv_set_option_string(handle, "keep-open", "yes")
             mpv_set_option_string(handle, "osc", "no")
             mpv_set_option_string(handle, "input-default-bindings", "no")
@@ -257,47 +334,51 @@ private final class MPVCore {
             mpv_request_log_messages(handle, "warn")
 #endif
 
-            var apiType = UnsafePointer<CChar>(strdup(MPV_RENDER_API_TYPE_SW))
-            defer { free(UnsafeMutablePointer(mutating: apiType)) }
-            var params = [
-                mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE, data: UnsafeMutableRawPointer(mutating: apiType)),
-                mpv_render_param(type: MPV_RENDER_PARAM_INVALID, data: nil)
-            ]
-            var context: OpaquePointer?
-            if mpv_render_context_create(&context, handle, &params) < 0 {
-                AppLog.error(.player, "mpv_render_context_create failed")
-                mpv_terminate_destroy(handle)
-                self.handle = nil
-                return
-            }
-            guard let context else {
-                AppLog.error(.player, "mpv_render_context_create returned nil context")
-                mpv_terminate_destroy(handle)
-                self.handle = nil
-                return
-            }
-            renderContext = context
-            AppLog.debug(.player, "mpv render context created")
+            if renderer == .software {
+                var apiType = UnsafePointer<CChar>(strdup(MPV_RENDER_API_TYPE_SW))
+                defer { free(UnsafeMutablePointer(mutating: apiType)) }
+                var params = [
+                    mpv_render_param(type: MPV_RENDER_PARAM_API_TYPE, data: UnsafeMutableRawPointer(mutating: apiType)),
+                    mpv_render_param(type: MPV_RENDER_PARAM_INVALID, data: nil)
+                ]
+                var context: OpaquePointer?
+                if mpv_render_context_create(&context, handle, &params) < 0 {
+                    AppLog.error(.player, "mpv_render_context_create failed")
+                    mpv_terminate_destroy(handle)
+                    self.handle = nil
+                    return
+                }
+                guard let context else {
+                    AppLog.error(.player, "mpv_render_context_create returned nil context")
+                    mpv_terminate_destroy(handle)
+                    self.handle = nil
+                    return
+                }
+                renderContext = context
+                AppLog.debug(.player, "mpv render context created")
 
-            let coordinator = MPVRenderCoordinator(handle: handle, renderContext: context)
-            renderCoordinator = coordinator
-            let callback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ctx in
-                guard let ctx else { return }
-                let coordinator = Unmanaged<MPVRenderCoordinator>.fromOpaque(ctx).takeUnretainedValue()
-                coordinator.scheduleRender()
+                let coordinator = MPVRenderCoordinator(handle: handle, renderContext: context)
+                renderCoordinator = coordinator
+                let callback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ctx in
+                    guard let ctx else { return }
+                    let coordinator = Unmanaged<MPVRenderCoordinator>.fromOpaque(ctx).takeUnretainedValue()
+                    coordinator.scheduleRender()
+                }
+                mpv_render_context_set_update_callback(context, callback, Unmanaged.passUnretained(coordinator).toOpaque())
+                AppLog.debug(.player, "mpv update callback set")
             }
-            mpv_render_context_set_update_callback(context, callback, Unmanaged.passUnretained(coordinator).toOpaque())
-            AppLog.debug(.player, "mpv update callback set")
 
             startEventLoop()
         }
     }
 
-    func attach(displayLayer: AVSampleBufferDisplayLayer, hostLayer: CALayer) {
+    func attach(displayLayer: AVSampleBufferDisplayLayer, hostLayer: CALayer?) {
         queue.async {
             self.renderCoordinator?.setDisplayLayer(displayLayer)
-            self.setWindowIDIfNeeded(hostLayer: hostLayer)
-            AppLog.debug(.player, "mpv attach: set displayLayer and wid")
+            if let hostLayer {
+                self.setWindowIDIfNeeded(hostLayer: hostLayer)
+            }
+            AppLog.debug(.player, "mpv attach: set displayLayer")
         }
     }
 

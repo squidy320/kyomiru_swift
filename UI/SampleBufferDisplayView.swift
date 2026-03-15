@@ -1,5 +1,8 @@
 import AVFoundation
 import SwiftUI
+#if os(iOS)
+import Metal
+#endif
 
 #if os(iOS)
 import UIKit
@@ -68,6 +71,49 @@ struct SampleBufferDisplayRepresentable: UIViewRepresentable {
 
     func updateUIView(_ uiView: SampleBufferDisplayView, context: Context) {
         // Avoid reattaching the layer on every SwiftUI update to prevent flashing.
+    }
+}
+
+final class MetalRenderView: UIView {
+    override class var layerClass: AnyClass { CAMetalLayer.self }
+
+    var metalLayer: CAMetalLayer {
+        layer as! CAMetalLayer
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        commonInit()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+
+    private func commonInit() {
+        metalLayer.framebufferOnly = true
+        metalLayer.contentsScale = UIScreen.main.scale
+        metalLayer.pixelFormat = .bgra8Unorm
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        metalLayer.frame = bounds
+    }
+}
+
+struct MetalLayerRepresentable: UIViewRepresentable {
+    let onLayerReady: (CAMetalLayer) -> Void
+
+    func makeUIView(context: Context) -> MetalRenderView {
+        let view = MetalRenderView()
+        onLayerReady(view.metalLayer)
+        return view
+    }
+
+    func updateUIView(_ uiView: MetalRenderView, context: Context) {
+        // Avoid reattaching the layer on every SwiftUI update.
     }
 }
 #else

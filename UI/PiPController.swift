@@ -10,6 +10,7 @@ final class PiPController: NSObject {
     private let currentTime: () -> Double
     private let duration: () -> Double
     private let skipBy: (Double) -> Void
+    private let onStop: () -> Void
     private var controller: AVPictureInPictureController?
 
     var isPictureInPicturePossible: Bool {
@@ -23,7 +24,8 @@ final class PiPController: NSObject {
         pause: @escaping () -> Void,
         currentTime: @escaping () -> Double,
         duration: @escaping () -> Double,
-        skipBy: @escaping (Double) -> Void
+        skipBy: @escaping (Double) -> Void,
+        onStop: @escaping () -> Void
     ) {
         self.isPlaying = isPlaying
         self.play = play
@@ -31,6 +33,7 @@ final class PiPController: NSObject {
         self.currentTime = currentTime
         self.duration = duration
         self.skipBy = skipBy
+        self.onStop = onStop
         self.controller = nil
 
         super.init()
@@ -63,6 +66,12 @@ final class PiPController: NSObject {
 }
 
 extension PiPController: AVPictureInPictureControllerDelegate {}
+
+extension PiPController {
+    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        onStop()
+    }
+}
 
 extension PiPController: AVPictureInPictureSampleBufferPlaybackDelegate {
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, setPlaying playing: Bool) {
