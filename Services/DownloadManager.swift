@@ -212,6 +212,7 @@ actor OfflineDownloadManager {
         try handle.synchronize()
         let attrs = try fm.attributesOfItem(atPath: outputURL.path)
         let fileBytes = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        AppLog.debug(.downloads, "hls merge complete segments=\(segmentURLs.count) expectedBytes=\(expectedBytes) actualBytes=\(fileBytes)")
         if fileBytes != expectedBytes {
             AppLog.error(.downloads, "hls merge size mismatch expected=\(expectedBytes) actual=\(fileBytes) path=\(outputURL.path)")
             throw URLError(.cannotDecodeContentData)
@@ -337,7 +338,7 @@ final class DownloadManager: NSObject, ObservableObject {
         let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let folder = base.appendingPathComponent("KyomiruDownloads/\(safe(title))", isDirectory: true)
         try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent("E\(episode).ts")
+        return folder.appendingPathComponent("Episode(\(episode)).ts")
     }
 
     private func localHLSFolder(title: String, episode: Int) -> URL {
@@ -373,19 +374,18 @@ final class DownloadManager: NSObject, ObservableObject {
             guard let item = items.first(where: { $0.id == id }) else { return }
             AppLog.debug(.downloads, "hls download start id=\(id)")
             updateProgress(id: id, progress: 0)
-            let folder = localHLSFolder(title: item.title, episode: item.episode)
-            let output = folder.appendingPathComponent("merged.ts")
+            let output = localMergedHLSFileURL(for: item.title, episode: item.episode)
             let localFile = try await offlineManager.downloadAndMerge(
                 playlistURL: url,
                 headers: headers,
                 outputURL: output,
-                outputFolder: folder,
+                outputFolder: nil,
                 progress: { [weak self] value in
                 Task { @MainActor in
                     self?.updateProgress(id: id, progress: value)
                 }
             },
-                preferLocalHLS: true
+                preferLocalHLS: false
             )
             if MPVSupport.isAvailable {
                 updateStatus(id: id, status: "Completed", localFile: localFile)
@@ -396,6 +396,11 @@ final class DownloadManager: NSObject, ObservableObject {
                 Task { @MainActor in
                     await remuxIfNeeded(id: id, localFile: localFile)
                 }
+            }
+            let segmentFolder = localHLSFolder(title: item.title, episode: item.episode)
+            if fm.fileExists(atPath: segmentFolder.path) {
+                try? fm.removeItem(at: segmentFolder)
+                AppLog.debug(.downloads, "hls cleanup removed segment folder=\(segmentFolder.path)")
             }
             markWatched(mediaTitle: item.title, episode: item.episode)
         } catch {
@@ -731,7 +736,7 @@ final class DownloadManager: NSObject, ObservableObject {
 
     private func isMergedEpisodeFile(_ url: URL, item: DownloadItem) -> Bool {
         let name = url.deletingPathExtension().lastPathComponent
-        return name == "E\(item.episode)"
+        return name == "Episode(\(item.episode))"
     }
 
     private func isEpisodeLikeSegment(_ url: URL) -> Bool {
