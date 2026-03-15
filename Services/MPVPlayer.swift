@@ -464,25 +464,32 @@ private final class MPVCore {
 
     func stopPiPRendering() {
         queue.async {
-            if let context = self.pipRenderContext {
-                mpv_render_context_set_update_callback(context, nil, nil)
-                mpv_render_context_free(context)
-            }
-            self.pipCoordinator?.stopDisplayLink()
-            self.pipRenderContext = nil
-            self.pipCoordinator = nil
+            self.stopPiPRenderingLocked()
         }
     }
 
     func shutdown() {
         queue.sync {
             stopEventLoop()
-            stopPiPRendering()
+            stopPiPRenderingLocked()
             if let handle = handle {
                 mpv_terminate_destroy(handle)
                 self.handle = nil
             }
         }
+    }
+
+    private func stopPiPRenderingLocked() {
+        if let coordinator = self.pipCoordinator {
+            coordinator.deactivate()
+            coordinator.stopDisplayLink()
+        }
+        if let context = self.pipRenderContext {
+            mpv_render_context_set_update_callback(context, nil, nil)
+            mpv_render_context_free(context)
+        }
+        self.pipRenderContext = nil
+        self.pipCoordinator = nil
     }
 
     func renderStats() -> MPVDebugStats? {
@@ -543,6 +550,7 @@ private final class MPVRenderCoordinator {
     private var pipDisplayLinkProxy: PiPDisplayLinkProxy?
     private var pipDisplayLinkRequested = false
     private var pipFramePumpScheduled = false
+    private var isActive = true
     private var framesEnqueued: Int = 0
     private var framesRendered: Int = 0
     private var lastUpdateTime: CFTimeInterval = 0
@@ -575,6 +583,7 @@ private final class MPVRenderCoordinator {
     func requestDisplayLink() {
         queue.async {
             guard self.displayLayer != nil else { return }
+            guard self.isActive else { return }
             self.pipDisplayLinkRequested = true
             self.startDisplayLinkLocked()
         }
@@ -585,6 +594,14 @@ private final class MPVRenderCoordinator {
             self.pipDisplayLinkRequested = false
             self.pipFramePumpScheduled = false
             self.stopDisplayLinkLocked()
+        }
+    }
+
+    func deactivate() {
+        queue.async {
+            self.isActive = false
+            self.pipDisplayLinkRequested = false
+            self.pipFramePumpScheduled = false
         }
     }
 
@@ -617,6 +634,7 @@ private final class MPVRenderCoordinator {
     private func pumpPiPFrame() {
         queue.async { [weak self] in
             guard let self else { return }
+            guard self.isActive else { return }
             guard self.pipDisplayLinkRequested || self.pipFramePumpScheduled else { return }
             self.pipFramePumpScheduled = true
             self.performRenderUpdate()
@@ -625,6 +643,7 @@ private final class MPVRenderCoordinator {
     }
 
     private func performRenderUpdate() {
+        guard isActive else { return }
         let updateRaw = mpv_render_context_update(renderContext)
         lastUpdateMask = updateRaw
         lastUpdateTime = CACurrentMediaTime()

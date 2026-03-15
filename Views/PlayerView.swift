@@ -125,6 +125,16 @@ struct PlayerView: View {
                     .clipShape(Circle())
             }
 
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left.2")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 32, height: 32)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Circle())
+            }
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Episode \(episode.number)")
                     .font(.system(size: 15, weight: .semibold))
