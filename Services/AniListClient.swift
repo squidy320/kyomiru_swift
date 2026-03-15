@@ -256,6 +256,17 @@ final class AniListClient {
         return items
     }
 
+    func searchAnimeByImdbOrTitle(imdbId: String?, title: String) async throws -> AniListMedia? {
+        if let imdbId, !imdbId.isEmpty {
+            let imdbResults = try await searchAnime(query: imdbId)
+            if let match = imdbResults.first {
+                return match
+            }
+        }
+        let titleResults = try await searchAnime(query: title)
+        return titleResults.first
+    }
+
     func cachedDiscoverySectionsSnapshot() -> [AniListDiscoverySection]? {
         cachedDiscoverySectionsFromDisk()
     }

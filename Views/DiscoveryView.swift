@@ -10,6 +10,10 @@ struct DiscoveryView: View {
     @State private var searchResults: [AniListMedia] = []
     @State private var searchTask: Task<Void, Never>?
     @State private var heroIndex = 0
+    @State private var imdbTrending: [TrendingItem] = []
+    @State private var isLoadingImdbTrending = false
+    @State private var imdbAniListMap: [Int: AniListMedia] = [:]
+    @State private var navigateMedia: AniListMedia?
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
@@ -25,7 +29,7 @@ struct DiscoveryView: View {
                                 .foregroundColor(.white)
                         }
 
-                        heroCarousel
+                        imdbCarousel
 
                         SearchField(placeholder: "Search anime...", text: $query)
 
@@ -84,6 +88,9 @@ struct DiscoveryView: View {
                 }
                 .navigationTitle(isPad ? "Discovery" : "")
                 .navigationBarTitleDisplayMode(.inline)
+                .navigationDestination(item: $navigateMedia) { media in
+                    DetailsView(media: media)
+                }
             }
         }
         .task {
@@ -92,6 +99,7 @@ struct DiscoveryView: View {
                let cached = appState.services.aniListClient.cachedDiscoverySectionsSnapshot() {
                 sections = cached
             }
+            await loadImdbTrending()
             await loadDiscovery()
         }
         .onChange(of: query) { _, _ in
@@ -140,6 +148,44 @@ struct DiscoveryView: View {
                     heroIndex = (heroIndex + 1) % items.count
                 }
             }
+        )
+    }
+
+    private var imdbCarousel: some View {
+        if isLoadingImdbTrending {
+            return AnyView(
+                GlassCard {
+                    Text("Loading IMDb trending…")
+                        .foregroundColor(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            )
+        }
+        if imdbTrending.isEmpty {
+            return heroCarousel
+        }
+
+        return AnyView(
+            VStack(alignment: .leading, spacing: UIConstants.microPadding) {
+                Text("Trending on IMDb")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Theme.textSecondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: UIConstants.interCardSpacing) {
+                        ForEach(imdbTrending, id: \.id) { item in
+                            Button {
+                                handleImdbTap(item)
+                            } label: {
+                                CinematicTrendingCard(item: item)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, UIConstants.heroTopPadding)
+                }
+                .scrollClipDisabled()
+            }
+            .padding(.top, UIConstants.heroTopPadding)
         )
     }
 
@@ -258,9 +304,107 @@ private extension DiscoveryView {
         if let total = media.episodes, total > 0, item.currentEpisode >= total { return true }
         return false
     }
+
+    func loadImdbTrending() async {
+        await MainActor.run {
+            isLoadingImdbTrending = true
+        }
+        let items = await appState.services.trendingService.fetchTrending()
+        await MainActor.run {
+            imdbTrending = items
+        }
+        await prefetchAniListMappings(items: Array(items.prefix(5)))
+        await MainActor.run {
+            isLoadingImdbTrending = false
+        }
+    }
+
+    func prefetchAniListMappings(items: [TrendingItem]) async {
+        for item in items {
+            if imdbAniListMap[item.id] != nil { continue }
+            if let media = try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
+                imdbId: item.imdbId,
+                title: item.title
+            ) {
+                if let media {
+                    imdbAniListMap[item.id] = media
+                }
+            }
+        }
+    }
+
+    func handleImdbTap(_ item: TrendingItem) {
+        if let media = imdbAniListMap[item.id] {
+            navigateMedia = media
+            return
+        }
+        Task {
+            if let media = try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
+                imdbId: item.imdbId,
+                title: item.title
+            ) {
+                if let media {
+                    imdbAniListMap[item.id] = media
+                    navigateMedia = media
+                }
+            }
+        }
+    }
 }
 
 // Card components moved to UI/MediaCards.swift
+
+private struct CinematicTrendingCard: View {
+    let item: TrendingItem
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            Group {
+                if let url = item.backdropURL {
+                    AsyncImage(url: url) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Theme.surface
+                    }
+                } else {
+                    Theme.surface
+                }
+            }
+            .frame(width: UIConstants.continueCardWidth, height: UIConstants.continueCardHeight * 1.3)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.9), Color.black.opacity(0.5), Color.clear],
+                startPoint: .bottom,
+                endPoint: .top
+            )
+            .frame(width: UIConstants.continueCardWidth, height: UIConstants.continueCardHeight * 1.3)
+            .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 6) {
+                if let logo = item.logoURL {
+                    AsyncImage(url: logo) { image in
+                        image.resizable().scaledToFit()
+                    } placeholder: {
+                        Color.clear
+                    }
+                    .frame(maxWidth: 180)
+                } else {
+                    Text(item.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                }
+                Text("Trending on IMDb")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Theme.textSecondary)
+            }
+            .padding(12)
+        }
+        .frame(width: UIConstants.continueCardWidth, height: UIConstants.continueCardHeight * 1.3)
+    }
+}
 
 
 
