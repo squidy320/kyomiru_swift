@@ -43,6 +43,7 @@ final class MPVPlayerModel: ObservableObject {
     private var wantsDebugStats = false
     private var pendingLoad: (url: URL, headers: [String: String], startTime: Double?)?
     private var sampleLayer: AVSampleBufferDisplayLayer?
+    private var pipStartTask: Task<Void, Never>?
 #if os(iOS) && !targetEnvironment(macCatalyst)
     private var pipController: PiPController?
 #endif
@@ -142,6 +143,10 @@ final class MPVPlayerModel: ObservableObject {
         core = nil
         pendingLoad = nil
 #if os(iOS) && !targetEnvironment(macCatalyst)
+        pipStartTask?.cancel()
+        pipStartTask = nil
+#endif
+#if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.stopPictureInPicture()
         pipController = nil
 #endif
@@ -168,21 +173,34 @@ final class MPVPlayerModel: ObservableObject {
         guard let sampleLayer else { return false }
         core?.startPiPRendering(displayLayer: sampleLayer)
         guard let pipController else { return false }
-        if pipController.isPictureInPicturePossible {
-            pipController.startPictureInPicture()
-            return true
-        }
-        // Retry shortly in case the sample buffer layer needs a frame before PiP becomes possible.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            guard let self, let pipController = self.pipController, pipController.isPictureInPicturePossible else { return }
+        pipStartTask?.cancel()
+        let canStart = pipController.isPictureInPicturePossible
+        if canStart {
             pipController.startPictureInPicture()
         }
-        return false
+        // Retry briefly and pause if PiP never activates.
+        pipStartTask = Task { [weak self] in
+            guard let self, let pipController = self.pipController else { return }
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            if pipController.isPictureInPictureActive { return }
+            if pipController.isPictureInPicturePossible {
+                pipController.startPictureInPicture()
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                if pipController.isPictureInPictureActive { return }
+            }
+            self.core?.stopPiPRendering()
+            self.pause()
+        }
+        return canStart
     }
 
     func stopPictureInPicture() {
         pipController?.stopPictureInPicture()
         core?.stopPiPRendering()
+    }
+
+    var isPictureInPictureActive: Bool {
+        pipController?.isPictureInPictureActive ?? false
     }
 #endif
 

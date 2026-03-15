@@ -12,6 +12,7 @@ final class PiPController: NSObject {
     private let skipBy: (Double) -> Void
     private let onStop: () -> Void
     private var controller: AVPictureInPictureController?
+    private(set) var isPictureInPictureActive = false
 
     var isPictureInPicturePossible: Bool {
         controller?.isPictureInPicturePossible ?? false
@@ -68,8 +69,18 @@ final class PiPController: NSObject {
 extension PiPController: AVPictureInPictureControllerDelegate {}
 
 extension PiPController {
+    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        isPictureInPictureActive = true
+    }
+
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        isPictureInPictureActive = false
         onStop()
+    }
+
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,
+                                    failedToStartPictureInPictureWithError error: Error) {
+        isPictureInPictureActive = false
     }
 }
 

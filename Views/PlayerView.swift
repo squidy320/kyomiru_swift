@@ -45,8 +45,12 @@ struct PlayerView: View {
         .onChange(of: scenePhase) { _, phase in
 #if os(iOS) && !targetEnvironment(macCatalyst)
             if phase == .background {
-                if player.isPlaying, !player.startPictureInPictureIfPossible() {
-                    player.pause()
+                if player.isPlaying {
+                    _ = player.startPictureInPictureIfPossible()
+                }
+            } else if phase == .active {
+                if player.isPictureInPictureActive {
+                    player.stopPictureInPicture()
                 }
             }
 #endif
