@@ -45,6 +45,7 @@ final class MPVPlayerModel: ObservableObject {
     private var sampleLayer: AVSampleBufferDisplayLayer?
     private var pipStartTask: Task<Void, Never>?
     private var pipPendingStart = false
+    private var pipStartIssued = false
 #if os(iOS) && !targetEnvironment(macCatalyst)
     private var pipController: PiPController?
 #endif
@@ -150,6 +151,7 @@ final class MPVPlayerModel: ObservableObject {
         pipStartTask?.cancel()
         pipStartTask = nil
         pipPendingStart = false
+        pipStartIssued = false
 #endif
 #if os(iOS) && !targetEnvironment(macCatalyst)
         pipController?.stopPictureInPicture()
@@ -182,9 +184,15 @@ final class MPVPlayerModel: ObservableObject {
         }
         pipStartTask?.cancel()
         pipPendingStart = true
+        pipStartIssued = false
         let canStart = pipController.isPictureInPicturePossible
         AppLog.debug(.player, "pip start requested possible=\(canStart)")
         core?.startPiPRendering(displayLayer: sampleLayer)
+        if canStart {
+            AppLog.debug(.player, "pip start: issuing immediate start")
+            pipController.startPictureInPicture()
+            pipStartIssued = true
+        }
         // Wait for the first rendered frame before starting PiP.
         pipStartTask = Task { [weak self] in
             guard let self, let pipController = self.pipController else { return }
@@ -193,6 +201,7 @@ final class MPVPlayerModel: ObservableObject {
             AppLog.debug(.player, "pip failed to activate; stopping pip render")
             self.core?.stopPiPRendering()
             self.pipPendingStart = false
+            self.pipStartIssued = false
         }
         return canStart
     }
@@ -201,6 +210,7 @@ final class MPVPlayerModel: ObservableObject {
         pipController?.stopPictureInPicture()
         core?.stopPiPRendering()
         pipPendingStart = false
+        pipStartIssued = false
     }
 
     var isPictureInPictureActive: Bool {
@@ -214,14 +224,13 @@ final class MPVPlayerModel: ObservableObject {
             pipPendingStart = false
             return
         }
-        if pipController.isPictureInPicturePossible {
+        if pipController.isPictureInPicturePossible && !pipStartIssued {
             AppLog.debug(.player, "pip first frame ready; starting")
             pipController.invalidatePlaybackState()
             pipController.startPictureInPicture()
+            pipStartIssued = true
             pipPendingStart = false
             return
-        } else {
-            AppLog.debug(.player, "pip first frame ready but pip not possible")
         }
     }
 #endif
