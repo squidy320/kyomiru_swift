@@ -47,7 +47,7 @@ struct PlayerView: View {
         .onChange(of: scenePhase) { _, phase in
 #if os(iOS) && !targetEnvironment(macCatalyst)
             if phase == .background {
-                if !player.startPictureInPictureIfPossible() {
+                if player.isPlaying, !player.startPictureInPictureIfPossible() {
                     player.pause()
                 }
             }
@@ -134,6 +134,19 @@ struct PlayerView: View {
             }
 
             Spacer()
+
+#if os(iOS) && !targetEnvironment(macCatalyst)
+            Button {
+                _ = player.startPictureInPictureIfPossible()
+                showControls()
+            } label: {
+                Image(systemName: "pip")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 36, height: 36)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Circle())
+            }
+#endif
 
             Menu {
                 ForEach(speedOptions, id: \.self) { value in
