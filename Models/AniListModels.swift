@@ -7,7 +7,7 @@ struct AniListUser: Equatable {
     let bannerURL: URL?
 }
 
-struct AniListTitle: Equatable {
+struct AniListTitle: Equatable, Hashable {
     let romaji: String?
     let english: String?
     let native: String?
@@ -17,7 +17,7 @@ struct AniListTitle: Equatable {
     }
 }
 
-struct AniListMedia: Identifiable, Equatable {
+struct AniListMedia: Identifiable, Equatable, Hashable {
     let id: Int
     let idMal: Int?
     let title: AniListTitle

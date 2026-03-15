@@ -114,7 +114,7 @@ struct DiscoveryView: View {
     private var heroCarousel: some View {
         let items = heroItems()
         if items.isEmpty {
-            return AnyView(
+            return AnyView(erasing:
                 HeroHeader(
                     title: "Easygoing Territory Defense",
                     subtitle: "Top rated, new releases, and hot anime",
@@ -127,7 +127,7 @@ struct DiscoveryView: View {
             )
         }
 
-        return AnyView(
+        return AnyView(erasing:
             TabView(selection: $heroIndex) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, media in
                     NavigationLink {
@@ -153,7 +153,7 @@ struct DiscoveryView: View {
 
     private var imdbCarousel: some View {
         if isLoadingImdbTrending {
-            return AnyView(
+            return AnyView(erasing:
                 GlassCard {
                     Text("Loading IMDb trending…")
                         .foregroundColor(Theme.textSecondary)
@@ -165,7 +165,7 @@ struct DiscoveryView: View {
             return heroCarousel
         }
 
-        return AnyView(
+        return AnyView(erasing:
             VStack(alignment: .leading, spacing: UIConstants.microPadding) {
                 Text("Trending on IMDb")
                     .font(.system(size: 13, weight: .semibold))
