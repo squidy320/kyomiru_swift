@@ -8,6 +8,173 @@ struct IMDbMetadata: Equatable, Codable {
     let backdropURL: URL?
 }
 
+struct TMDBHeroAssets: Equatable, Codable {
+    let backdropURL: URL?
+    let logoURL: URL?
+}
+
+final class TMDBImageService {
+    private let session: URLSession
+    private let cacheStore: CacheStore
+    private let apiKey: String?
+    private let imageBase = "https://image.tmdb.org/t/p/original"
+
+    init(cacheStore: CacheStore, session: URLSession = .custom) {
+        self.cacheStore = cacheStore
+        self.session = session
+        self.apiKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+    }
+
+    func heroAssets(for media: AniListMedia) async -> TMDBHeroAssets? {
+        let cacheKey = "tmdb-hero:\(media.id)"
+        if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
+           let decoded = try? JSONDecoder().decode(TMDBHeroAssets.self, from: cached) {
+            return decoded
+        }
+
+        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
+            AppLog.error(.network, "tmdb api key missing")
+            return nil
+        }
+
+        let match = await resolveTMDBMatch(media: media, apiKey: apiKey)
+        guard let match else { return nil }
+
+        let backdrop = await fetchBackdrop(mediaType: match.mediaType, id: match.id, apiKey: apiKey)
+        let logo = await fetchBestLogo(mediaType: match.mediaType, id: match.id, apiKey: apiKey)
+        let assets = TMDBHeroAssets(
+            backdropURL: backdrop,
+            logoURL: logo
+        )
+
+        if let data = try? JSONEncoder().encode(assets) {
+            cacheStore.writeJSON(data, forKey: cacheKey)
+        }
+        return assets
+    }
+
+    private struct Match {
+        let id: Int
+        let mediaType: String // "tv" or "movie"
+    }
+
+    private func resolveTMDBMatch(media: AniListMedia, apiKey: String) async -> Match? {
+        if let malId = media.idMal,
+           let byMal = await findByMAL(malId: malId, apiKey: apiKey) {
+            return byMal
+        }
+
+        let title = media.title.romaji ?? media.title.english ?? media.title.native ?? media.title.best
+        if let tv = await searchTMDB(type: "tv", query: title, apiKey: apiKey) {
+            return tv
+        }
+        if let movie = await searchTMDB(type: "movie", query: title, apiKey: apiKey) {
+            return movie
+        }
+        return nil
+    }
+
+    private func findByMAL(malId: Int, apiKey: String) async -> Match? {
+        var components = URLComponents(string: "https://api.themoviedb.org/3/find/\(malId)")!
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "external_source", value: "myanimelist_id")
+        ]
+        guard let url = components.url else { return nil }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if let tv = (root?["tv_results"] as? [[String: Any]])?.first,
+               let id = tv["id"] as? Int {
+                return Match(id: id, mediaType: "tv")
+            }
+            if let movie = (root?["movie_results"] as? [[String: Any]])?.first,
+               let id = movie["id"] as? Int {
+                return Match(id: id, mediaType: "movie")
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
+    private func searchTMDB(type: String, query: String, apiKey: String) async -> Match? {
+        var components = URLComponents(string: "https://api.themoviedb.org/3/search/\(type)")!
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "query", value: query)
+        ]
+        guard let url = components.url else { return nil }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let results = root?["results"] as? [[String: Any]]
+            if let first = results?.first, let id = first["id"] as? Int {
+                return Match(id: id, mediaType: type)
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
+    private func fetchBackdrop(mediaType: String, id: Int, apiKey: String) async -> URL? {
+        guard let url = URL(string: "https://api.themoviedb.org/3/\(mediaType)/\(id)?api_key=\(apiKey)") else {
+            return nil
+        }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if let path = root?["backdrop_path"] as? String {
+                return URL(string: "\(imageBase)\(path)")
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
+    private func fetchBestLogo(mediaType: String, id: Int, apiKey: String) async -> URL? {
+        guard let url = URL(string: "https://api.themoviedb.org/3/\(mediaType)/\(id)/images?api_key=\(apiKey)") else {
+            return nil
+        }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let logos = root?["logos"] as? [[String: Any]] ?? []
+            let filtered = logos.filter { logo in
+                let filePath = (logo["file_path"] as? String) ?? ""
+                let lang = (logo["iso_639_1"] as? String) ?? ""
+                let isPreferredLang = lang == "en" || lang == "ja"
+                return filePath.lowercased().hasSuffix(".png") && (isPreferredLang || lang.isEmpty)
+            }
+            let sorted = filtered.sorted { a, b in
+                let sizeA = a["file_size"] as? Double ?? 0
+                let sizeB = b["file_size"] as? Double ?? 0
+                return sizeA > sizeB
+            }
+            if let best = sorted.first, let path = best["file_path"] as? String {
+                return URL(string: "\(imageBase)\(path)")
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+}
+
 final class MetadataService {
     private let session: URLSession
     private let cacheStore: CacheStore

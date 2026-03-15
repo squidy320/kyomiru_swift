@@ -11,61 +11,63 @@ struct AlertsView: View {
     var body: some View {
         ZStack {
             Theme.baseBackground.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if UIDevice.current.userInterfaceIdiom != .pad {
-                        Text("Alerts")
-                            .font(.system(size: 28, weight: .heavy))
-                            .foregroundColor(.white)
-                    }
-
-                    if !appState.authState.isSignedIn {
-                        GlassCard {
-                            Text("Connect AniList to view notifications and alerts.")
-                                .foregroundColor(Theme.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if UIDevice.current.userInterfaceIdiom != .pad {
+                            Text("Alerts")
+                                .font(.system(size: 28, weight: .heavy))
+                                .foregroundColor(.white)
                         }
-                    } else {
-                        if isLoading {
+
+                        if !appState.authState.isSignedIn {
                             GlassCard {
-                                Text("Loading AniList alerts...")
-                                    .foregroundColor(Theme.textSecondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        } else if let errorMessage {
-                            GlassCard {
-                                Text(errorMessage)
-                                    .foregroundColor(Theme.textSecondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        } else if notifications.isEmpty {
-                            GlassCard {
-                                Text("No new alerts.")
+                                Text("Connect AniList to view notifications and alerts.")
                                     .foregroundColor(Theme.textSecondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         } else {
-                            ForEach(notifications) { item in
-                                if let media = item.media {
-                                    NavigationLink {
-                                        DetailsView(media: media)
-                                    } label: {
+                            if isLoading {
+                                GlassCard {
+                                    Text("Loading AniList alerts...")
+                                        .foregroundColor(Theme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else if let errorMessage {
+                                GlassCard {
+                                    Text(errorMessage)
+                                        .foregroundColor(Theme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else if notifications.isEmpty {
+                                GlassCard {
+                                    Text("No new alerts.")
+                                        .foregroundColor(Theme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else {
+                                ForEach(notifications) { item in
+                                    if let media = item.media {
+                                        NavigationLink {
+                                            DetailsView(media: media)
+                                        } label: {
+                                            AlertRow(item: item)
+                                        }
+                                        .buttonStyle(.plain)
+                                    } else {
                                         AlertRow(item: item)
                                     }
-                                    .buttonStyle(.plain)
-                                } else {
-                                    AlertRow(item: item)
                                 }
                             }
                         }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
+                .navigationTitle(isPad ? "Alerts" : "")
+                .navigationBarTitleDisplayMode(.inline)
             }
-            .navigationTitle(isPad ? "Alerts" : "")
-            .navigationBarTitleDisplayMode(.inline)
         }
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: tabBarInset)

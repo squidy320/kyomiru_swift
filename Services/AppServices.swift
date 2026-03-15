@@ -11,6 +11,7 @@ final class AppServices {
     let offlineManager: OfflineManager
     let metadataService: MetadataService
     let episodeMetadataService: EpisodeMetadataService
+    let tmdbImageService: TMDBImageService
     let aniSkipService: AniSkipService
     let downloadManager: DownloadManager
     let libraryStore: MediaTracker
@@ -24,6 +25,7 @@ final class AppServices {
         self.offlineManager = OfflineManager()
         self.metadataService = MetadataService(cacheStore: cacheStore)
         self.episodeMetadataService = EpisodeMetadataService(cacheStore: cacheStore, provider: .tmdb)
+        self.tmdbImageService = TMDBImageService(cacheStore: cacheStore)
         self.aniSkipService = AniSkipService()
         self.downloadManager = DownloadManager.shared
         self.libraryStore = MediaTracker()
