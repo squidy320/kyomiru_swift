@@ -287,6 +287,8 @@ struct MPVVideoView: View {
             }
             .background(Color.black)
             .opacity(0.01) // Keep in hierarchy for PiP while remaining effectively hidden.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea()
             .allowsHitTesting(false)
 
             if let stats = player.debugStats {
@@ -628,6 +630,8 @@ private final class MPVRenderCoordinator {
     private var didFlushForFormatChange = false
     var onFirstFrame: (() -> Void)?
     private var didSendFirstFrame = false
+    private var zeroSizeCount: Int = 0
+    private var noFrameCount: Int = 0
 
     init(handle: OpaquePointer, renderContext: OpaquePointer) {
         self.handle = handle
@@ -717,13 +721,26 @@ private final class MPVRenderCoordinator {
         if (updateRaw & frameMask) != 0 {
             pipDisplayLinkRequested = false
             renderFrame()
+            noFrameCount = 0
+        } else {
+            noFrameCount += 1
+            if noFrameCount == 60 {
+                AppLog.debug(.player, "pip render: no frame updates yet")
+            }
         }
     }
 
     private func renderFrame() {
         guard let layer = displayLayer else { return }
         let size = resolveVideoSize(layer: layer)
-        if size.width <= 1 || size.height <= 1 { return }
+        if size.width <= 1 || size.height <= 1 {
+            zeroSizeCount += 1
+            if zeroSizeCount == 60 {
+                AppLog.debug(.player, "pip render: zero size \(size)")
+            }
+            return
+        }
+        zeroSizeCount = 0
 
         var pixelBuffer: CVPixelBuffer?
         let attrs: [CFString: Any] = [
@@ -852,6 +869,7 @@ private final class MPVRenderCoordinator {
             self.framesRendered += 1
             if !self.didSendFirstFrame {
                 self.didSendFirstFrame = true
+                AppLog.debug(.player, "pip render: first frame enqueued")
                 self.onFirstFrame?()
             }
         }

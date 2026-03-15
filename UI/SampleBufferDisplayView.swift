@@ -68,6 +68,7 @@ struct SampleBufferDisplayRepresentable: UIViewRepresentable {
         view.isUserInteractionEnabled = false
         view.isOpaque = false
         view.alpha = 0.01
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         onViewReady(view)
         return view
     }
