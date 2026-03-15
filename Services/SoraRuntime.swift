@@ -379,8 +379,8 @@ final class SoraRuntime {
     }
 
     private func fetch(_ request: URLRequest, label: String) async throws -> (Data, URLResponse) {
-        return try await NetworkRetry.withRetries(label: label) {
-            let (data, response) = try await session.data(for: request)
+        return try await NetworkRetry.withRetries(label: label) { [self] in
+            let (data, response) = try await self.session.data(for: request)
             if let http = response as? HTTPURLResponse, http.statusCode >= 500 || http.statusCode == 429 {
                 throw URLError(.badServerResponse)
             }
