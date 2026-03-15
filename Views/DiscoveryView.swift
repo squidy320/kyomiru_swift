@@ -111,7 +111,7 @@ struct DiscoveryView: View {
             }
         }
     }
-    private var heroCarousel: some View {
+    private var heroCarousel: AnyView {
         let items = heroItems()
         if items.isEmpty {
             return AnyView(erasing:
@@ -151,7 +151,7 @@ struct DiscoveryView: View {
         )
     }
 
-    private var imdbCarousel: some View {
+    private var imdbCarousel: AnyView {
         if isLoadingImdbTrending {
             return AnyView(erasing:
                 GlassCard {
@@ -325,10 +325,8 @@ private extension DiscoveryView {
             if let media = try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
                 imdbId: item.imdbId,
                 title: item.title
-            ) {
-                if let media {
-                    imdbAniListMap[item.id] = media
-                }
+            ), let media {
+                imdbAniListMap[item.id] = media
             }
         }
     }
@@ -342,11 +340,9 @@ private extension DiscoveryView {
             if let media = try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
                 imdbId: item.imdbId,
                 title: item.title
-            ) {
-                if let media {
-                    imdbAniListMap[item.id] = media
-                    navigateMedia = media
-                }
+            ), let media {
+                imdbAniListMap[item.id] = media
+                navigateMedia = media
             }
         }
     }
