@@ -26,10 +26,12 @@ final class MPVPlayerModel: ObservableObject {
 
     func attach(layer: AVSampleBufferDisplayLayer, hostLayer: CALayer) {
         if core == nil {
+            AppLog.debug(.player, "mpv attach: creating core hostLayer=\(Unmanaged.passUnretained(hostLayer).toOpaque())")
             core = MPVCore(hostLayer: hostLayer)
         }
         core?.attach(displayLayer: layer, hostLayer: hostLayer)
         if let pending = pendingLoad {
+            AppLog.debug(.player, "mpv attach: draining pending load url=\(pending.url)")
             core?.load(url: pending.url, headers: pending.headers, startTime: pending.startTime)
             pendingLoad = nil
             startStatusTimer()
@@ -51,9 +53,11 @@ final class MPVPlayerModel: ObservableObject {
 
     func load(url: URL, headers: [String: String], startTime: Double?) {
         guard let core else {
+            AppLog.debug(.player, "mpv load: core not ready, queueing url=\(url)")
             pendingLoad = (url, headers, startTime)
             return
         }
+        AppLog.debug(.player, "mpv load: url=\(url) headers=\(headers.count) start=\(startTime ?? 0)")
         core.load(url: url, headers: headers, startTime: startTime)
         startStatusTimer()
     }
@@ -178,6 +182,7 @@ struct MPVVideoView: View {
         ZStack(alignment: .topLeading) {
             SampleBufferDisplayRepresentable { view in
                 let hostLayer = view.layer
+                AppLog.debug(.player, "mpv view: displayLayer=\(Unmanaged.passUnretained(view.displayLayer).toOpaque()) hostLayer=\(Unmanaged.passUnretained(hostLayer).toOpaque())")
                 player.attach(layer: view.displayLayer, hostLayer: hostLayer)
             }
             .background(Color.black)
@@ -227,6 +232,7 @@ private final class MPVCore {
             let pointer = Unmanaged.passUnretained(hostLayer).toOpaque()
             var wid = Int64(bitPattern: UInt64(UInt(bitPattern: pointer)))
             mpv_set_option(handle, "wid", MPV_FORMAT_INT64, &wid)
+            AppLog.debug(.player, "mpv init: set wid=\(wid)")
 
             mpv_set_option_string(handle, "vo", "libmpv")
             mpv_set_option_string(handle, "hwdec", "videotoolbox")
@@ -243,6 +249,7 @@ private final class MPVCore {
                 self.handle = nil
                 return
             }
+            AppLog.debug(.player, "mpv init: initialized")
 
 #if DEBUG
             mpv_request_log_messages(handle, "info")
@@ -290,6 +297,7 @@ private final class MPVCore {
         queue.async {
             self.renderCoordinator?.setDisplayLayer(displayLayer)
             self.setWindowIDIfNeeded(hostLayer: hostLayer)
+            AppLog.debug(.player, "mpv attach: set displayLayer and wid")
         }
     }
 
@@ -324,6 +332,7 @@ private final class MPVCore {
             }
 
             let target = url.isFileURL ? url.path : url.absoluteString
+            AppLog.debug(.player, "mpv loadfile target=\(target)")
             self.command(["loadfile", target, "replace"])
             if let startTime, startTime > 0.5 {
                 self.command(["seek", String(startTime), "absolute", "exact"])

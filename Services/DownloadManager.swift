@@ -1,6 +1,5 @@
 import Foundation
 import AVFoundation
-import CryptoKit
 
 actor OfflineDownloadManager {
     typealias ProgressHandler = @Sendable (Double) -> Void
@@ -348,22 +347,6 @@ final class DownloadManager: NSObject, ObservableObject {
         return folder
     }
 
-    private func hashFolder(for url: URL, create: Bool = true) -> URL {
-        let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let folder = base
-            .appendingPathComponent("downloads", isDirectory: true)
-            .appendingPathComponent(sha256(url.absoluteString), isDirectory: true)
-        if create {
-            try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
-        }
-        return folder
-    }
-
-    private func sha256(_ string: String) -> String {
-        let data = Data(string.utf8)
-        let hash = SHA256.hash(data: data)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
-    }
 
     private func safe(_ text: String) -> String {
         text.replacingOccurrences(of: "/", with: "_")
@@ -390,7 +373,7 @@ final class DownloadManager: NSObject, ObservableObject {
             guard let item = items.first(where: { $0.id == id }) else { return }
             AppLog.debug(.downloads, "hls download start id=\(id)")
             updateProgress(id: id, progress: 0)
-            let folder = hashFolder(for: url)
+            let folder = localHLSFolder(title: item.title, episode: item.episode)
             let output = folder.appendingPathComponent("merged.ts")
             let localFile = try await offlineManager.downloadAndMerge(
                 playlistURL: url,
@@ -639,18 +622,6 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func resolveFallbackPlayableURL(for item: DownloadItem) -> URL? {
-        let hashFolder = hashFolder(for: item.url, create: false)
-        let hashPlaylist = hashFolder.appendingPathComponent("playlist.m3u8")
-        if fm.fileExists(atPath: hashPlaylist.path) {
-            AppLog.debug(.downloads, "offline fallback using hash playlist path=\(hashPlaylist.path)")
-            return hashPlaylist
-        }
-        let hashMerged = hashFolder.appendingPathComponent("merged.ts")
-        if fm.fileExists(atPath: hashMerged.path) {
-            AppLog.debug(.downloads, "offline fallback using hash merged ts path=\(hashMerged.path)")
-            return hashMerged
-        }
-
         let folder = localHLSFolder(title: item.title, episode: item.episode)
         if fm.fileExists(atPath: folder.path) {
             if let playlist = ensurePlaylist(forFolder: folder, prefix: nil) {
