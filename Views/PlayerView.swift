@@ -7,6 +7,7 @@ struct PlayerView: View {
     let episode: SoraEpisode
     let sources: [SoraSource]
     let mediaId: Int
+    let malId: Int?
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -17,6 +18,9 @@ struct PlayerView: View {
     @State private var autoHideTask: Task<Void, Never>?
     @State private var autoHideToken: Int = 0
     @State private var isBackgrounding = false
+    @State private var skipSegments: [AniSkipSegment] = []
+    @State private var activeSkip: AniSkipSegment?
+    @State private var skipTask: Task<Void, Never>?
     private let progressTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -34,11 +38,16 @@ struct PlayerView: View {
                 controlsOverlay
                     .transition(.opacity)
             }
+
+            if let activeSkip {
+                skipButton(for: activeSkip)
+            }
         }
         .onAppear(perform: startPlayback)
         .onDisappear(perform: stopPlayback)
         .onReceive(progressTimer) { _ in
             syncProgress()
+            updateSkipState()
         }
         .onChange(of: player.isPlaying) { _, _ in
             scheduleAutoHide()
@@ -287,6 +296,7 @@ struct PlayerView: View {
             player.load(url: resolved, headers: headers, startTime: saved)
         }
         scheduleAutoHide()
+        startSkipFetch()
 #if os(iOS)
         UIApplication.shared.isIdleTimerDisabled = true
 #endif
@@ -305,6 +315,8 @@ struct PlayerView: View {
         if player.duration.isFinite {
             PlaybackHistoryStore.shared.saveDuration(player.duration, for: episode.id)
         }
+        skipTask?.cancel()
+        skipTask = nil
         player.shutdown()
         AppLog.debug(.player, "player disappear episode=\(episode.id)")
 #if os(iOS)
@@ -369,6 +381,83 @@ struct PlayerView: View {
                 }
             }
         }
+    }
+
+    private func startSkipFetch() {
+        guard let malId, episode.number > 0 else { return }
+        skipTask?.cancel()
+        if let cached = appState.services.downloadManager.cachedSkipSegments(malId: malId, episode: episode.number) {
+            skipSegments = cached
+            return
+        }
+        skipTask = Task {
+            let segments = await appState.services.aniSkipService.fetchSkipSegments(malId: malId, episode: episode.number)
+            await MainActor.run {
+                self.skipSegments = segments
+                if !segments.isEmpty {
+                    appState.services.downloadManager.storeSkipSegments(segments, malId: malId, episode: episode.number)
+                }
+            }
+        }
+    }
+
+    private func updateSkipState() {
+        guard !skipSegments.isEmpty else {
+            activeSkip = nil
+            return
+        }
+        let time = player.position
+        if let segment = skipSegments.first(where: { time >= $0.start && time < $0.end }) {
+            activeSkip = segment
+        } else {
+            activeSkip = nil
+        }
+    }
+
+    private func skipButton(for segment: AniSkipSegment) -> some View {
+        let label = segmentLabel(segment)
+        return VStack {
+            HStack {
+                Spacer()
+                Button {
+                    player.seek(to: segment.end)
+                    activeSkip = nil
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "forward.fill")
+                        Text(label)
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.black.opacity(0.7))
+                    )
+                }
+                .padding(.trailing, 16)
+                .padding(.top, 80)
+            }
+            Spacer()
+        }
+    }
+
+    private func segmentLabel(_ segment: AniSkipSegment) -> String {
+        let type = segment.type.lowercased()
+        if type.contains("op") || type.contains("intro") {
+            return "Skip Intro"
+        }
+        if type.contains("ed") || type.contains("outro") {
+            return "Skip Outro"
+        }
+        if type.contains("recap") {
+            return "Skip Recap"
+        }
+        if type.contains("preview") {
+            return "Skip Preview"
+        }
+        return "Skip"
     }
 
     private func formatTime(_ seconds: Double) -> String {

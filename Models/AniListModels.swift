@@ -19,6 +19,7 @@ struct AniListTitle: Equatable {
 
 struct AniListMedia: Identifiable, Equatable {
     let id: Int
+    let idMal: Int?
     let title: AniListTitle
     let coverURL: URL?
     let bannerURL: URL?

@@ -99,7 +99,7 @@ struct DownloadsView: View {
                         headers: [:]
                     )
                     let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
-                    PlayerView(episode: episode, sources: [source], mediaId: 0)
+                    PlayerView(episode: episode, sources: [source], mediaId: 0, malId: nil)
                 }
             }
         }

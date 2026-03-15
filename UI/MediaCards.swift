@@ -4,7 +4,10 @@ struct MediaPosterCard: View {
     let title: String
     let subtitle: String?
     let imageURL: URL?
+    let media: AniListMedia?
     let score: Int?
+    @EnvironmentObject private var appState: AppState
+    @State private var imdbPosterURL: URL?
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -12,8 +15,8 @@ struct MediaPosterCard: View {
                 RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                     .fill(Color.white.opacity(0.06))
 
-                if let imageURL {
-                    CachedImage(url: imageURL) { image in
+                if let resolved = imdbPosterURL ?? imageURL {
+                    CachedImage(url: resolved) { image in
                         image.resizable().scaledToFill()
                     } placeholder: {
                         Color.white.opacity(0.08)
@@ -50,6 +53,10 @@ struct MediaPosterCard: View {
         }
         .frame(width: UIConstants.posterCardWidth, height: UIConstants.posterCardHeight)
         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
+        .task(id: media?.id) {
+            guard let media else { return }
+            imdbPosterURL = await appState.services.metadataService.posterURL(for: media)
+        }
     }
 }
 

@@ -31,6 +31,8 @@
     <string>CHANGE_ME</string>
     <key>ANILIST_CLIENT_SECRET</key>
     <string>CHANGE_ME</string>
+    <key>OMDB_API_KEY</key>
+    <string>CHANGE_ME</string>
     <key>UILaunchScreen</key>
     <dict/>
     <key>UIBackgroundModes</key>

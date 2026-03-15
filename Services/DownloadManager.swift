@@ -423,6 +423,8 @@ struct DownloadItem: Identifiable, Equatable {
 final class DownloadManager: NSObject, ObservableObject {
     static let shared = DownloadManager()
     @Published private(set) var items: [DownloadItem] = []
+    private var aniSkipCache: [String: [AniSkipSegment]] = [:]
+    private let aniSkipIndexKey = "aniskip_cache.json"
 
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: "kyomiru.downloads")
@@ -436,9 +438,20 @@ final class DownloadManager: NSObject, ObservableObject {
     override init() {
         super.init()
         loadIndex()
+        loadAniSkipCache()
         Task { @MainActor in
             resumePendingRemuxes()
         }
+    }
+
+    func cachedSkipSegments(malId: Int, episode: Int) -> [AniSkipSegment]? {
+        aniSkipCache[aniSkipKey(malId: malId, episode: episode)]
+    }
+
+    func storeSkipSegments(_ segments: [AniSkipSegment], malId: Int, episode: Int) {
+        let key = aniSkipKey(malId: malId, episode: episode)
+        aniSkipCache[key] = segments
+        saveAniSkipCache()
     }
 
     func enqueue(title: String, episode: Int, url: URL) {
@@ -695,6 +708,29 @@ final class DownloadManager: NSObject, ObservableObject {
         if let data = try? JSONEncoder().encode(payload) {
             try? data.write(to: url, options: .atomic)
         }
+    }
+
+    private func loadAniSkipCache() {
+        let url = aniSkipIndexURL()
+        guard let data = try? Data(contentsOf: url) else { return }
+        guard let decoded = try? JSONDecoder().decode([String: [AniSkipSegment]].self, from: data) else { return }
+        aniSkipCache = decoded
+    }
+
+    private func saveAniSkipCache() {
+        let url = aniSkipIndexURL()
+        if let data = try? JSONEncoder().encode(aniSkipCache) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    private func aniSkipIndexURL() -> URL {
+        let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return base.appendingPathComponent(aniSkipIndexKey)
+    }
+
+    private func aniSkipKey(malId: Int, episode: Int) -> String {
+        "\(malId)|\(episode)"
     }
 
     private func indexURL() -> URL {

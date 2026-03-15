@@ -69,7 +69,7 @@ struct DetailsView: View {
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let episode = selectedEpisode, !sources.isEmpty {
-                PlayerView(episode: episode, sources: sources, mediaId: media.id)
+                PlayerView(episode: episode, sources: sources, mediaId: media.id, malId: media.idMal)
             }
         }
         .sheet(isPresented: $showSourceSheet) {
@@ -172,6 +172,7 @@ struct DetailsView: View {
             title: media.title.best,
             subtitle: media.format,
             imageURL: media.bannerURL ?? media.coverURL,
+            media: media,
             pills: pills,
             tags: tags,
             height: UIConstants.heroHeightCompact
@@ -373,7 +374,16 @@ struct DetailsView: View {
         Task {
             isLoadingSources = true
             do {
-                sources = try await appState.services.episodeService.loadSources(for: episode)
+                async let sourceTask = appState.services.episodeService.loadSources(for: episode)
+                async let skipTask: Void = {
+                    guard let malId = media.idMal else { return }
+                    let segments = await appState.services.aniSkipService.fetchSkipSegments(malId: malId, episode: episode.number)
+                    if !segments.isEmpty {
+                        appState.services.downloadManager.storeSkipSegments(segments, malId: malId, episode: episode.number)
+                    }
+                }()
+                sources = try await sourceTask
+                _ = await skipTask
                 if sources.isEmpty {
                     errorMessage = "No streams available."
                 } else {
@@ -573,6 +583,8 @@ private struct EpisodeCardModel: Identifiable {
 
 private struct EpisodeRow: View {
     let card: EpisodeCardModel
+    @EnvironmentObject private var appState: AppState
+    @State private var imdbImageURL: URL?
 
     var body: some View {
         HStack(alignment: .top, spacing: UIConstants.interCardSpacing) {
@@ -580,8 +592,8 @@ private struct EpisodeRow: View {
                 RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous)
                     .fill(Color.white.opacity(0.06))
                     .frame(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
-                if let imageURL = card.imageURL {
-                    CachedImage(url: imageURL) { img in
+                if let resolved = imdbImageURL ?? card.imageURL {
+                    CachedImage(url: resolved) { img in
                         img.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
                         Color.white.opacity(0.08)
@@ -622,6 +634,10 @@ private struct EpisodeRow: View {
             RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
                 .fill(Color.white.opacity(0.06))
         )
+        .task(id: card.relatedMedia?.id) {
+            guard let media = card.relatedMedia else { return }
+            imdbImageURL = await appState.services.metadataService.backdropURL(for: media)
+        }
     }
 }
 

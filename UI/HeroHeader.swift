@@ -10,9 +10,12 @@ struct HeroHeader: View {
     let title: String
     let subtitle: String?
     let imageURL: URL?
+    let media: AniListMedia?
     let pills: [HeroPill]
     let tags: [String]
     var height: CGFloat = 260
+    @EnvironmentObject private var appState: AppState
+    @State private var imdbBackdropURL: URL?
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -21,8 +24,8 @@ struct HeroHeader: View {
                 .frame(height: height)
                 .overlay(
                     Group {
-                        if let imageURL {
-                            CachedImage(url: imageURL) { img in
+                        if let resolved = imdbBackdropURL ?? imageURL {
+                            CachedImage(url: resolved) { img in
                                 img.resizable().scaledToFill()
                             } placeholder: {
                                 Theme.surface
@@ -70,6 +73,10 @@ struct HeroHeader: View {
             .padding(18)
         }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .task(id: media?.id) {
+            guard let media else { return }
+            imdbBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+        }
     }
 }
 

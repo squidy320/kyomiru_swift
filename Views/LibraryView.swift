@@ -146,6 +146,7 @@ struct LibraryView: View {
             title: heroMedia?.title.best ?? "86 EIGHTY-SIX",
             subtitle: "Continue watching your synced lists",
             imageURL: heroMedia?.bannerURL ?? heroMedia?.coverURL,
+            media: heroMedia,
             pills: pills,
             tags: tags,
             height: UIConstants.heroHeightCompact
@@ -347,6 +348,7 @@ private struct LibrarySection: View {
                                     title: entry.media.title.best,
                                     subtitle: "Ep \(entry.progress)",
                                     imageURL: entry.media.coverURL,
+                                    media: entry.media,
                                     score: entry.media.averageScore
                                 )
                                 .frame(width: UIConstants.posterCardWidth)

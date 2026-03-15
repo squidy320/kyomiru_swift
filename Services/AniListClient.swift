@@ -65,6 +65,7 @@ final class AniListClient {
           Page(page: 1, perPage: 20) {
             media(type: ANIME, sort: TRENDING_DESC) {
               id
+              idMal
               title { romaji english native }
               coverImage { extraLarge large }
               bannerImage
@@ -104,6 +105,7 @@ final class AniListClient {
           trending: Page(page: 1, perPage: 12) {
             media(type: ANIME, sort: TRENDING_DESC) {
               id
+              idMal
               title { romaji english native }
               coverImage { extraLarge large }
               bannerImage
@@ -120,6 +122,7 @@ final class AniListClient {
           topRated: Page(page: 1, perPage: 12) {
             media(type: ANIME, sort: SCORE_DESC) {
               id
+              idMal
               title { romaji english native }
               coverImage { extraLarge large }
               bannerImage
@@ -136,6 +139,7 @@ final class AniListClient {
           hotNow: Page(page: 1, perPage: 12) {
             media(type: ANIME, sort: POPULARITY_DESC) {
               id
+              idMal
               title { romaji english native }
               coverImage { extraLarge large }
               bannerImage
@@ -197,7 +201,8 @@ final class AniListClient {
                 progress
                 media {
                   id
-                  title { romaji english native }
+              idMal
+              title { romaji english native }
                   coverImage { extraLarge large }
                   bannerImage
                   averageScore
@@ -229,6 +234,7 @@ final class AniListClient {
           Page(page: 1, perPage: 10) {
             media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
               id
+              idMal
               title { romaji english native }
               coverImage { extraLarge large }
               bannerImage
@@ -324,7 +330,8 @@ final class AniListClient {
                 contexts
                 media {
                   id
-                  title { romaji english native }
+              idMal
+              title { romaji english native }
                   coverImage { extraLarge large }
                   bannerImage
                   averageScore
@@ -438,7 +445,8 @@ final class AniListClient {
                 relationType
                 node {
                   id
-                  title { romaji english native }
+              idMal
+              title { romaji english native }
                   coverImage { extraLarge large }
                   bannerImage
                   averageScore
@@ -559,6 +567,7 @@ final class AniListClient {
 
     private func decodeMedia(_ media: [String: Any]) -> AniListMedia? {
         let id = media["id"] as? Int ?? 0
+        let idMal = media["idMal"] as? Int
         let titleMap = media["title"] as? [String: Any] ?? [:]
         let title = AniListTitle(
             romaji: titleMap["romaji"] as? String,
@@ -579,6 +588,7 @@ final class AniListClient {
             .compactMap { $0["name"] as? String }
         return AniListMedia(
             id: id,
+            idMal: idMal,
             title: title,
             coverURL: cover.flatMap(URL.init(string:)),
             bannerURL: banner.flatMap(URL.init(string:)),
@@ -635,4 +645,6 @@ actor RequestGate {
         }
     }
 }
+
+
 

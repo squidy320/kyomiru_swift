@@ -61,6 +61,7 @@ struct DiscoveryView: View {
                                                         title: media.title.best,
                                                         subtitle: "New release",
                                                         imageURL: media.coverURL,
+                                                        media: media,
                                                         score: media.averageScore
                                                     )
                                                     .frame(width: UIConstants.posterCardWidth)
@@ -109,6 +110,7 @@ struct DiscoveryView: View {
                     title: "Easygoing Territory Defense",
                     subtitle: "Top rated, new releases, and hot anime",
                     imageURL: nil,
+                    media: nil,
                     pills: [],
                     tags: [],
                     height: UIConstants.heroHeight
@@ -155,6 +157,7 @@ struct DiscoveryView: View {
             title: heroMedia.title.best,
             subtitle: "Top rated, new releases, and hot anime",
             imageURL: heroMedia.bannerURL ?? heroMedia.coverURL,
+            media: heroMedia,
             pills: pills,
             tags: tags,
             height: UIConstants.heroHeight
@@ -176,6 +179,7 @@ struct DiscoveryView: View {
                                 title: media.title.best,
                                 subtitle: media.format ?? "Result",
                                 imageURL: media.coverURL,
+                                media: media,
                                 score: media.averageScore
                             )
                             .frame(width: UIConstants.posterCardWidth)
