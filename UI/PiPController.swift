@@ -54,10 +54,12 @@ final class PiPController: NSObject {
     }
 
     func startPictureInPicture() {
+        AppLog.debug(.player, "pip controller start")
         controller?.startPictureInPicture()
     }
 
     func stopPictureInPicture() {
+        AppLog.debug(.player, "pip controller stop")
         controller?.stopPictureInPicture()
     }
 
@@ -71,16 +73,19 @@ extension PiPController: AVPictureInPictureControllerDelegate {}
 extension PiPController {
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         isPictureInPictureActive = true
+        AppLog.debug(.player, "pip did start")
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         isPictureInPictureActive = false
+        AppLog.debug(.player, "pip did stop")
         onStop()
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,
                                     failedToStartPictureInPictureWithError error: Error) {
         isPictureInPictureActive = false
+        AppLog.error(.player, "pip failed to start: \(error.localizedDescription)")
     }
 }
 

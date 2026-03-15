@@ -13,6 +13,7 @@ struct PlayerView: View {
     @State private var scrubValue: Double = 0
     @State private var autoHideTask: Task<Void, Never>?
     @State private var autoHideToken: Int = 0
+    @State private var isBackgrounding = false
     private let progressTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -45,10 +46,14 @@ struct PlayerView: View {
         .onChange(of: scenePhase) { _, phase in
 #if os(iOS) && !targetEnvironment(macCatalyst)
             if phase == .background {
+                isBackgrounding = true
+                AppLog.debug(.player, "player scenePhase background isPlaying=\(player.isPlaying)")
                 if player.isPlaying {
                     _ = player.startPictureInPictureIfPossible()
                 }
             } else if phase == .active {
+                isBackgrounding = false
+                AppLog.debug(.player, "player scenePhase active pipActive=\(player.isPictureInPictureActive)")
                 if player.isPictureInPictureActive {
                     player.stopPictureInPicture()
                 }
@@ -264,6 +269,12 @@ struct PlayerView: View {
     }
 
     private func stopPlayback() {
+#if os(iOS) && !targetEnvironment(macCatalyst)
+        if isBackgrounding, player.isPlaying {
+            AppLog.debug(.player, "player disappear skipped due to backgrounding")
+            return
+        }
+#endif
         if player.position.isFinite {
             PlaybackHistoryStore.shared.save(position: player.position, for: episode.id)
         }

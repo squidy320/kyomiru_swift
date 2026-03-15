@@ -175,6 +175,7 @@ final class MPVPlayerModel: ObservableObject {
         guard let pipController else { return false }
         pipStartTask?.cancel()
         let canStart = pipController.isPictureInPicturePossible
+        AppLog.debug(.player, "pip start requested possible=\(canStart)")
         if canStart {
             pipController.startPictureInPicture()
         }
@@ -182,12 +183,20 @@ final class MPVPlayerModel: ObservableObject {
         pipStartTask = Task { [weak self] in
             guard let self, let pipController = self.pipController else { return }
             try? await Task.sleep(nanoseconds: 350_000_000)
-            if pipController.isPictureInPictureActive { return }
+            if pipController.isPictureInPictureActive {
+                AppLog.debug(.player, "pip active after retry")
+                return
+            }
             if pipController.isPictureInPicturePossible {
+                AppLog.debug(.player, "pip retry start possible=true")
                 pipController.startPictureInPicture()
                 try? await Task.sleep(nanoseconds: 350_000_000)
-                if pipController.isPictureInPictureActive { return }
+                if pipController.isPictureInPictureActive {
+                    AppLog.debug(.player, "pip active after second start")
+                    return
+                }
             }
+            AppLog.debug(.player, "pip failed to activate; pausing and stopping pip render")
             self.core?.stopPiPRendering()
             self.pause()
         }
