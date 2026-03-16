@@ -344,6 +344,7 @@ private struct RelationCard: View {
                     Color.white.opacity(0.08)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
+                .clipped()
             }
 
             Text(badge)
@@ -357,7 +358,10 @@ private struct RelationCard: View {
                 )
                 .padding(8)
         }
-        .frame(width: UIConstants.posterCardWidth, height: UIConstants.posterCardWidth * 1.5)
+        .frame(height: UIConstants.posterCardHeight)
+        .aspectRatio(2 / 3, contentMode: .fit)
+        .frame(maxWidth: UIConstants.posterCardWidth)
+        .contentShape(Rectangle())
         .task(id: media.id) {
             imdbPosterURL = await appState.services.metadataService.posterURL(for: media)
         }
