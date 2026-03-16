@@ -44,6 +44,7 @@ final class SampleBufferDisplayView: PlatformView {
 #endif
         displayLayer.videoGravity = .resizeAspect
         displayLayer.backgroundColor = CGColor(gray: 0, alpha: 1)
+        displayLayer.preventsDisplaySleepDuringVideoPlayback = true
     }
 
 #if os(iOS)
@@ -60,11 +61,13 @@ final class SampleBufferDisplayView: PlatformView {
 }
 
 #if os(iOS)
-struct SampleBufferDisplayRepresentable: UIViewRepresentable {
-    let onViewReady: (SampleBufferDisplayView) -> Void
+final class PiPVideoView: SampleBufferDisplayView {}
 
-    func makeUIView(context: Context) -> SampleBufferDisplayView {
-        let view = SampleBufferDisplayView()
+struct SampleBufferDisplayRepresentable: UIViewRepresentable {
+    let onViewReady: (PiPVideoView) -> Void
+
+    func makeUIView(context: Context) -> PiPVideoView {
+        let view = PiPVideoView()
         view.isUserInteractionEnabled = false
         view.isOpaque = false
         view.alpha = 0.01
@@ -73,7 +76,7 @@ struct SampleBufferDisplayRepresentable: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: SampleBufferDisplayView, context: Context) {
+    func updateUIView(_ uiView: PiPVideoView, context: Context) {
         // Avoid reattaching the layer on every SwiftUI update to prevent flashing.
     }
 }
