@@ -356,6 +356,10 @@ struct DetailsView: View {
             episodes = result.episodes
             isLoading = false
 
+            if let cached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: result.episodes) {
+                episodeMetadata = cached
+            }
+
             Task { @MainActor in
                 let meta = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: result.episodes)
                 episodeMetadata = meta

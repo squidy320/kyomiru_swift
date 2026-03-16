@@ -469,6 +469,7 @@ final class EpisodeMetadataService {
     private let aniListClient: AniListClient
     private let tmdbMatcher: TMDBMatchingService
     private let tmdbKey: String?
+    private let cacheManager: MetadataCacheManager
 
     init(
         cacheStore: CacheStore,
@@ -485,6 +486,44 @@ final class EpisodeMetadataService {
         let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
         let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
         self.tmdbKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
+        self.cacheManager = MetadataCacheManager()
+    }
+
+    func cachedEpisodes(for media: AniListMedia, episodes: [SoraEpisode]) -> [Int: EpisodeMetadata]? {
+        switch provider {
+        case .kitsu:
+            let cacheKey = "episode-meta:kitsu:\(media.id)"
+            if let cached = cacheStore.readJSON(forKey: cacheKey),
+               let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
+                return decoded
+            }
+            return nil
+        case .tmdb:
+            let desiredCount = episodes.isEmpty ? (media.episodes ?? 0) : episodes.count
+            let maxEpisodeNumber = episodes.map(\.number).max() ?? 0
+            let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
+            let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
+
+            var seasonNumber: Int?
+            var episodeOffset: Int = 0
+            if let cachedMeta = cacheManager.load(aniListId: media.id) {
+                seasonNumber = cachedMeta.seasonNumber
+                episodeOffset = cachedMeta.episodeOffset
+            } else if let cachedMatch = cacheStore.readJSON(forKey: "tmdb:match:\(media.id)"),
+                      let decoded = try? JSONDecoder().decode(TMDBSeasonMatch.self, from: cachedMatch) {
+                seasonNumber = decoded.seasonNumber
+                episodeOffset = decoded.episodeOffset
+            }
+
+            guard let seasonNumber else { return nil }
+            let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
+            let cacheKey = "episode-meta:tmdb:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            if let cached = cacheStore.readJSON(forKey: cacheKey),
+               let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
+                return decoded
+            }
+            return nil
+        }
     }
 
     func fetchEpisodes(for media: AniListMedia, episodes: [SoraEpisode]) async -> [Int: EpisodeMetadata] {
@@ -520,8 +559,9 @@ final class EpisodeMetadataService {
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
             }
+            let aniListFallback = await fetchFromAniListStreaming(media: media)
             if accepted, !primary.isEmpty {
-                mapped = primary
+                mapped = mergeEpisodeMetadata(primary: primary, fallback: aniListFallback)
                 if let data = try? JSONEncoder().encode(mapped) {
                     cacheStore.writeJSON(data, forKey: cacheKey)
                 }
@@ -529,11 +569,44 @@ final class EpisodeMetadataService {
                 if let reason = rejectReason {
                     AppLog.debug(.matching, "tmdb season rejected mediaId=\(media.id) reason=\(reason)")
                 }
-                let aniList = await fetchFromAniListStreaming(media: media)
-                mapped = aniList.isEmpty ? await fetchFromKitsu(media: media) : aniList
+                mapped = aniListFallback.isEmpty ? await fetchFromKitsu(media: media) : aniListFallback
             }
         }
         return mapped
+    }
+
+    private func mergeEpisodeMetadata(
+        primary: [Int: EpisodeMetadata],
+        fallback: [Int: EpisodeMetadata]
+    ) -> [Int: EpisodeMetadata] {
+        guard !fallback.isEmpty else { return primary }
+        var result = primary
+        for (number, fallbackMeta) in fallback {
+            if let current = result[number] {
+                let needsTitle = isGenericEpisodeTitle(current.title)
+                let needsThumb = current.thumbnailURL == nil
+                if needsTitle || needsThumb {
+                    let merged = EpisodeMetadata(
+                        number: number,
+                        title: needsTitle ? fallbackMeta.title : current.title,
+                        summary: current.summary,
+                        airDate: current.airDate,
+                        runtimeMinutes: current.runtimeMinutes,
+                        thumbnailURL: needsThumb ? fallbackMeta.thumbnailURL : current.thumbnailURL
+                    )
+                    result[number] = merged
+                }
+            } else {
+                result[number] = fallbackMeta
+            }
+        }
+        return result
+    }
+
+    private func isGenericEpisodeTitle(_ title: String) -> Bool {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return true }
+        return trimmed.lowercased().hasPrefix("episode ")
     }
 
     private func fetchFromKitsu(media: AniListMedia) async -> [Int: EpisodeMetadata] {
