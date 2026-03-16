@@ -27,6 +27,8 @@ struct DetailsView: View {
     @State private var episodeMetadata: [Int: EpisodeMetadata] = [:]
     @State private var episodeRatings: [Int: Double] = [:]
     @State private var streamingEpisodes: [AniListStreamingEpisode] = []
+    @State private var tmdbHeroBackdropURL: URL?
+    @State private var tmdbHeroLogoURL: URL?
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -34,30 +36,32 @@ struct DetailsView: View {
             Theme.baseBackground.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                    header
+                    detailHeroHeader
 
-                    actionRow
+                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                        actionRow
 
-                    if isLoading {
-                        GlassCard {
-                            Text("Loading episodes...")
-                                .foregroundColor(Theme.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        if isLoading {
+                            GlassCard {
+                                Text("Loading episodes...")
+                                    .foregroundColor(Theme.textSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else if let errorMessage {
+                            GlassCard {
+                                Text(errorMessage)
+                                    .foregroundColor(Theme.textSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else {
+                            episodeList
+                            RelationsCarouselView(sections: relatedSections)
                         }
-                    } else if let errorMessage {
-                        GlassCard {
-                            Text(errorMessage)
-                                .foregroundColor(Theme.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    } else {
-                        episodeList
-                        RelationsCarouselView(sections: relatedSections)
                     }
+                    .padding(.horizontal, UIConstants.standardPadding)
+                    .padding(.top, UIConstants.smallPadding)
+                    .padding(.bottom, UIConstants.bottomBarHeight)
                 }
-                .padding(.horizontal, UIConstants.standardPadding)
-                .padding(.top, UIConstants.smallPadding)
-                .padding(.bottom, UIConstants.bottomBarHeight)
             }
         }
         .navigationBarBackButtonHidden(!isPad)
@@ -162,23 +166,83 @@ struct DetailsView: View {
         }
     }
 
-    private var header: some View {
-        let episodesCount = media.episodes ?? 0
-        let pills = [
-            HeroPill(icon: "rectangle.stack.fill", text: episodesCount > 0 ? "\(episodesCount) EPS" : "Episodes"),
-            HeroPill(icon: "building.2.fill", text: media.studios.first ?? media.format ?? "Studio"),
-            HeroPill(icon: "star.fill", text: "Score \(media.averageScore ?? 0)")
-        ]
-        let tags = Array(media.genres.prefix(2))
-        return HeroHeader(
-            title: media.title.best,
-            subtitle: media.format,
-            imageURL: media.bannerURL ?? media.coverURL,
-            media: media,
-            pills: pills,
-            tags: tags,
-            height: UIConstants.heroHeightCompact
-        )
+    private var detailHeroHeader: some View {
+        let height = UIScreen.main.bounds.height * 0.5
+        let topInset = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
+            .first ?? 0
+        return GeometryReader { proxy in
+            let width = proxy.size.width
+            let insetTop = proxy.safeAreaInsets.top
+            let topFeatherHeight = max(24.0, insetTop * 0.6)
+            let fallbackBackdrop = media.bannerURL ?? media.coverURL
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
+                        AsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
+                        Theme.surface
+                    }
+                }
+                .frame(width: width, height: height + insetTop)
+                .clipped()
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [Color.clear, Color.black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: topFeatherHeight)
+                        Color.black
+                    }
+                )
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: height + insetTop)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    if let logo = tmdbHeroLogoURL {
+                        AsyncImage(url: logo) { image in
+                            image.resizable().scaledToFit()
+                        } placeholder: {
+                            Color.clear
+                        }
+                        .frame(maxWidth: 220)
+                    } else {
+                        Text(media.title.best)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                    }
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, 24)
+            }
+            .frame(width: width, height: height + insetTop)
+            .clipped()
+        }
+        .frame(height: height)
+        .offset(y: -topInset)
+        .task(id: media.id) {
+            tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+            tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
+        }
     }
 
     private var actionRow: some View {
