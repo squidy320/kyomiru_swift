@@ -18,13 +18,15 @@ struct HeroHeader: View {
     @State private var imdbBackdropURL: URL?
 
     var body: some View {
+        let useTMDB = appState.settings.cardImageSource == .tmdb
+        let resolvedURL = useTMDB ? imdbBackdropURL : imageURL
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .fill(Theme.surface)
                 .frame(height: height)
                 .overlay(
                     Group {
-                        if let resolved = imdbBackdropURL ?? imageURL {
+                        if let resolved = resolvedURL {
                             CachedImage(url: resolved) { img in
                                 img.resizable().scaledToFill()
                             } placeholder: {
@@ -73,9 +75,13 @@ struct HeroHeader: View {
             .padding(18)
         }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .task(id: media?.id) {
+        .task(id: "\(media?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
             guard let media else { return }
-            imdbBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+            if useTMDB {
+                imdbBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+            } else {
+                imdbBackdropURL = nil
+            }
         }
     }
 }

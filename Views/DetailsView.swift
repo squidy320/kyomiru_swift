@@ -690,12 +690,14 @@ private struct EpisodeRow: View {
     @State private var imdbImageURL: URL?
 
     var body: some View {
+        let useTMDB = appState.settings.cardImageSource == .tmdb
+        let resolvedURL = useTMDB ? imdbImageURL : card.imageURL
         HStack(alignment: .top, spacing: UIConstants.interCardSpacing) {
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous)
                     .fill(Color.white.opacity(0.06))
                     .frame(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
-                if let resolved = imdbImageURL ?? card.imageURL {
+                if let resolved = resolvedURL {
                     CachedImage(url: resolved) { img in
                         img.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
@@ -737,9 +739,13 @@ private struct EpisodeRow: View {
             RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
                 .fill(Color.white.opacity(0.06))
         )
-        .task(id: card.relatedMedia?.id) {
+        .task(id: "\(card.relatedMedia?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
             guard let media = card.relatedMedia else { return }
-            imdbImageURL = await appState.services.metadataService.backdropURL(for: media)
+            if useTMDB {
+                imdbImageURL = await appState.services.metadataService.backdropURL(for: media)
+            } else {
+                imdbImageURL = nil
+            }
         }
     }
 }

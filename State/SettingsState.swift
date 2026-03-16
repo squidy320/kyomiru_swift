@@ -5,6 +5,25 @@ final class SettingsState: ObservableObject {
     @Published var defaultQuality: String = "Auto"
     @Published var autoSyncAniList: Bool = true
     @Published var showPlayerDebugOverlay: Bool = false
+    @AppStorage("settings.cardImageSource") private var cardImageSourceRaw: String = CardImageSource.tmdb.rawValue
+
+    var cardImageSource: CardImageSource {
+        get { CardImageSource(rawValue: cardImageSourceRaw) ?? .tmdb }
+        set { cardImageSourceRaw = newValue.rawValue }
+    }
+}
+
+enum CardImageSource: String, CaseIterable, Identifiable {
+    case tmdb
+    case anilist
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .tmdb: return "TMDB"
+        case .anilist: return "AniList"
+        }
+    }
 }
 
 enum LibrarySortOption: String, CaseIterable, Identifiable {

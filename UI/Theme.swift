@@ -71,6 +71,14 @@ actor ImageCache {
         return nil
     }
 
+    func clearAll() async {
+        memory.removeAllObjects()
+        session.configuration.urlCache?.removeAllCachedResponses()
+        let fm = FileManager.default
+        try? fm.removeItem(at: folder)
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
     private func fileURLFor(url: URL) -> URL {
         let name = sha256(url.absoluteString)
         return folder.appendingPathComponent(name).appendingPathExtension("img")

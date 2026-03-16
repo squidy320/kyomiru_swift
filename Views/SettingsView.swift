@@ -4,6 +4,7 @@ import UIKit
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    @State private var cacheSizeText: String = "—"
 
     var body: some View {
         ZStack {
@@ -94,6 +95,20 @@ struct SettingsView: View {
                             }
 
                             GlassCard {
+                                HStack {
+                                    Text("Anime Card Images")
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                    Picker("", selection: $appState.settings.cardImageSource) {
+                                        ForEach(CardImageSource.allCases) { source in
+                                            Text(source.title).tag(source)
+                                        }
+                                    }
+                                    .labelsHidden()
+                                }
+                            }
+
+                            GlassCard {
                                 NavigationLink {
                                     LogsView()
                                 } label: {
@@ -109,10 +124,16 @@ struct SettingsView: View {
                             GlassCard {
                                 Button(action: {
                                     AppLog.debug(.cache, "settings clear cache tapped")
-                                    Task { await CacheService.shared.clearAll() }
+                                    Task {
+                                        await CacheService.shared.clearAll()
+                                        await refreshCacheSize()
+                                    }
                                 }) {
                                     HStack {
                                         Text("Clear Cache")
+                                        Text(cacheSizeText)
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundColor(Theme.textSecondary)
                                         Spacer()
                                         Image(systemName: "trash")
                                     }
@@ -151,11 +172,19 @@ struct SettingsView: View {
         }
         .onAppear {
             AppLog.debug(.ui, "settings view appear")
+            Task { await refreshCacheSize() }
         }
     }
 
     private var tabBarInset: CGFloat {
         UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
+    }
+
+    private func refreshCacheSize() async {
+        let size = await CacheService.shared.cacheSizeString()
+        await MainActor.run {
+            cacheSizeText = size
+        }
     }
 }
 

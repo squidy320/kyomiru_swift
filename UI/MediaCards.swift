@@ -12,12 +12,14 @@ struct MediaPosterCard: View {
     @State private var imdbPosterURL: URL?
 
     var body: some View {
+        let useTMDB = appState.settings.cardImageSource == .tmdb
+        let resolvedURL = useTMDB ? imdbPosterURL : imageURL
         ZStack(alignment: .topTrailing) {
             ZStack(alignment: .bottomLeading) {
                 RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                     .fill(Color.white.opacity(0.06))
 
-                if let resolved = imdbPosterURL ?? imageURL {
+                if let resolved = resolvedURL {
                     CachedImage(url: resolved) { image in
                         image.resizable().scaledToFill()
                     } placeholder: {
@@ -84,9 +86,13 @@ struct MediaPosterCard: View {
         }
         .frame(width: UIConstants.posterCardWidth, height: UIConstants.posterCardHeight)
         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
-        .task(id: media?.id) {
+        .task(id: "\(media?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
             guard let media else { return }
-            imdbPosterURL = await appState.services.metadataService.posterURL(for: media)
+            if useTMDB {
+                imdbPosterURL = await appState.services.metadataService.posterURL(for: media)
+            } else {
+                imdbPosterURL = nil
+            }
         }
     }
 }
@@ -102,11 +108,13 @@ struct ContinueWatchingCard: View {
     @EnvironmentObject private var appState: AppState
     @State private var imdbImageURL: URL?
     var body: some View {
+        let useTMDB = appState.settings.cardImageSource == .tmdb
+        let resolvedURL = useTMDB ? imdbImageURL : imageURL
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.06))
 
-            if let resolved = imdbImageURL ?? imageURL {
+            if let resolved = resolvedURL {
                 CachedImage(url: resolved) { img in
                     img.resizable().scaledToFill()
                 } placeholder: {
@@ -159,9 +167,13 @@ struct ContinueWatchingCard: View {
                     .padding(UIConstants.mediumPadding)
             }
         }
-        .task(id: media?.id) {
+        .task(id: "\(media?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
             guard let media else { return }
-            imdbImageURL = await appState.services.metadataService.backdropURL(for: media)
+            if useTMDB {
+                imdbImageURL = await appState.services.metadataService.backdropURL(for: media)
+            } else {
+                imdbImageURL = nil
+            }
         }
     }
 }
@@ -333,11 +345,13 @@ private struct RelationCard: View {
     @State private var imdbPosterURL: URL?
 
     var body: some View {
+        let useTMDB = appState.settings.cardImageSource == .tmdb
+        let resolvedURL = useTMDB ? imdbPosterURL : media.coverURL
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.06))
 
-            if let url = imdbPosterURL ?? media.coverURL {
+            if let url = resolvedURL {
                 CachedImage(url: url) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {
@@ -362,8 +376,12 @@ private struct RelationCard: View {
         .aspectRatio(2 / 3, contentMode: .fit)
         .frame(maxWidth: UIConstants.posterCardWidth)
         .contentShape(Rectangle())
-        .task(id: media.id) {
-            imdbPosterURL = await appState.services.metadataService.posterURL(for: media)
+        .task(id: "\(media.id)-\(appState.settings.cardImageSource.rawValue)") {
+            if useTMDB {
+                imdbPosterURL = await appState.services.metadataService.posterURL(for: media)
+            } else {
+                imdbPosterURL = nil
+            }
         }
     }
 }
