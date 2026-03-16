@@ -357,18 +357,9 @@ private struct RelationItem: Identifiable {
 private struct RelationCard: View {
     let media: AniListMedia
     let badge: String
-    @EnvironmentObject private var appState: AppState
-    @State private var imdbPosterURL: URL?
-    @State private var tmdbLookupComplete = false
 
     var body: some View {
-        let useTMDB = appState.settings.cardImageSource == .tmdb
-        let resolvedURL: URL? = {
-            if useTMDB {
-                return tmdbLookupComplete ? (imdbPosterURL ?? media.coverURL) : imdbPosterURL
-            }
-            return media.coverURL
-        }()
+        let resolvedURL: URL? = media.coverURL
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.06))
@@ -398,14 +389,5 @@ private struct RelationCard: View {
         .aspectRatio(2 / 3, contentMode: .fit)
         .frame(maxWidth: UIConstants.posterCardWidth)
         .contentShape(Rectangle())
-        .task(id: "\(media.id)-\(appState.settings.cardImageSource.rawValue)") {
-            if useTMDB {
-                imdbPosterURL = await appState.services.metadataService.posterURL(for: media)
-                tmdbLookupComplete = true
-            } else {
-                imdbPosterURL = nil
-                tmdbLookupComplete = false
-            }
-        }
     }
 }

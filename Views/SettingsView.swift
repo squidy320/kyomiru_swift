@@ -109,6 +109,20 @@ struct SettingsView: View {
                             }
 
                             GlassCard {
+                                HStack {
+                                    Text("Player Engine")
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                    Picker("", selection: $appState.settings.playerEngine) {
+                                        ForEach(PlayerEngine.allCases) { engine in
+                                            Text(engine.title).tag(engine)
+                                        }
+                                    }
+                                    .labelsHidden()
+                                }
+                            }
+
+                            GlassCard {
                                 NavigationLink {
                                     LogsView()
                                 } label: {

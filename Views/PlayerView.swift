@@ -10,6 +10,36 @@ struct PlayerView: View {
     let malId: Int?
     let mediaTitle: String?
     @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        Group {
+            if appState.settings.playerEngine == .avplayer {
+                AVPlayerScreen(
+                    episode: episode,
+                    sources: sources,
+                    mediaId: mediaId,
+                    mediaTitle: mediaTitle
+                )
+            } else {
+                MPVPlayerScreen(
+                    episode: episode,
+                    sources: sources,
+                    mediaId: mediaId,
+                    malId: malId,
+                    mediaTitle: mediaTitle
+                )
+            }
+        }
+    }
+}
+
+private struct MPVPlayerScreen: View {
+    let episode: SoraEpisode
+    let sources: [SoraSource]
+    let mediaId: Int
+    let malId: Int?
+    let mediaTitle: String?
+    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var player = MPVPlayerModel()

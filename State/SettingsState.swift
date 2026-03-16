@@ -6,10 +6,16 @@ final class SettingsState: ObservableObject {
     @Published var autoSyncAniList: Bool = true
     @Published var showPlayerDebugOverlay: Bool = false
     @AppStorage("settings.cardImageSource") private var cardImageSourceRaw: String = CardImageSource.tmdb.rawValue
+    @AppStorage("settings.playerEngine") private var playerEngineRaw: String = PlayerEngine.mpv.rawValue
 
     var cardImageSource: CardImageSource {
         get { CardImageSource(rawValue: cardImageSourceRaw) ?? .tmdb }
         set { cardImageSourceRaw = newValue.rawValue }
+    }
+
+    var playerEngine: PlayerEngine {
+        get { PlayerEngine(rawValue: playerEngineRaw) ?? .mpv }
+        set { playerEngineRaw = newValue.rawValue }
     }
 }
 
@@ -22,6 +28,19 @@ enum CardImageSource: String, CaseIterable, Identifiable {
         switch self {
         case .tmdb: return "TMDB"
         case .anilist: return "AniList"
+        }
+    }
+}
+
+enum PlayerEngine: String, CaseIterable, Identifiable {
+    case mpv
+    case avplayer
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .mpv: return "MPV"
+        case .avplayer: return "AVPlayer"
         }
     }
 }
