@@ -74,7 +74,6 @@ struct AlertsView: View {
         }
         .task {
             AppLog.debug(.ui, "alerts view load")
-            await appState.bootstrap()
             await loadNotifications()
         }
         .onChange(of: appState.authState.token) { _, newToken in

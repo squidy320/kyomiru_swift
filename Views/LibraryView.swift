@@ -135,7 +135,6 @@ struct LibraryView: View {
         }
         .task {
             AppLog.debug(.ui, "library view load")
-            await appState.bootstrap()
             if let token = appState.authState.token,
                let cached = appState.services.aniListClient.cachedLibrarySections(token: token),
                !cached.isEmpty {

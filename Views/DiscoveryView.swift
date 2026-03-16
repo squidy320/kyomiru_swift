@@ -95,7 +95,6 @@ struct DiscoveryView: View {
         }
         .task {
             AppLog.debug(.ui, "discovery view load")
-            await appState.bootstrap()
             if sections.isEmpty,
                let cached = appState.services.aniListClient.cachedDiscoverySectionsSnapshot() {
                 sections = cached
