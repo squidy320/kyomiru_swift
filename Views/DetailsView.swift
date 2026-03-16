@@ -33,7 +33,7 @@ struct DetailsView: View {
 
     var body: some View {
         ZStack {
-            Theme.baseBackground.ignoresSafeArea()
+            Color.black.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
                     detailHeroHeader
@@ -215,6 +215,14 @@ struct DetailsView: View {
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.clear, Color.black.opacity(0.9)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: 120)
+                .frame(maxHeight: .infinity, alignment: .bottom)
 
                 VStack(alignment: .leading, spacing: 10) {
                     if let logo = tmdbHeroLogoURL {

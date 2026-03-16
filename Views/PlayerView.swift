@@ -556,6 +556,20 @@ private struct AVPlayerScreen: View {
     }
 
     private func startPlayback() {
+#if os(iOS) && !targetEnvironment(macCatalyst)
+        do {
+            let session = AVAudioSession.sharedInstance()
+            do {
+                try session.setCategory(.playback, mode: .moviePlayback, options: [])
+            } catch {
+                AppLog.error(.player, "audio session moviePlayback failed: \(error.localizedDescription)")
+                try session.setCategory(.playback, mode: .default, options: [])
+            }
+            try session.setActive(true)
+        } catch {
+            AppLog.error(.player, "audio session setup failed: \(error.localizedDescription)")
+        }
+#endif
         PlaybackHistoryStore.shared.saveLastEpisode(
             mediaId: mediaId,
             episodeId: episode.id,
@@ -582,6 +596,7 @@ private struct AVPlayerScreen: View {
         let item = AVPlayerItem(asset: asset)
         self.playerItem = item
         let avPlayer = AVPlayer(playerItem: item)
+        avPlayer.automaticallyWaitsToMinimizeStalling = true
         self.player = avPlayer
 
         addObservers(to: avPlayer, item: item)
