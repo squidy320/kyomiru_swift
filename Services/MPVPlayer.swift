@@ -47,7 +47,7 @@ final class MPVPlayerModel: ObservableObject {
     private var pipPendingStart = false
     private var pipStartIssued = false
 #if os(iOS) && !targetEnvironment(macCatalyst)
-    private var pipController: PiPController?
+    private var pipManager: PiPManager?
 #endif
 
     func attachMetal(layer: CALayer) {
@@ -67,8 +67,8 @@ final class MPVPlayerModel: ObservableObject {
     func attachSample(layer: AVSampleBufferDisplayLayer) {
         sampleLayer = layer
 #if os(iOS) && !targetEnvironment(macCatalyst)
-        if pipController == nil {
-            pipController = PiPController(
+        if pipManager == nil {
+            pipManager = PiPManager(
                 sampleBufferDisplayLayer: layer,
                 isPlaying: { [weak self] in self?.isPlaying ?? false },
                 play: { [weak self] in self?.play() },
@@ -76,7 +76,9 @@ final class MPVPlayerModel: ObservableObject {
                 currentTime: { [weak self] in self?.position ?? 0 },
                 duration: { [weak self] in self?.duration ?? 0 },
                 skipBy: { [weak self] delta in self?.seekBy(delta) },
-                onStop: { [weak self] in self?.core?.stopPiPRendering() }
+                onStart: { },
+                onStop: { [weak self] in self?.core?.stopPiPRendering() },
+                onRestore: { }
             )
         }
 #endif
@@ -105,7 +107,7 @@ final class MPVPlayerModel: ObservableObject {
         isPlaying = true
         scheduleAutoRefresh()
 #if os(iOS) && !targetEnvironment(macCatalyst)
-        pipController?.invalidatePlaybackState()
+        pipManager?.invalidatePlaybackState()
 #endif
     }
 
@@ -113,7 +115,7 @@ final class MPVPlayerModel: ObservableObject {
         core?.setPaused(true)
         isPlaying = false
 #if os(iOS) && !targetEnvironment(macCatalyst)
-        pipController?.invalidatePlaybackState()
+        pipManager?.invalidatePlaybackState()
 #endif
     }
 
@@ -121,7 +123,7 @@ final class MPVPlayerModel: ObservableObject {
         core?.seek(to: seconds)
         scheduleAutoRefresh()
 #if os(iOS) && !targetEnvironment(macCatalyst)
-        pipController?.invalidatePlaybackState()
+        pipManager?.invalidatePlaybackState()
 #endif
     }
 
@@ -129,7 +131,7 @@ final class MPVPlayerModel: ObservableObject {
         core?.seekBy(delta)
         scheduleAutoRefresh()
 #if os(iOS) && !targetEnvironment(macCatalyst)
-        pipController?.invalidatePlaybackState()
+        pipManager?.invalidatePlaybackState()
 #endif
     }
 
@@ -137,7 +139,7 @@ final class MPVPlayerModel: ObservableObject {
         rate = value
         core?.setRate(value)
 #if os(iOS) && !targetEnvironment(macCatalyst)
-        pipController?.invalidatePlaybackState()
+        pipManager?.invalidatePlaybackState()
 #endif
     }
 
@@ -154,8 +156,8 @@ final class MPVPlayerModel: ObservableObject {
         pipStartIssued = false
 #endif
 #if os(iOS) && !targetEnvironment(macCatalyst)
-        pipController?.stopPictureInPicture()
-        pipController = nil
+        pipManager?.stopPictureInPicture()
+        pipManager = nil
 #endif
     }
 
@@ -178,26 +180,26 @@ final class MPVPlayerModel: ObservableObject {
 #if os(iOS) && !targetEnvironment(macCatalyst)
     func startPictureInPictureIfPossible() -> Bool {
         guard let sampleLayer else { return false }
-        guard let pipController else { return false }
-        if pipPendingStart || pipController.isPictureInPictureActive {
-            return pipController.isPictureInPicturePossible
+        guard let pipManager else { return false }
+        if pipPendingStart || pipManager.isPictureInPictureActive {
+            return pipManager.isPictureInPicturePossible
         }
         pipStartTask?.cancel()
         pipPendingStart = true
         pipStartIssued = false
-        let canStart = pipController.isPictureInPicturePossible
+        let canStart = pipManager.isPictureInPicturePossible
         AppLog.debug(.player, "pip start requested possible=\(canStart)")
         core?.startPiPRendering(displayLayer: sampleLayer)
         if canStart {
             AppLog.debug(.player, "pip start: issuing immediate start")
-            pipController.startPictureInPicture()
+            pipManager.startPictureInPicture()
             pipStartIssued = true
         }
         // Wait for the first rendered frame before starting PiP.
         pipStartTask = Task { [weak self] in
-            guard let self, let pipController = self.pipController else { return }
+            guard let self, let pipManager = self.pipManager else { return }
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-            if pipController.isPictureInPictureActive { return }
+            if pipManager.isPictureInPictureActive { return }
             AppLog.debug(.player, "pip failed to activate; stopping pip render")
             self.core?.stopPiPRendering()
             self.pipPendingStart = false
@@ -207,27 +209,27 @@ final class MPVPlayerModel: ObservableObject {
     }
 
     func stopPictureInPicture() {
-        pipController?.stopPictureInPicture()
+        pipManager?.stopPictureInPicture()
         core?.stopPiPRendering()
         pipPendingStart = false
         pipStartIssued = false
     }
 
     var isPictureInPictureActive: Bool {
-        pipController?.isPictureInPictureActive ?? false
+        pipManager?.isPictureInPictureActive ?? false
     }
 
     private func handlePiPFirstFrame() {
         guard pipPendingStart else { return }
-        guard let pipController else { return }
-        if pipController.isPictureInPictureActive {
+        guard let pipManager else { return }
+        if pipManager.isPictureInPictureActive {
             pipPendingStart = false
             return
         }
-        if pipController.isPictureInPicturePossible && !pipStartIssued {
+        if pipManager.isPictureInPicturePossible && !pipStartIssued {
             AppLog.debug(.player, "pip first frame ready; starting")
-            pipController.invalidatePlaybackState()
-            pipController.startPictureInPicture()
+            pipManager.invalidatePlaybackState()
+            pipManager.startPictureInPicture()
             pipStartIssued = true
             pipPendingStart = false
             return
@@ -262,7 +264,7 @@ final class MPVPlayerModel: ObservableObject {
         isPlaying = !paused
         if newDuration > 0 { isReady = true }
 #if os(iOS) && !targetEnvironment(macCatalyst)
-        pipController?.invalidatePlaybackState()
+        pipManager?.invalidatePlaybackState()
 #endif
         if wantsDebugStats {
             debugStats = core.renderStats()
