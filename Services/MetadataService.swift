@@ -861,15 +861,16 @@ final class EpisodeMetadataService {
         let hasHardReject = best?.rejectReason != nil
         let accepted: Bool
         let rejectReason: String?
+        let confidenceText = String(format: "%.2f", confidence)
         if !relationAligned {
             if confidence >= overrideThreshold && !hasHardReject {
                 accepted = true
                 rejectReason = nil
-                AppLog.debug(.matching, "tmdb season override accept mediaId=\(media.id) confidence=\(String(format: \"%.2f\", confidence)) relationAligned=false")
+                AppLog.debug(.matching, "tmdb season override accept mediaId=\(media.id) confidence=\(confidenceText) relationAligned=false")
             } else {
                 accepted = false
                 rejectReason = "relation-mismatch"
-                AppLog.debug(.matching, "tmdb season override reject mediaId=\(media.id) confidence=\(String(format: \"%.2f\", confidence)) relationAligned=false")
+                AppLog.debug(.matching, "tmdb season override reject mediaId=\(media.id) confidence=\(confidenceText) relationAligned=false")
             }
         } else {
             accepted = confidence >= strictThreshold && !hasHardReject
