@@ -8,9 +8,25 @@ final class AuthState: ObservableObject {
 
     private let services: AppServices
     private let tokenKey = "anilist_token"
+    private var invalidTokenObserver: NSObjectProtocol?
 
     init(services: AppServices) {
         self.services = services
+        invalidTokenObserver = NotificationCenter.default.addObserver(
+            forName: .aniListInvalidToken,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            AppLog.error(.auth, "auth token invalidated, signing out")
+            self.signOut()
+        }
+    }
+
+    deinit {
+        if let invalidTokenObserver {
+            NotificationCenter.default.removeObserver(invalidTokenObserver)
+        }
     }
 
     var isSignedIn: Bool {

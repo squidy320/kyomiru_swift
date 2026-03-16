@@ -3,6 +3,7 @@ import Foundation
 enum AniListError: Error {
     case invalidResponse
     case graphQLError(String)
+    case invalidToken
 }
 
 final class AniListClient {
@@ -652,14 +653,27 @@ final class AniListClient {
         let body: [String: Any] = ["query": query, "variables": variables]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response): (Data, URLResponse) = try await NetworkRetry.withRetries(label: "anilist-graphql") { [self] in
+        let (data, response): (Data, URLResponse) = try await NetworkRetry.withRetries(
+            label: "anilist-graphql",
+            attempts: 5,
+            baseDelay: 1.0
+        ) { [self] in
             let (data, response) = try await self.session.data(for: request)
             if let http = response as? HTTPURLResponse, http.statusCode >= 500 || http.statusCode == 429 {
                 throw URLError(.badServerResponse)
             }
             return (data, response)
         }
-        guard let http = response as? HTTPURLResponse, http.statusCode < 500 else {
+        guard let http = response as? HTTPURLResponse else {
+            AppLog.error(.network, "graphql invalid response")
+            throw AniListError.invalidResponse
+        }
+        if http.statusCode == 401 || http.statusCode == 403 {
+            AppLog.error(.network, "graphql invalid token http=\(http.statusCode)")
+            NotificationCenter.default.post(name: .aniListInvalidToken, object: nil)
+            throw AniListError.invalidToken
+        }
+        guard http.statusCode < 500 else {
             AppLog.error(.network, "graphql invalid response")
             throw AniListError.invalidResponse
         }
@@ -667,6 +681,10 @@ final class AniListClient {
            let errors = root["errors"] as? [[String: Any]],
            let message = errors.first?["message"] as? String {
             AppLog.error(.network, "graphql error \(message)")
+            if message.lowercased().contains("invalid token") {
+                NotificationCenter.default.post(name: .aniListInvalidToken, object: nil)
+                throw AniListError.invalidToken
+            }
             throw AniListError.graphQLError(message)
         }
         AppLog.debug(.network, "graphql request success status=\(http.statusCode)")
@@ -792,6 +810,10 @@ actor RequestGate {
             current = max(0, current - 1)
         }
     }
+}
+
+extension Notification.Name {
+    static let aniListInvalidToken = Notification.Name("AniListInvalidToken")
 }
 
 

@@ -141,7 +141,9 @@ final class RatingService {
     init(cacheStore: CacheStore, session: URLSession = .custom, tmdbMatcher: TMDBMatchingService? = nil) {
         self.cacheStore = cacheStore
         self.session = session
-        self.apiKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+        let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+        let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
+        self.apiKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
         self.tmdbMatcher = tmdbMatcher ?? TMDBMatchingService(cacheStore: cacheStore, session: session)
     }
 
@@ -288,7 +290,9 @@ final class TrendingService {
     init(cacheStore: CacheStore, session: URLSession = .custom) {
         self.cacheStore = cacheStore
         self.session = session
-        self.apiKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+        let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+        let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
+        self.apiKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
     }
 
     func fetchTrending() async -> [TrendingItem] {
@@ -478,7 +482,9 @@ final class EpisodeMetadataService {
         self.provider = provider
         self.aniListClient = aniListClient
         self.tmdbMatcher = tmdbMatcher ?? TMDBMatchingService(cacheStore: cacheStore, session: session)
-        self.tmdbKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+        let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+        let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
+        self.tmdbKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
     }
 
     func fetchEpisodes(for media: AniListMedia, episodes: [SoraEpisode]) async -> [Int: EpisodeMetadata] {

@@ -28,7 +28,9 @@ final class TMDBMatchingService {
         self.cacheStore = cacheStore
         self.session = session
         self.cacheManager = cacheManager
-        self.apiKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+        let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+        let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
+        self.apiKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
