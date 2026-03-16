@@ -14,6 +14,7 @@ final class AppState: ObservableObject {
     @Published var settings = SettingsState()
     let services: AppServices
     @Published var authState: AuthState
+    private var hasBootstrapped = false
 
     init() {
         let services = AppServices()
@@ -23,6 +24,8 @@ final class AppState: ObservableObject {
 
     @MainActor
     func bootstrap() async {
+        if hasBootstrapped { return }
+        hasBootstrapped = true
         AppLog.debug(.ui, "app bootstrap start")
         await authState.bootstrap()
         await loadLibraryStoreIfNeeded()

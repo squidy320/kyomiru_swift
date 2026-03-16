@@ -11,6 +11,7 @@ struct RootView: View {
         .background(Theme.baseBackground.ignoresSafeArea())
         .task {
             AppLog.debug(.ui, "root view task start")
+            await appState.bootstrap()
             TrackingSyncService.shared.start(auth: appState.authState, client: appState.services.aniListClient)
             AppLog.debug(.ui, "root view task complete")
         }
