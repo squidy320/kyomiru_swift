@@ -164,7 +164,6 @@ struct DiscoveryView: View {
             .frame(height: height)
             .frame(maxWidth: .infinity)
             .clipped()
-            .ignoresSafeArea(edges: .top)
 
             LinearGradient(
                 colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
@@ -173,7 +172,6 @@ struct DiscoveryView: View {
             )
             .frame(height: height)
             .frame(maxWidth: .infinity)
-            .ignoresSafeArea(edges: .top)
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Discovery")
