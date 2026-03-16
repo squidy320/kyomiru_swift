@@ -454,9 +454,17 @@ final class EpisodeMetadataService {
             }
         case .tmdb:
             let desiredCount = episodes.isEmpty ? (media.episodes ?? 0) : episodes.count
+            let maxEpisodeNumber = episodes.map(\.number).max() ?? 0
             let preferredSeason = TitleMatcher.extractSeasonNumber(from: media.title.best)
-            let (primary, seasonNumber) = await fetchFromTMDB(media: media, preferredSeason: preferredSeason, desiredCount: desiredCount)
-            let cacheKey = "episode-meta:tmdb:\(media.id):season:\(seasonNumber):count:\(desiredCount)"
+            let (primary, seasonNumber) = await fetchFromTMDB(
+                media: media,
+                preferredSeason: preferredSeason,
+                desiredCount: desiredCount,
+                maxEpisodeNumber: maxEpisodeNumber
+            )
+            let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
+            let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
+            let cacheKey = "episode-meta:tmdb:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)"
             if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
@@ -540,7 +548,8 @@ final class EpisodeMetadataService {
     private func fetchFromTMDB(
         media: AniListMedia,
         preferredSeason: Int?,
-        desiredCount: Int
+        desiredCount: Int,
+        maxEpisodeNumber: Int
     ) async -> ([Int: EpisodeMetadata], Int) {
         guard let tmdbKey, !tmdbKey.isEmpty, tmdbKey != "CHANGE_ME" else { return ([:], preferredSeason ?? 1) }
         let title = media.title.english ?? media.title.romaji ?? media.title.native ?? media.title.best
@@ -551,7 +560,8 @@ final class EpisodeMetadataService {
             showId: showId,
             media: media,
             preferredSeason: preferredSeason,
-            desiredCount: desiredCount
+            desiredCount: desiredCount,
+            maxEpisodeNumber: maxEpisodeNumber
         )
         let data = await fetchTMDBSeason(showId: showId, seasonNumber: seasonNumber)
         return (data, seasonNumber)
@@ -632,7 +642,8 @@ final class EpisodeMetadataService {
         showId: Int,
         media: AniListMedia,
         preferredSeason: Int?,
-        desiredCount: Int
+        desiredCount: Int,
+        maxEpisodeNumber: Int
     ) async -> Int {
         guard let tmdbKey else { return preferredSeason ?? 1 }
         guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)?api_key=\(tmdbKey)") else {
@@ -655,9 +666,38 @@ final class EpisodeMetadataService {
             let preferred = preferredSeason
             let targetYear = media.seasonYear
             let desired = desiredCount
+            let maxEpisode = maxEpisodeNumber
+            let globalNumbering = maxEpisode >= desired + 5 && maxEpisode > 0
             let titleLower = title.lowercased()
             let wantsFinal = titleLower.contains("final")
             let wantsPart = titleLower.contains("part")
+
+            var rangeMatchSeason: Int?
+            var ranges: [(season: Int, start: Int, end: Int)] = []
+            if globalNumbering {
+                var cursor = 1
+                for season in candidates.sorted(by: { $0.seasonNumber < $1.seasonNumber }) {
+                    let start = cursor
+                    let end = cursor + max(season.episodeCount, 0) - 1
+                    ranges.append((season: season.seasonNumber, start: start, end: end))
+                    if maxEpisode >= start && maxEpisode <= end {
+                        rangeMatchSeason = season.seasonNumber
+                    }
+                    cursor = end + 1
+                }
+                let rangesText = ranges
+                    .map { "S\($0.season)=\($0.start)-\($0.end)" }
+                    .joined(separator: ",")
+                AppLog.debug(
+                    .network,
+                    "tmdb season ranges mediaId=\(media.id) maxEp=\(maxEpisode) desired=\(desired) ranges=[\(rangesText)] match=\(rangeMatchSeason ?? 0)"
+                )
+            }
+
+            AppLog.debug(
+                .network,
+                "tmdb season global-numbering mediaId=\(media.id) maxEp=\(maxEpisode) desired=\(desired) detected=\(globalNumbering)"
+            )
 
             var best: (season: SeasonInfo, score: Double)?
             for season in candidates {
@@ -689,6 +729,9 @@ final class EpisodeMetadataService {
                 let seasonLower = (season.name ?? "").lowercased()
                 if wantsFinal, seasonLower.contains("final") { markerScore += 0.2 }
                 if wantsPart, seasonLower.contains("part") { markerScore += 0.2 }
+                if let rangeMatchSeason, rangeMatchSeason == season.seasonNumber {
+                    markerScore += 0.6
+                }
 
                 let score = (0.45 * epScore) + (0.25 * yearScore) + (0.2 * titleScore) + markerScore
                 AppLog.debug(
