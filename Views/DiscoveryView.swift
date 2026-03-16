@@ -11,6 +11,8 @@ struct DiscoveryView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var heroIndex = 0
     @State private var imdbTrending: [TrendingItem] = []
+    @State private var heroTrending: TrendingItem?
+    @State private var heroAnime: AniListMedia?
     @State private var isLoadingImdbTrending = false
     @State private var imdbAniListMap: [Int: AniListMedia] = [:]
     @State private var navigateMedia: AniListMedia?
@@ -23,13 +25,7 @@ struct DiscoveryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                        if UIDevice.current.userInterfaceIdiom != .pad {
-                            Text("Discovery")
-                                .font(.system(size: 28, weight: .heavy))
-                                .foregroundColor(.white)
-                        }
-
-                        imdbCarousel
+                        heroHeader
 
                         SearchField(placeholder: "Search anime...", text: $query)
 
@@ -149,6 +145,66 @@ struct DiscoveryView: View {
                 }
             }
         )
+    }
+
+    private var heroHeader: some View {
+        let height = UIScreen.main.bounds.height * 0.5
+        return ZStack(alignment: .bottomLeading) {
+            Group {
+                if let heroTrending, let url = heroTrending.backdropURL {
+                    AsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Theme.surface
+                    }
+                } else {
+                    Theme.surface
+                }
+            }
+            .frame(height: height)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .ignoresSafeArea(edges: .top)
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                startPoint: .bottom,
+                endPoint: .top
+            )
+            .frame(height: height)
+            .frame(maxWidth: .infinity)
+            .ignoresSafeArea(edges: .top)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Discovery")
+                    .font(.system(size: 24, weight: .heavy))
+                    .foregroundColor(.white)
+
+                if let logo = heroTrending?.logoURL {
+                    AsyncImage(url: logo) { image in
+                        image.resizable().scaledToFit()
+                    } placeholder: {
+                        Color.clear
+                    }
+                    .frame(maxWidth: 220)
+                } else if let title = heroTrending?.title {
+                    Text(title)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                }
+
+                Text("Trending on IMDb")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Theme.textSecondary)
+            }
+            .padding(.horizontal, UIConstants.standardPadding)
+            .padding(.bottom, 24)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            handleHeroTap()
+        }
     }
 
     private var imdbCarousel: AnyView {
@@ -312,8 +368,15 @@ private extension DiscoveryView {
         let items = await appState.services.trendingService.fetchTrending()
         await MainActor.run {
             imdbTrending = items
+            if heroTrending == nil {
+                heroTrending = items.randomElement()
+            }
         }
-        await prefetchAniListMappings(items: Array(items.prefix(5)))
+        if let heroTrending {
+            await prefetchAniListMappings(items: [heroTrending])
+        } else {
+            await prefetchAniListMappings(items: Array(items.prefix(5)))
+        }
         await MainActor.run {
             isLoadingImdbTrending = false
         }
@@ -342,6 +405,25 @@ private extension DiscoveryView {
                 title: item.title
             )) ?? nil {
                 imdbAniListMap[item.id] = media
+                navigateMedia = media
+            }
+        }
+    }
+
+    func handleHeroTap() {
+        guard let heroTrending else { return }
+        if let media = imdbAniListMap[heroTrending.id] {
+            heroAnime = media
+            navigateMedia = media
+            return
+        }
+        Task {
+            if let media = (try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
+                imdbId: heroTrending.imdbId,
+                title: heroTrending.title
+            )) ?? nil {
+                imdbAniListMap[heroTrending.id] = media
+                heroAnime = media
                 navigateMedia = media
             }
         }
