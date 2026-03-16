@@ -37,13 +37,15 @@ struct DownloadsView: View {
                                     .foregroundColor(.white)
                                 ForEach(group.items) { item in
                                     EpisodeRowView(
+                                        episodeNumber: item.episode,
                                         title: "Episode \(item.episode)",
-                                        runtimeText: nil,
+                                        ratingText: nil,
                                         description: nil,
                                         thumbnailURL: nil,
                                         isPlayable: true,
                                         isWatched: false,
                                         isDownloaded: true,
+                                        isNew: false,
                                         onTap: {
                                             AppLog.debug(.ui, "offline play tapped id=\(item.id)")
                                             selectedItem = item

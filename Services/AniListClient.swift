@@ -498,6 +498,41 @@ final class AniListClient {
         return sections
     }
 
+    func streamingEpisodes(mediaId: Int) async throws -> [AniListStreamingEpisode] {
+        AppLog.debug(.network, "streaming episodes request start mediaId=\(mediaId)")
+        let query = """
+        query StreamingEpisodes($id: Int) {
+          Media(id: $id, type: ANIME) {
+            streamingEpisodes {
+              title
+              thumbnail
+              url
+            }
+          }
+        }
+        """
+        let data = try await graphql(query: query, variables: ["id": mediaId])
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let list = traverse(root, keyPath: ["data", "Media", "streamingEpisodes"]) as? [[String: Any]] else {
+            AppLog.error(.network, "streaming episodes decode failed mediaId=\(mediaId)")
+            return []
+        }
+        let episodes = list.map { row -> AniListStreamingEpisode in
+            let title = row["title"] as? String ?? "Episode"
+            let thumb = row["thumbnail"] as? String
+            let url = row["url"] as? String
+            let number = extractEpisodeNumber(from: title) ?? extractEpisodeNumber(from: url)
+            return AniListStreamingEpisode(
+                title: title,
+                thumbnailURL: thumb.flatMap(URL.init(string:)),
+                url: url.flatMap(URL.init(string:)),
+                episodeNumber: number
+            )
+        }
+        AppLog.debug(.network, "streaming episodes request success mediaId=\(mediaId) count=\(episodes.count)")
+        return episodes
+    }
+
     private func decodeViewer(data: Data) -> AniListUser? {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dataMap = root["data"] as? [String: Any],
@@ -624,6 +659,12 @@ final class AniListClient {
             }
         }
         return current
+    }
+
+    private func extractEpisodeNumber(from text: String?) -> Int? {
+        guard let text else { return nil }
+        let digits = text.split { !$0.isNumber }.compactMap { Int($0) }
+        return digits.first
     }
 }
 

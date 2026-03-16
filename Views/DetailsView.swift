@@ -25,6 +25,8 @@ struct DetailsView: View {
     @State private var isBookmarked = false
     @State private var relatedSections: [AniListRelatedSection] = []
     @State private var episodeMetadata: [Int: EpisodeMetadata] = [:]
+    @State private var episodeRatings: [Int: Double] = [:]
+    @State private var streamingEpisodes: [AniListStreamingEpisode] = []
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -305,13 +307,15 @@ struct DetailsView: View {
             ForEach(episodes, id: \.id) { episode in
                 let meta = episodeMetadata[episode.number]
                 EpisodeRowView(
-                    title: meta?.title ?? "Episode \(episode.number)",
-                    runtimeText: runtimeText(from: meta),
+                    episodeNumber: episode.number,
+                    title: streamingTitle(for: episode) ?? meta?.title ?? "Episode \(episode.number)",
+                    ratingText: ratingText(for: episode.number),
                     description: meta?.summary,
-                    thumbnailURL: meta?.thumbnailURL ?? episodeThumbnailURL(for: episode),
+                    thumbnailURL: streamingThumbnail(for: episode) ?? meta?.thumbnailURL ?? episodeThumbnailURL(for: episode),
                     isPlayable: true,
                     isWatched: isEpisodeWatched(episode.number),
                     isDownloaded: isEpisodeDownloaded(episode.number),
+                    isNew: isEpisodeNew(episode.number),
                     onTap: {
                         selectEpisode(episode)
                     }
@@ -353,6 +357,8 @@ struct DetailsView: View {
             let result = try await appState.services.episodeService.loadEpisodes(media: media)
             episodes = result.episodes
             episodeMetadata = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: result.episodes)
+            episodeRatings = await appState.services.ratingService.ratingsForSeason(media: media, seasonNumber: 1)
+            streamingEpisodes = (try? await appState.services.aniListClient.streamingEpisodes(mediaId: media.id)) ?? []
         } catch {
             errorMessage = "Failed to load episodes."
             AppLog.error(.network, "details episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
@@ -524,6 +530,30 @@ struct DetailsView: View {
 
     private func isEpisodeDownloaded(_ number: Int) -> Bool {
         DownloadManager.shared.downloadedItem(title: media.title.best, episode: number) != nil
+    }
+
+    private func isEpisodeNew(_ number: Int) -> Bool {
+        guard let item = appState.services.libraryStore.item(forExternalId: media.id) else { return false }
+        return number == item.currentEpisode + 1
+    }
+
+    private func ratingText(for number: Int) -> String? {
+        guard let rating = episodeRatings[number], rating > 0 else { return nil }
+        return "⭐ \(String(format: "%.1f", rating))"
+    }
+
+    private func streamingTitle(for episode: SoraEpisode) -> String? {
+        if let match = streamingEpisodes.first(where: { $0.episodeNumber == episode.number }) {
+            return match.title
+        }
+        return nil
+    }
+
+    private func streamingThumbnail(for episode: SoraEpisode) -> URL? {
+        if let match = streamingEpisodes.first(where: { $0.episodeNumber == episode.number }) {
+            return match.thumbnailURL
+        }
+        return nil
     }
 
     private func progressFraction(for episodeId: String, fallbackKey: String) -> Double? {

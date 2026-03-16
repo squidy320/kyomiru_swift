@@ -127,6 +127,118 @@ struct EpisodeMetadata: Equatable, Codable {
     let thumbnailURL: URL?
 }
 
+struct EpisodeRating: Equatable, Codable {
+    let number: Int
+    let rating: Double
+}
+
+final class RatingService {
+    private let session: URLSession
+    private let cacheStore: CacheStore
+    private let apiKey: String?
+
+    init(cacheStore: CacheStore, session: URLSession = .custom) {
+        self.cacheStore = cacheStore
+        self.session = session
+        self.apiKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+    }
+
+    func ratingsForSeason(media: AniListMedia, seasonNumber: Int = 1) async -> [Int: Double] {
+        let cacheKey = "tmdb:ratings:\(media.id):season:\(seasonNumber)"
+        if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
+           let decoded = try? JSONDecoder().decode([Int: Double].self, from: cached) {
+            return decoded
+        }
+
+        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
+            AppLog.error(.network, "tmdb api key missing")
+            return [:]
+        }
+
+        guard let tvId = await resolveTMDBShowId(media: media, apiKey: apiKey) else {
+            return [:]
+        }
+
+        guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(tvId)/season/\(seasonNumber)?api_key=\(apiKey)") else {
+            return [:]
+        }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return [:]
+            }
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let rows = root?["episodes"] as? [[String: Any]] ?? []
+            var map: [Int: Double] = [:]
+            for row in rows {
+                let number = row["episode_number"] as? Int ?? 0
+                let vote = row["vote_average"] as? Double ?? 0
+                if number > 0 {
+                    map[number] = vote
+                }
+            }
+            if let data = try? JSONEncoder().encode(map) {
+                cacheStore.writeJSON(data, forKey: cacheKey)
+            }
+            return map
+        } catch {
+            return [:]
+        }
+    }
+
+    private func resolveTMDBShowId(media: AniListMedia, apiKey: String) async -> Int? {
+        if let malId = media.idMal,
+           let byMal = await findByMAL(malId: malId, apiKey: apiKey) {
+            return byMal
+        }
+        let title = media.title.romaji ?? media.title.english ?? media.title.native ?? media.title.best
+        return await searchTMDB(title: title, apiKey: apiKey)
+    }
+
+    private func findByMAL(malId: Int, apiKey: String) async -> Int? {
+        var components = URLComponents(string: "https://api.themoviedb.org/3/find/\(malId)")!
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "external_source", value: "myanimelist_id")
+        ]
+        guard let url = components.url else { return nil }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if let tv = (root?["tv_results"] as? [[String: Any]])?.first,
+               let id = tv["id"] as? Int {
+                return id
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
+    private func searchTMDB(title: String, apiKey: String) async -> Int? {
+        var components = URLComponents(string: "https://api.themoviedb.org/3/search/tv")!
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "query", value: title)
+        ]
+        guard let url = components.url else { return nil }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let results = root?["results"] as? [[String: Any]]
+            return results?.first?["id"] as? Int
+        } catch {
+            return nil
+        }
+    }
+}
+
 struct TrendingItem: Identifiable, Equatable, Codable {
     let id: Int
     let title: String

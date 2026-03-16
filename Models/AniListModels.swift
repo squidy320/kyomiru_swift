@@ -70,6 +70,13 @@ struct AniListRelatedSection: Identifiable, Equatable {
     let items: [AniListMedia]
 }
 
+struct AniListStreamingEpisode: Equatable, Hashable {
+    let title: String
+    let thumbnailURL: URL?
+    let url: URL?
+    let episodeNumber: Int?
+}
+
 struct AniListNotificationItem: Identifiable, Equatable {
     let id: Int
     let type: String

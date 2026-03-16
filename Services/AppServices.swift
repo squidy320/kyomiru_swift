@@ -13,6 +13,7 @@ final class AppServices {
     let episodeMetadataService: EpisodeMetadataService
     let aniSkipService: AniSkipService
     let trendingService: TrendingService
+    let ratingService: RatingService
     let downloadManager: DownloadManager
     let libraryStore: MediaTracker
     let episodeService: EpisodeService
@@ -27,6 +28,7 @@ final class AppServices {
         self.episodeMetadataService = EpisodeMetadataService(cacheStore: cacheStore, provider: .tmdb)
         self.aniSkipService = AniSkipService()
         self.trendingService = TrendingService(cacheStore: cacheStore)
+        self.ratingService = RatingService(cacheStore: cacheStore)
         self.downloadManager = DownloadManager.shared
         self.libraryStore = MediaTracker()
         self.episodeService = EpisodeService()

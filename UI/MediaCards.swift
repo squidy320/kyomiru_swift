@@ -152,13 +152,15 @@ struct ContinueWatchingCard: View {
 }
 
 struct EpisodeRowView: View {
+    let episodeNumber: Int
     let title: String
-    let runtimeText: String?
+    let ratingText: String?
     let description: String?
     let thumbnailURL: URL?
     let isPlayable: Bool
     let isWatched: Bool
     let isDownloaded: Bool
+    let isNew: Bool
     let onTap: (() -> Void)?
     @State private var isExpanded = false
 
@@ -182,37 +184,59 @@ struct EpisodeRowView: View {
                         .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous))
                     }
+                    if isPlayable {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(6)
+                            .background(Circle().fill(Color.black.opacity(0.55)))
+                            .padding(6)
+                    }
                     if isDownloaded {
                         Image(systemName: "arrow.down.circle.fill")
                             .foregroundColor(.white)
                             .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
                             .padding(6)
                     }
+                    if isNew {
+                        Text("NEW")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(Color.blue.opacity(0.9))
+                            )
+                            .padding(6)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
+                    HStack(spacing: 8) {
+                        Text("Episode \(episodeNumber)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                        if let ratingText {
+                            Text(ratingText)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(Theme.textSecondary)
+                        }
+                    }
                     Text(title)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.white)
                         .opacity(isWatched ? 0.45 : 1.0)
                         .lineLimit(isExpanded ? 3 : 2)
-                    if let runtimeText {
-                        Text(runtimeText)
-                            .font(.system(size: 12))
-                            .foregroundColor(Theme.textSecondary)
-                    }
                     if let description, !description.isEmpty {
                         Text(description)
                             .font(.system(size: 12))
                             .foregroundColor(Theme.textSecondary)
-                            .lineLimit(isExpanded ? 6 : 2)
+                            .lineLimit(isExpanded ? 4 : 2)
                     }
                 }
                 Spacer(minLength: 0)
-                if isPlayable {
-                    Image(systemName: "play.fill")
-                        .foregroundColor(.white.opacity(0.8))
-                }
             }
             .padding(UIConstants.rowPadding)
             .background(
