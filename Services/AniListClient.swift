@@ -446,7 +446,7 @@ final class AniListClient {
         return availability
     }
 
-    func relatedSections(mediaId: Int) async throws -> [AniListRelatedSection] {
+    func relatedSections(mediaId: Int, token: String? = nil) async throws -> [AniListRelatedSection] {
         AppLog.debug(.network, "related sections request start mediaId=\(mediaId)")
         let query = """
         query Related($id: Int) {
@@ -474,7 +474,7 @@ final class AniListClient {
           }
         }
         """
-        let data = try await graphql(query: query, variables: ["id": mediaId])
+        let data = try await graphql(query: query, variables: ["id": mediaId], token: token)
         if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let edges = traverse(root, keyPath: ["data", "Media", "relations", "edges"]) as? [[String: Any]] {
             var map: [String: [AniListMedia]] = [:]
@@ -522,7 +522,7 @@ final class AniListClient {
           }
         }
         """
-        let fallbackData = try await graphql(query: fallbackQuery, variables: ["id": mediaId])
+        let fallbackData = try await graphql(query: fallbackQuery, variables: ["id": mediaId], token: token)
         guard let fallbackRoot = try? JSONSerialization.jsonObject(with: fallbackData) as? [String: Any],
               let nodes = traverse(fallbackRoot, keyPath: ["data", "Media", "relations", "nodes"]) as? [[String: Any]] else {
             AppLog.error(.network, "related sections fallback decode failed mediaId=\(mediaId)")

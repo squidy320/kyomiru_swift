@@ -597,7 +597,10 @@ struct DetailsView: View {
 
     private func loadRelated() async {
         do {
-            relatedSections = try await appState.services.aniListClient.relatedSections(mediaId: media.id)
+            relatedSections = try await appState.services.aniListClient.relatedSections(
+                mediaId: media.id,
+                token: appState.authState.token
+            )
         } catch {
             relatedSections = []
             AppLog.error(.network, "related sections load failed mediaId=\(media.id) \(error.localizedDescription)")
