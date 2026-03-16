@@ -27,58 +27,60 @@ struct DiscoveryView: View {
                     VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
                         heroHeader
 
-                        SearchField(placeholder: "Search anime...", text: $query)
+                        VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                            SearchField(placeholder: "Search anime...", text: $query)
 
-                        if isSearching {
-                            GlassCard {
-                                Text("Searching AniList...")
-                                    .foregroundColor(Theme.textSecondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            if isSearching {
+                                GlassCard {
+                                    Text("Searching AniList...")
+                                        .foregroundColor(Theme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else if !trimmedQuery().isEmpty {
+                                searchResultsSection
                             }
-                        } else if !trimmedQuery().isEmpty {
-                            searchResultsSection
-                        }
 
-                        if isLoading {
-                            GlassCard {
-                                Text("Loading discovery...")
-                                    .foregroundColor(Theme.textSecondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        } else {
-                            ForEach(sections) { section in
-                                VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                                    Text(section.title)
-                                        .font(.system(size: 18, weight: .bold))
-                                        .foregroundColor(.white)
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        LazyHStack(spacing: UIConstants.interCardSpacing) {
-                                            ForEach(section.items, id: \.id) { media in
-                                                NavigationLink {
-                                                    DetailsView(media: media)
-                                                } label: {
-                                                    MediaPosterCard(
-                                                        title: media.title.best,
-                                                        subtitle: "New release",
-                                                        imageURL: media.coverURL,
-                                                        media: media,
-                                                        score: media.averageScore,
-                                                        isWatched: isWatched(media)
-                                                    )
-                                                    .frame(width: UIConstants.posterCardWidth)
+                            if isLoading {
+                                GlassCard {
+                                    Text("Loading discovery...")
+                                        .foregroundColor(Theme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else {
+                                ForEach(sections) { section in
+                                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                                        Text(section.title)
+                                            .font(.system(size: 18, weight: .bold))
+                                            .foregroundColor(.white)
+                                        ScrollView(.horizontal, showsIndicators: false) {
+                                            LazyHStack(spacing: UIConstants.interCardSpacing) {
+                                                ForEach(section.items, id: \.id) { media in
+                                                    NavigationLink {
+                                                        DetailsView(media: media)
+                                                    } label: {
+                                                        MediaPosterCard(
+                                                            title: media.title.best,
+                                                            subtitle: "New release",
+                                                            imageURL: media.coverURL,
+                                                            media: media,
+                                                            score: media.averageScore,
+                                                            isWatched: isWatched(media)
+                                                        )
+                                                        .frame(width: UIConstants.posterCardWidth)
+                                                    }
+                                                    .buttonStyle(.plain)
                                                 }
-                                                .buttonStyle(.plain)
                                             }
+                                            .padding(.horizontal, UIConstants.tinyPadding)
+                                            .padding(.vertical, UIConstants.heroTopPadding)
                                         }
-                                        .padding(.horizontal, UIConstants.tinyPadding)
-                                        .padding(.vertical, UIConstants.heroTopPadding)
+                                        .scrollClipDisabled()
                                     }
-                                    .scrollClipDisabled()
                                 }
                             }
                         }
+                        .padding(.horizontal, UIConstants.standardPadding)
                     }
-                    .padding(.horizontal, UIConstants.standardPadding)
                     .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
@@ -149,60 +151,64 @@ struct DiscoveryView: View {
 
     private var heroHeader: some View {
         let height = UIScreen.main.bounds.height * 0.5
-        return ZStack(alignment: .bottomLeading) {
-            Group {
-                if let heroTrending, let url = heroTrending.backdropURL {
-                    AsyncImage(url: url) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
+        return GeometryReader { proxy in
+            let width = proxy.size.width
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let heroTrending, let url = heroTrending.backdropURL {
+                        AsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
                         Theme.surface
                     }
-                } else {
-                    Theme.surface
                 }
-            }
-            .frame(height: height)
-            .frame(maxWidth: .infinity)
-            .clipped()
+                .frame(width: width, height: height)
+                .clipped()
 
-            LinearGradient(
-                colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
-                startPoint: .bottom,
-                endPoint: .top
-            )
-            .frame(height: height)
-            .frame(maxWidth: .infinity)
+                LinearGradient(
+                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(width: width, height: height)
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Discovery")
-                    .font(.system(size: 24, weight: .heavy))
-                    .foregroundColor(.white)
-
-                if let logo = heroTrending?.logoURL {
-                    AsyncImage(url: logo) { image in
-                        image.resizable().scaledToFit()
-                    } placeholder: {
-                        Color.clear
-                    }
-                    .frame(maxWidth: 220)
-                } else if let title = heroTrending?.title {
-                    Text(title)
-                        .font(.system(size: 20, weight: .semibold))
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Discovery")
+                        .font(.system(size: 24, weight: .heavy))
                         .foregroundColor(.white)
-                        .lineLimit(2)
-                }
 
-                Text("Trending on IMDb")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Theme.textSecondary)
+                    if let logo = heroTrending?.logoURL {
+                        AsyncImage(url: logo) { image in
+                            image.resizable().scaledToFit()
+                        } placeholder: {
+                            Color.clear
+                        }
+                        .frame(maxWidth: 220)
+                    } else if let title = heroTrending?.title {
+                        Text(title)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                    }
+
+                    Text("Trending on IMDb")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, UIConstants.standardPadding)
-            .padding(.bottom, 24)
+            .frame(width: width, height: height)
+            .clipped()
+            .contentShape(Rectangle())
+            .onTapGesture {
+                handleHeroTap()
+            }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            handleHeroTap()
-        }
+        .frame(height: height)
     }
 
     private var imdbCarousel: AnyView {
