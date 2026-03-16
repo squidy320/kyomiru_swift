@@ -48,6 +48,10 @@ jobs:
           fi
           /usr/libexec/PlistBuddy -c "Set :OMDB_API_KEY $OMDB_API_KEY" Resources/Info.plist
 
+      - name: Configure Git for SPM
+        run: |
+          git config --global url."https://x-access-token:${{ github.token }}@github.com/".insteadOf "https://github.com/"
+
       - name: Resolve Swift Packages
         run: |
           xcodebuild -resolvePackageDependencies \
