@@ -426,12 +426,12 @@
 				minimumVersion = 0.41.0;
 			};
 		};
-		7A1B2C3D4E5F60718293A4B7 /* ffmpeg-kit */ = {
+		7A1B2C3D4E5F60718293A4B7 /* ffmpeg-kit-spm */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/arthenica/ffmpeg-kit";
+			repositoryURL = "https://github.com/arthenica/ffmpeg-kit-spm";
 			requirement = {
-				kind = branch;
-				branch = main;
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.0.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
