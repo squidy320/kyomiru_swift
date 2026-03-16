@@ -80,7 +80,7 @@ struct DiscoveryView: View {
                             }
                         }
                         .padding(.horizontal, UIConstants.standardPadding)
-                        .padding(.top, -8)
+                        .padding(.top, -12)
                     }
                     .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
@@ -200,10 +200,6 @@ struct DiscoveryView: View {
                 .frame(width: width, height: height + insetTop)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Discovery")
-                        .font(.system(size: 24, weight: .heavy))
-                        .foregroundColor(.white)
-
                     if let logo = heroTrending?.logoURL {
                         AsyncImage(url: logo) { image in
                             image.resizable().scaledToFit()
@@ -217,10 +213,6 @@ struct DiscoveryView: View {
                             .foregroundColor(.white)
                             .lineLimit(2)
                     }
-
-                    Text("Trending on IMDb")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textSecondary)
                 }
                 .padding(.horizontal, UIConstants.standardPadding)
                 .padding(.bottom, 24)
