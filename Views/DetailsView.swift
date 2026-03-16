@@ -356,14 +356,29 @@ struct DetailsView: View {
         do {
             let result = try await appState.services.episodeService.loadEpisodes(media: media)
             episodes = result.episodes
-            episodeMetadata = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: result.episodes)
-            episodeRatings = await appState.services.ratingService.ratingsForSeason(media: media, seasonNumber: 1)
-            streamingEpisodes = (try? await appState.services.aniListClient.streamingEpisodes(mediaId: media.id)) ?? []
+            isLoading = false
+
+            Task { @MainActor in
+                let meta = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: result.episodes)
+                episodeMetadata = meta
+            }
+            Task { @MainActor in
+                let ratings = await appState.services.ratingService.ratingsForSeason(media: media, seasonNumber: 1)
+                episodeRatings = ratings
+            }
+            Task { @MainActor in
+                do {
+                    streamingEpisodes = try await appState.services.aniListClient.streamingEpisodes(mediaId: media.id)
+                } catch {
+                    AppLog.error(.network, "streaming episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
+                    streamingEpisodes = []
+                }
+            }
         } catch {
             errorMessage = "Failed to load episodes."
             AppLog.error(.network, "details episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
+            isLoading = false
         }
-        isLoading = false
     }
 
     private func openMatchPicker() {
