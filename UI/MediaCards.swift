@@ -268,27 +268,34 @@ struct RelationsCarouselView: View {
 
     var body: some View {
         let items = flattened()
-        if items.isEmpty { return AnyView(EmptyView()) }
         return AnyView(
             VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
                 Text("Relations")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.white)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: UIConstants.interCardSpacing) {
-                        ForEach(items, id: \.id) { item in
-                            NavigationLink {
-                                DetailsView(media: item.media)
-                            } label: {
-                                RelationCard(media: item.media, badge: item.badge)
+                if items.isEmpty {
+                    Text("No related titles found.")
+                        .font(.system(size: 13))
+                        .foregroundColor(Theme.textSecondary)
+                        .padding(.horizontal, UIConstants.tinyPadding)
+                        .padding(.vertical, UIConstants.smallPadding)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: UIConstants.interCardSpacing) {
+                            ForEach(items, id: \.id) { item in
+                                NavigationLink {
+                                    DetailsView(media: item.media)
+                                } label: {
+                                    RelationCard(media: item.media, badge: item.badge)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
+                        .padding(.horizontal, UIConstants.tinyPadding)
+                        .padding(.vertical, UIConstants.heroTopPadding)
                     }
-                    .padding(.horizontal, UIConstants.tinyPadding)
-                    .padding(.vertical, UIConstants.heroTopPadding)
+                    .scrollClipDisabled()
                 }
-                .scrollClipDisabled()
             }
         )
     }

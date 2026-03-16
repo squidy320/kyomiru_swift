@@ -52,9 +52,7 @@ struct DetailsView: View {
                         }
                     } else {
                         episodeList
-                        if !relatedSections.isEmpty {
-                            RelationsCarouselView(sections: relatedSections)
-                        }
+                        RelationsCarouselView(sections: relatedSections)
                     }
                 }
                 .padding(.horizontal, UIConstants.standardPadding)
