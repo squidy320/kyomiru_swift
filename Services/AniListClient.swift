@@ -261,13 +261,7 @@ final class AniListClient {
         return items
     }
 
-    func searchAnimeByImdbOrTitle(imdbId: String?, title: String) async throws -> AniListMedia? {
-        if let imdbId, !imdbId.isEmpty {
-            let imdbResults = try await searchAnime(query: imdbId)
-            if let match = imdbResults.first {
-                return match
-            }
-        }
+    func searchAnimeByTitle(_ title: String) async throws -> AniListMedia? {
         let titleResults = try await searchAnime(query: title)
         return titleResults.first
     }

@@ -233,7 +233,7 @@ struct DiscoveryView: View {
         if isLoadingImdbTrending {
             return AnyView(erasing:
                 GlassCard {
-                    Text("Loading IMDb trending…")
+                    Text("Loading trending…")
                         .foregroundColor(Theme.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -245,7 +245,7 @@ struct DiscoveryView: View {
 
         return AnyView(erasing:
             VStack(alignment: .leading, spacing: UIConstants.microPadding) {
-                Text("Trending on IMDb")
+                Text("Trending")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(Theme.textSecondary)
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -414,10 +414,7 @@ private extension DiscoveryView {
     func prefetchAniListMappings(items: [TrendingItem]) async {
         for item in items {
             if imdbAniListMap[item.id] != nil { continue }
-            if let media = (try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
-                imdbId: item.imdbId,
-                title: item.title
-            )) ?? nil {
+            if let media = (try? await appState.services.aniListClient.searchAnimeByTitle(item.title)) ?? nil {
                 imdbAniListMap[item.id] = media
             }
         }
@@ -429,10 +426,7 @@ private extension DiscoveryView {
             return
         }
         Task {
-            if let media = (try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
-                imdbId: item.imdbId,
-                title: item.title
-            )) ?? nil {
+            if let media = (try? await appState.services.aniListClient.searchAnimeByTitle(item.title)) ?? nil {
                 imdbAniListMap[item.id] = media
                 navigateMedia = media
             }
@@ -447,10 +441,7 @@ private extension DiscoveryView {
             return
         }
         Task {
-            if let media = (try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
-                imdbId: heroTrending.imdbId,
-                title: heroTrending.title
-            )) ?? nil {
+            if let media = (try? await appState.services.aniListClient.searchAnimeByTitle(heroTrending.title)) ?? nil {
                 imdbAniListMap[heroTrending.id] = media
                 heroAnime = media
                 navigateMedia = media
@@ -503,7 +494,7 @@ private struct CinematicTrendingCard: View {
                         .foregroundColor(.white)
                         .lineLimit(2)
                 }
-                Text("Trending on IMDb")
+                Text("Trending")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(Theme.textSecondary)
             }

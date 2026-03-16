@@ -1,45 +1,41 @@
 import Foundation
 
-struct IMDbMetadata: Equatable, Codable {
-    let imdbID: String
+struct TMDBMetadata: Equatable, Codable {
+    let tmdbId: Int
     let title: String
-    let year: String?
     let posterURL: URL?
     let backdropURL: URL?
+    let logoURL: URL?
 }
 
 final class MetadataService {
     private let session: URLSession
     private let cacheStore: CacheStore
     private let apiKey: String?
+    private let imageBase = "https://image.tmdb.org/t/p/original"
 
     init(cacheStore: CacheStore, session: URLSession = .custom) {
         self.cacheStore = cacheStore
         self.session = session
-        self.apiKey = Bundle.main.object(forInfoDictionaryKey: "OMDB_API_KEY") as? String
+        let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
+        let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
+        self.apiKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
     }
 
-    func fetchIMDbMetadata(for media: AniListMedia) async -> IMDbMetadata? {
-        let cacheKey = "imdb:\(media.id)"
+    func fetchTMDBMetadata(for media: AniListMedia) async -> TMDBMetadata? {
+        let cacheKey = "tmdb:media:\(media.id)"
         if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 24),
-           let decoded = try? JSONDecoder().decode(IMDbMetadata.self, from: cached) {
+           let decoded = try? JSONDecoder().decode(TMDBMetadata.self, from: cached) {
             return decoded
         }
 
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
-            AppLog.error(.network, "omdb api key missing")
+            AppLog.error(.network, "tmdb api key missing")
             return nil
         }
 
-        let title = media.title.english ?? media.title.romaji ?? media.title.native ?? media.title.best
-        guard let imdbID = await resolveIMDbID(title: title, year: media.seasonYear, apiKey: apiKey) else {
-            return nil
-        }
-
-        guard let details = await fetchIMDbDetails(imdbID: imdbID, apiKey: apiKey) else {
-            return nil
-        }
-
+        guard let tmdbId = await resolveTMDBShowId(media: media) else { return nil }
+        guard let details = await fetchTMDBDetails(showId: tmdbId, apiKey: apiKey) else { return nil }
         if let data = try? JSONEncoder().encode(details) {
             cacheStore.writeJSON(data, forKey: cacheKey)
         }
@@ -47,13 +43,18 @@ final class MetadataService {
     }
 
     func posterURL(for media: AniListMedia) async -> URL? {
-        let meta = await fetchIMDbMetadata(for: media)
+        let meta = await fetchTMDBMetadata(for: media)
         return meta?.posterURL
     }
 
     func backdropURL(for media: AniListMedia) async -> URL? {
-        let meta = await fetchIMDbMetadata(for: media)
+        let meta = await fetchTMDBMetadata(for: media)
         return meta?.backdropURL ?? meta?.posterURL
+    }
+
+    func logoURL(for media: AniListMedia) async -> URL? {
+        let meta = await fetchTMDBMetadata(for: media)
+        return meta?.logoURL
     }
 
     func manualMatch(local: MediaItem, remoteId: String) async -> Bool {
@@ -62,59 +63,148 @@ final class MetadataService {
         return true
     }
 
-    private func resolveIMDbID(title: String, year: Int?, apiKey: String) async -> String? {
-        var components = URLComponents(string: "https://www.omdbapi.com/")!
-        var items: [URLQueryItem] = [
-            URLQueryItem(name: "apikey", value: apiKey),
-            URLQueryItem(name: "s", value: title),
-            URLQueryItem(name: "type", value: "series")
-        ]
-        if let year {
-            items.append(URLQueryItem(name: "y", value: String(year)))
+    private func resolveTMDBShowId(media: AniListMedia) async -> Int? {
+        if let malId = media.idMal,
+           let byMal = await findByMAL(malId: malId) {
+            return byMal
         }
-        components.queryItems = items
-        guard let url = components.url else { return nil }
+        let title = media.title.english ?? media.title.romaji ?? media.title.native ?? media.title.best
+        return await searchTMDB(title: title, year: media.seasonYear)
+    }
 
+    private func findByMAL(malId: Int) async -> Int? {
+        guard let apiKey else { return nil }
+        var components = URLComponents(string: "https://api.themoviedb.org/3/find/\(malId)")!
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "external_source", value: "myanimelist_id")
+        ]
+        guard let url = components.url else { return nil }
         do {
             let (data, response) = try await session.data(from: url)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 return nil
             }
-            let result = try JSONDecoder().decode(OmdbSearchResponse.self, from: data)
-            return result.search?.first?.imdbID
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if let tv = (root?["tv_results"] as? [[String: Any]])?.first,
+               let id = tv["id"] as? Int {
+                return id
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
+    private func searchTMDB(title: String, year: Int?) async -> Int? {
+        guard let apiKey else { return nil }
+        let sanitized = TitleSanitizer.sanitize(title)
+        let queries = TitleMatcher.buildQueries(from: sanitized)
+        let normalizedTarget = TitleMatcher.cleanTitle(sanitized)
+        var best: (id: Int, score: Double)?
+
+        for query in queries {
+            var components = URLComponents(string: "https://api.themoviedb.org/3/search/tv")!
+            components.queryItems = [
+                URLQueryItem(name: "api_key", value: apiKey),
+                URLQueryItem(name: "query", value: query)
+            ]
+            guard let url = components.url else { continue }
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    continue
+                }
+                let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let results = root?["results"] as? [[String: Any]] ?? []
+                for row in results {
+                    guard let id = row["id"] as? Int else { continue }
+                    let name = row["name"] as? String ?? row["original_name"] as? String ?? ""
+                    let titleScore = TitleMatcher.diceCoefficient(
+                        TitleMatcher.cleanTitle(name),
+                        normalizedTarget
+                    )
+                    let firstAirDate = row["first_air_date"] as? String
+                    let yearScore: Double
+                    if let year, let parsed = yearFrom(firstAirDate) {
+                        yearScore = year == parsed ? 1.0 : 0.0
+                    } else {
+                        yearScore = 0.5
+                    }
+                    let score = (0.7 * titleScore) + (0.3 * yearScore)
+                    if best == nil || score > best!.score {
+                        best = (id, score)
+                    }
+                }
+            } catch {
+                continue
+            }
+        }
+        return best?.id
+    }
+
+    private func fetchTMDBDetails(showId: Int, apiKey: String) async -> TMDBMetadata? {
+        guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)?api_key=\(apiKey)") else {
+            return nil
+        }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let title = root?["name"] as? String ?? root?["original_name"] as? String ?? "Unknown"
+            let posterPath = root?["poster_path"] as? String
+            let backdropPath = root?["backdrop_path"] as? String
+            let posterURL = posterPath.flatMap { URL(string: "\(imageBase)\($0)") }
+            let backdropURL = backdropPath.flatMap { URL(string: "\(imageBase)\($0)") }
+            let logoURL = await fetchBestLogo(showId: showId, apiKey: apiKey)
+            return TMDBMetadata(
+                tmdbId: showId,
+                title: title,
+                posterURL: posterURL,
+                backdropURL: backdropURL,
+                logoURL: logoURL
+            )
         } catch {
             return nil
         }
     }
 
-    private func fetchIMDbDetails(imdbID: String, apiKey: String) async -> IMDbMetadata? {
-        var components = URLComponents(string: "https://www.omdbapi.com/")!
-        components.queryItems = [
-            URLQueryItem(name: "apikey", value: apiKey),
-            URLQueryItem(name: "i", value: imdbID),
-            URLQueryItem(name: "plot", value: "short")
-        ]
-        guard let url = components.url else { return nil }
-
+    private func fetchBestLogo(showId: Int, apiKey: String) async -> URL? {
+        guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)/images?api_key=\(apiKey)") else {
+            return nil
+        }
         do {
             let (data, response) = try await session.data(from: url)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 return nil
             }
-            let details = try JSONDecoder().decode(OmdbTitleResponse.self, from: data)
-            guard details.response == "True" else { return nil }
-            let posterURL = details.posterURL
-            let metadata = IMDbMetadata(
-                imdbID: imdbID,
-                title: details.title ?? "Unknown",
-                year: details.year,
-                posterURL: posterURL,
-                backdropURL: posterURL
-            )
-            return metadata
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let logos = root?["logos"] as? [[String: Any]] ?? []
+            let filtered = logos.filter { logo in
+                let filePath = (logo["file_path"] as? String) ?? ""
+                let lang = (logo["iso_639_1"] as? String) ?? ""
+                let isPreferredLang = lang == "en" || lang == "ja"
+                return filePath.lowercased().hasSuffix(".png") && (isPreferredLang || lang.isEmpty)
+            }
+            let sorted = filtered.sorted { a, b in
+                let sizeA = a["file_size"] as? Double ?? 0
+                let sizeB = b["file_size"] as? Double ?? 0
+                return sizeA > sizeB
+            }
+            if let best = sorted.first, let path = best["file_path"] as? String {
+                return URL(string: "\(imageBase)\(path)")
+            }
         } catch {
             return nil
         }
+        return nil
+    }
+
+    private func yearFrom(_ dateString: String?) -> Int? {
+        guard let dateString, dateString.count >= 4 else { return nil }
+        return Int(dateString.prefix(4))
     }
 }
 
@@ -278,7 +368,6 @@ struct TrendingItem: Identifiable, Equatable, Codable {
     let title: String
     let backdropURL: URL?
     let logoURL: URL?
-    let imdbId: String?
 }
 
 final class TrendingService {
@@ -327,9 +416,8 @@ final class TrendingService {
                 guard let id = row["id"] as? Int else { continue }
                 let name = row["name"] as? String ?? row["original_name"] as? String ?? "Unknown"
                 let backdrop = (row["backdrop_path"] as? String).flatMap { URL(string: "\(imageBase)\($0)") }
-                let imdbId = await fetchImdbId(tvId: id, apiKey: apiKey)
                 let logo = await fetchBestLogo(tvId: id, apiKey: apiKey)
-                items.append(TrendingItem(id: id, title: name, backdropURL: backdrop, logoURL: logo, imdbId: imdbId))
+                items.append(TrendingItem(id: id, title: name, backdropURL: backdrop, logoURL: logo))
             }
 
             if let data = try? JSONEncoder().encode(items) {
@@ -354,25 +442,8 @@ final class TrendingService {
         guard let item = await fetchDiscoverPage(apiKey: apiKey, page: randomPage, minVoteCount: minVoteCount)?.randomElement() else {
             return nil
         }
-        let imdbId = await fetchImdbId(tvId: item.id, apiKey: apiKey)
         let logo = await fetchBestLogo(tvId: item.id, apiKey: apiKey)
-        return TrendingItem(id: item.id, title: item.title, backdropURL: item.backdropURL, logoURL: logo, imdbId: imdbId)
-    }
-
-    private func fetchImdbId(tvId: Int, apiKey: String) async -> String? {
-        guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(tvId)/external_ids?api_key=\(apiKey)") else {
-            return nil
-        }
-        do {
-            let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                return nil
-            }
-            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            return root?["imdb_id"] as? String
-        } catch {
-            return nil
-        }
+        return TrendingItem(id: item.id, title: item.title, backdropURL: item.backdropURL, logoURL: logo)
     }
 
     private func fetchBestLogo(tvId: Int, apiKey: String) async -> URL? {
@@ -448,7 +519,7 @@ final class TrendingService {
                 guard let id = row["id"] as? Int else { return nil }
                 let name = row["name"] as? String ?? row["original_name"] as? String ?? "Unknown"
                 let backdrop = (row["backdrop_path"] as? String).flatMap { URL(string: "\(imageBase)\($0)") }
-                return TrendingItem(id: id, title: name, backdropURL: backdrop, logoURL: nil, imdbId: nil)
+                return TrendingItem(id: id, title: name, backdropURL: backdrop, logoURL: nil)
             }
             return items
         } catch {
@@ -1358,38 +1429,4 @@ private struct SeasonSelectionResult {
     let rejectReason: String?
 }
 
-private struct OmdbSearchResponse: Decodable {
-    let search: [OmdbSearchItem]?
-    let response: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case search = "Search"
-        case response = "Response"
-    }
-}
-
-private struct OmdbSearchItem: Decodable {
-    let imdbID: String
-    private enum CodingKeys: String, CodingKey {
-        case imdbID = "imdbID"
-    }
-}
-
-private struct OmdbTitleResponse: Decodable {
-    let title: String?
-    let year: String?
-    let poster: String?
-    let response: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case title = "Title"
-        case year = "Year"
-        case poster = "Poster"
-        case response = "Response"
-    }
-
-    var posterURL: URL? {
-        guard let poster, poster != "N/A" else { return nil }
-        return URL(string: poster)
-    }
-}
+// OMDb response structs removed; TMDB is the single metadata source.
