@@ -188,6 +188,9 @@ struct SettingsView: View {
             AppLog.debug(.ui, "settings view appear")
             Task { await refreshCacheSize() }
         }
+        .onChange(of: appState.settings.playerEngine) { _, value in
+            appState.services.downloadManager.preferMp4Conversion = (value == .avplayer)
+        }
     }
 
     private var tabBarInset: CGFloat {

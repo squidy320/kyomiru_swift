@@ -69,8 +69,9 @@
         F925FB3B0380A3F17AD2E27E /* JSController-Details.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED74AE460E0A8757756331C5 /* JSController-Details.swift */; };
         2CFF3ECD27116963C051730A /* JSController-NetworkFetch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A0F16D55021ED2DE2E8DE8 /* JSController-NetworkFetch.swift */; };
         4788F2D20516CCB44531164A /* JavaScriptCore+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334866F7F2A74AB9510C2588 /* JavaScriptCore+Extensions.swift */; };
-        5FB9970930229D05437710EC /* LunaCompat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D3DAE2316A4076C61FFB793 /* LunaCompat.swift */; };
+		5FB9970930229D05437710EC /* LunaCompat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D3DAE2316A4076C61FFB793 /* LunaCompat.swift */; };
 		C2A1B2C3D4E5F60718293A4B /* MPVKit-GPL in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C3D4E5F60718293A4B /* MPVKit-GPL */; };
+		7A1B2C3D4E5F60718293A4B5 /* ffmpeg-kit-ios-full-gpl in Frameworks */ = {isa = PBXBuildFile; productRef = 7A1B2C3D4E5F60718293A4B6 /* ffmpeg-kit-ios-full-gpl */; };
 
 
 /* Begin PBXFileReference section */
@@ -149,6 +150,7 @@
 				5C97AFFC7DD823D160FB8E18 /* WebKit.framework in Frameworks */,
 				1F1794364860EAEFCE63C284 /* JavaScriptCore.framework in Frameworks */,
 				C2A1B2C3D4E5F60718293A4B /* MPVKit-GPL in Frameworks */,
+				7A1B2C3D4E5F60718293A4B5 /* ffmpeg-kit-ios-full-gpl in Frameworks */,
 			);
             runOnlyForDeploymentPostprocessing = 0;
         };
@@ -303,6 +305,7 @@
             name = Kyomiru;
 			packageProductDependencies = (
 				C1A1B2C3D4E5F60718293A4B /* MPVKit-GPL */,
+				7A1B2C3D4E5F60718293A4B6 /* ffmpeg-kit-ios-full-gpl */,
 			);
             productName = Kyomiru;
             productReference = 72071117F02B492EA7D8D08E /* Kyomiru.app */;
@@ -320,6 +323,7 @@
             mainGroup = A1F6688393CD43E789FC9C3D;
 			packageReferences = (
 				C0A1B2C3D4E5F60718293A4B /* MPVKit */,
+				7A1B2C3D4E5F60718293A4B7 /* ffmpeg-kit */,
 			);
             productRefGroup = A1F6688393CD43E789FC9C3D;
             projectDirPath = "";
@@ -422,6 +426,14 @@
 				minimumVersion = 0.41.0;
 			};
 		};
+		7A1B2C3D4E5F60718293A4B7 /* ffmpeg-kit */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/arthenica/ffmpeg-kit";
+			requirement = {
+				kind = branch;
+				branch = main;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -429,6 +441,11 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = "MPVKit-GPL";
 			package = C0A1B2C3D4E5F60718293A4B /* MPVKit */;
+		};
+		7A1B2C3D4E5F60718293A4B6 /* ffmpeg-kit-ios-full-gpl */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = "ffmpeg-kit-ios-full-gpl";
+			package = 7A1B2C3D4E5F60718293A4B7 /* ffmpeg-kit */;
 		};
 /* End XCSwiftPackageProductDependency section */
 

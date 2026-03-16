@@ -1,6 +1,8 @@
 import Foundation
 import AVFoundation
 import CommonCrypto
+import FFmpegKit
+import FFprobeKit
 
 struct AniSkipSegment: Codable, Equatable, Hashable {
     let type: String
@@ -473,6 +475,7 @@ struct DownloadItem: Identifiable, Equatable {
 final class DownloadManager: NSObject, ObservableObject {
     static let shared = DownloadManager()
     @Published private(set) var items: [DownloadItem] = []
+    @Published var preferMp4Conversion: Bool = true
     private var aniSkipCache: [String: [AniSkipSegment]] = [:]
     private let aniSkipIndexKey = "aniskip_cache.json"
 
@@ -618,6 +621,10 @@ final class DownloadManager: NSObject, ObservableObject {
 
     private func remuxIfNeeded(id: String, localFile: URL) async {
         if MPVSupport.isAvailable {
+            updateStatus(id: id, status: "Completed", localFile: localFile)
+            return
+        }
+        if !preferMp4Conversion {
             updateStatus(id: id, status: "Completed", localFile: localFile)
             return
         }
@@ -1123,61 +1130,50 @@ actor MediaConversionManager {
             return outputURL
         }
 
-        let coordinator = NSFileCoordinator()
+        return try await convertToMp4WithFFmpeg(inputURL: inputURL, outputURL: outputURL, progress: progress)
+    }
+
+    private func convertToMp4WithFFmpeg(
+        inputURL: URL,
+        outputURL: URL,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> URL {
+        let inputPath = inputURL.path
+        let outputPath = outputURL.path
+        try? FileManager.default.removeItem(at: outputURL)
+
+        let duration = await probeDurationSeconds(path: inputPath)
+        let command = "-y -i \(quoted(path: inputPath)) -c copy -bsf:a aac_adtstoasc \(quoted(path: outputPath))"
 
         return try await withCheckedThrowingContinuation { continuation in
-            var coordError: NSError?
-            var coordinatedURL: URL?
-            coordinator.coordinate(readingItemAt: inputURL, options: .withoutChanges, error: &coordError) { url in
-                coordinatedURL = url
-            }
-
-            if let coordError {
-                continuation.resume(throwing: coordError)
-                return
-            }
-
-            guard let coordinatedURL else {
-                continuation.resume(throwing: ConversionError.exportFailed("File coordination failed"))
-                return
-            }
-
-            let asset = AVURLAsset(url: coordinatedURL)
-            guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
-                continuation.resume(throwing: ConversionError.exportFailed("AVAssetExportSession init failed"))
-                return
-            }
-
-            try? FileManager.default.removeItem(at: outputURL)
-            export.outputURL = outputURL
-            export.outputFileType = .mp4
-            export.shouldOptimizeForNetworkUse = true
-
-            let progressTimer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-            progressTimer.schedule(deadline: .now(), repeating: .milliseconds(200))
-            progressTimer.setEventHandler {
-                progress?(Double(export.progress))
-            }
-            progressTimer.resume()
-
-            export.exportAsynchronously {
-                progressTimer.cancel()
-
-                switch export.status {
-                case .completed:
+            FFmpegKit.executeAsync(command, withExecuteCallback: { session in
+                let returnCode = session?.getReturnCode()
+                if ReturnCode.isSuccess(returnCode) {
                     if inputURL.pathExtension.lowercased() == "ts" {
                         try? FileManager.default.removeItem(at: inputURL)
                     }
                     continuation.resume(returning: outputURL)
-                case .failed:
-                    let message = MediaConversionManager.describe(export.error)
-                    continuation.resume(throwing: ConversionError.exportFailed(message))
-                case .cancelled:
+                } else if ReturnCode.isCancel(returnCode) {
                     continuation.resume(throwing: ConversionError.cancelled)
-                default:
-                    let message = MediaConversionManager.describe(export.error)
+                } else {
+                    let message = session?.getAllLogsAsString() ?? "ffmpeg conversion failed"
                     continuation.resume(throwing: ConversionError.exportFailed(message))
                 }
+            }, withLogCallback: nil, withStatisticsCallback: { stats in
+                guard let stats, duration > 0 else { return }
+                let timeMs = Double(stats.getTime())
+                let value = min(1.0, max(0, timeMs / (duration * 1000)))
+                progress?(value)
+            })
+        }
+    }
+
+    private func probeDurationSeconds(path: String) async -> Double {
+        await withCheckedContinuation { continuation in
+            FFprobeKit.getMediaInformationAsync(path) { session in
+                let info = session?.getMediaInformation()
+                let duration = Double(info?.getDuration() ?? "") ?? 0
+                continuation.resume(returning: duration)
             }
         }
     }
@@ -1203,6 +1199,11 @@ actor MediaConversionManager {
             return "OSStatus error code=\(code) \(message)"
         }
         return "Export failed (\(domain)) code=\(code) \(message)"
+    }
+
+    private func quoted(path: String) -> String {
+        let escaped = path.replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
     }
 }
 
