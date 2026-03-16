@@ -25,7 +25,11 @@ final class AppServices {
         self.playbackEngine = PlaybackEngine()
         self.offlineManager = OfflineManager()
         self.metadataService = MetadataService(cacheStore: cacheStore)
-        self.episodeMetadataService = EpisodeMetadataService(cacheStore: cacheStore, provider: .tmdb)
+        self.episodeMetadataService = EpisodeMetadataService(
+            cacheStore: cacheStore,
+            aniListClient: aniListClient,
+            provider: .tmdb
+        )
         self.aniSkipService = AniSkipService()
         self.trendingService = TrendingService(cacheStore: cacheStore)
         self.ratingService = RatingService(cacheStore: cacheStore)

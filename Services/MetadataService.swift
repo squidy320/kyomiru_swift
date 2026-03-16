@@ -430,12 +430,19 @@ final class EpisodeMetadataService {
     private let session: URLSession
     private let cacheStore: CacheStore
     private let provider: Provider
+    private let aniListClient: AniListClient
     private let tmdbKey: String?
 
-    init(cacheStore: CacheStore, provider: Provider = .kitsu, session: URLSession = .custom) {
+    init(
+        cacheStore: CacheStore,
+        aniListClient: AniListClient,
+        provider: Provider = .kitsu,
+        session: URLSession = .custom
+    ) {
         self.cacheStore = cacheStore
         self.session = session
         self.provider = provider
+        self.aniListClient = aniListClient
         self.tmdbKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
     }
 
@@ -556,12 +563,24 @@ final class EpisodeMetadataService {
         guard let showId = await resolveTMDBShowId(media: media, title: title) else {
             return ([:], preferredSeason ?? 1)
         }
-        let seasonNumber = await selectTMDBSeason(
-            showId: showId,
+        guard let showDetails = await fetchTMDBShowDetails(showId: showId) else {
+            return ([:], preferredSeason ?? 1)
+        }
+
+        let relationContext = await buildRelationContext(
+            media: media,
+            tmdbTitle: showDetails.name ?? title,
+            tmdbTotalEpisodes: showDetails.numberOfEpisodes,
+            desiredCount: desiredCount
+        )
+        let relationSeason = relationContext?.seasonIndex
+        let seasonNumber = selectTMDBSeason(
+            showDetails: showDetails,
             media: media,
             preferredSeason: preferredSeason,
             desiredCount: desiredCount,
-            maxEpisodeNumber: maxEpisodeNumber
+            maxEpisodeNumber: maxEpisodeNumber,
+            relationSeason: relationSeason
         )
         let data = await fetchTMDBSeason(showId: showId, seasonNumber: seasonNumber)
         return (data, seasonNumber)
@@ -639,116 +658,109 @@ final class EpisodeMetadataService {
     }
 
     private func selectTMDBSeason(
-        showId: Int,
+        showDetails: TMDBShowDetails,
         media: AniListMedia,
         preferredSeason: Int?,
         desiredCount: Int,
-        maxEpisodeNumber: Int
-    ) async -> Int {
-        guard let tmdbKey else { return preferredSeason ?? 1 }
-        guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)?api_key=\(tmdbKey)") else {
-            return preferredSeason ?? 1
+        maxEpisodeNumber: Int,
+        relationSeason: Int?
+    ) -> Int {
+        let candidates = showDetails.seasons.filter { $0.seasonNumber > 0 }
+        if candidates.isEmpty {
+            return relationSeason ?? preferredSeason ?? 1
         }
-        do {
-            let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                return preferredSeason ?? 1
-            }
-            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            let seasons = root?["seasons"] as? [[String: Any]] ?? []
-            let candidates = seasons.compactMap { SeasonInfo(from: $0) }.filter { $0.seasonNumber > 0 }
-            if candidates.isEmpty {
-                return preferredSeason ?? 1
-            }
 
-            let title = media.title.best
-            let titleClean = TitleMatcher.cleanTitle(title)
-            let preferred = preferredSeason
-            let targetYear = media.seasonYear
-            let desired = desiredCount
-            let maxEpisode = maxEpisodeNumber
-            let globalNumbering = maxEpisode >= desired + 5 && maxEpisode > 0
-            let titleLower = title.lowercased()
-            let wantsFinal = titleLower.contains("final")
-            let wantsPart = titleLower.contains("part")
+        let title = media.title.best
+        let titleClean = TitleMatcher.cleanTitle(title)
+        let preferred = preferredSeason
+        let targetYear = media.seasonYear
+        let desired = desiredCount
+        let maxEpisode = maxEpisodeNumber
+        let globalNumbering = maxEpisode >= desired + 5 && maxEpisode > 0
+        let titleLower = title.lowercased()
+        let wantsFinal = titleLower.contains("final")
+        let wantsPart = titleLower.contains("part")
 
-            var rangeMatchSeason: Int?
-            var ranges: [(season: Int, start: Int, end: Int)] = []
-            if globalNumbering {
-                var cursor = 1
-                for season in candidates.sorted(by: { $0.seasonNumber < $1.seasonNumber }) {
-                    let start = cursor
-                    let end = cursor + max(season.episodeCount, 0) - 1
-                    ranges.append((season: season.seasonNumber, start: start, end: end))
-                    if maxEpisode >= start && maxEpisode <= end {
-                        rangeMatchSeason = season.seasonNumber
-                    }
-                    cursor = end + 1
+        var rangeMatchSeason: Int?
+        var ranges: [(season: Int, start: Int, end: Int)] = []
+        if globalNumbering {
+            var cursor = 1
+            for season in candidates.sorted(by: { $0.seasonNumber < $1.seasonNumber }) {
+                let start = cursor
+                let end = cursor + max(season.episodeCount, 0) - 1
+                ranges.append((season: season.seasonNumber, start: start, end: end))
+                if maxEpisode >= start && maxEpisode <= end {
+                    rangeMatchSeason = season.seasonNumber
                 }
-                let rangesText = ranges
-                    .map { "S\($0.season)=\($0.start)-\($0.end)" }
-                    .joined(separator: ",")
-                AppLog.debug(
-                    .network,
-                    "tmdb season ranges mediaId=\(media.id) maxEp=\(maxEpisode) desired=\(desired) ranges=[\(rangesText)] match=\(rangeMatchSeason ?? 0)"
-                )
+                cursor = end + 1
             }
-
+            let rangesText = ranges
+                .map { "S\($0.season)=\($0.start)-\($0.end)" }
+                .joined(separator: ",")
             AppLog.debug(
                 .network,
-                "tmdb season global-numbering mediaId=\(media.id) maxEp=\(maxEpisode) desired=\(desired) detected=\(globalNumbering)"
+                "tmdb season ranges mediaId=\(media.id) maxEp=\(maxEpisode) desired=\(desired) ranges=[\(rangesText)] match=\(rangeMatchSeason ?? 0)"
             )
+        }
 
-            var best: (season: SeasonInfo, score: Double)?
-            for season in candidates {
-                let epScore: Double
-                if desired > 0 {
-                    let delta = abs(season.episodeCount - desired)
-                    epScore = 1.0 - min(Double(delta) / Double(max(desired, 1)), 1.0)
-                } else {
-                    epScore = 0.5
-                }
+        AppLog.debug(
+            .network,
+            "tmdb season global-numbering mediaId=\(media.id) maxEp=\(maxEpisode) desired=\(desired) detected=\(globalNumbering)"
+        )
 
-                let yearScore: Double
-                if let targetYear, let airYear = season.airYear {
-                    let delta = abs(airYear - targetYear)
-                    yearScore = 1.0 - min(Double(delta) / 3.0, 1.0)
-                } else {
-                    yearScore = 0.5
-                }
-
-                let nameClean = TitleMatcher.cleanTitle(season.name ?? "")
-                let titleScore = TitleMatcher.diceCoefficient(nameClean, titleClean)
-
-                var markerScore = 0.0
-                if let preferred, season.seasonNumber == preferred {
-                    markerScore += 0.5
-                } else if preferred != nil {
-                    markerScore -= 0.1
-                }
-                let seasonLower = (season.name ?? "").lowercased()
-                if wantsFinal, seasonLower.contains("final") { markerScore += 0.2 }
-                if wantsPart, seasonLower.contains("part") { markerScore += 0.2 }
-                if let rangeMatchSeason, rangeMatchSeason == season.seasonNumber {
-                    markerScore += 0.6
-                }
-
-                let score = (0.45 * epScore) + (0.25 * yearScore) + (0.2 * titleScore) + markerScore
-                AppLog.debug(
-                    .network,
-                    "tmdb season score mediaId=\(media.id) season=\(season.seasonNumber) ep=\(season.episodeCount) year=\(season.airYear ?? 0) epScore=\(String(format: "%.2f", epScore)) yearScore=\(String(format: "%.2f", yearScore)) titleScore=\(String(format: "%.2f", titleScore)) marker=\(String(format: "%.2f", markerScore)) total=\(String(format: "%.2f", score))"
-                )
-                if best == nil || score > best!.score {
-                    best = (season, score)
-                }
+        var best: (season: SeasonInfo, score: Double)?
+        for season in candidates {
+            let epScore: Double
+            if desired > 0 {
+                let delta = abs(season.episodeCount - desired)
+                epScore = 1.0 - min(Double(delta) / Double(max(desired, 1)), 1.0)
+            } else {
+                epScore = 0.5
             }
 
-            let chosen = best?.season.seasonNumber ?? preferredSeason ?? 1
-            AppLog.debug(.network, "tmdb season select mediaId=\(media.id) chosen=\(chosen) preferred=\(preferredSeason ?? 0) desired=\(desiredCount)")
-            return chosen
-        } catch {
-            return preferredSeason ?? 1
+            let yearScore: Double
+            if let targetYear, let airYear = season.airYear {
+                let delta = abs(airYear - targetYear)
+                yearScore = 1.0 - min(Double(delta) / 3.0, 1.0)
+            } else {
+                yearScore = 0.5
+            }
+
+            let nameClean = TitleMatcher.cleanTitle(season.name ?? "")
+            let titleScore = TitleMatcher.diceCoefficient(nameClean, titleClean)
+
+            var markerScore = 0.0
+            if let preferred, season.seasonNumber == preferred {
+                markerScore += 0.5
+            } else if preferred != nil {
+                markerScore -= 0.1
+            }
+            let seasonLower = (season.name ?? "").lowercased()
+            if wantsFinal, seasonLower.contains("final") { markerScore += 0.2 }
+            if wantsPart, seasonLower.contains("part") { markerScore += 0.2 }
+            if let rangeMatchSeason, rangeMatchSeason == season.seasonNumber {
+                markerScore += 0.6
+            }
+            if let relationSeason, relationSeason == season.seasonNumber {
+                markerScore += 1.2
+            }
+
+            let score = (0.45 * epScore) + (0.25 * yearScore) + (0.2 * titleScore) + markerScore
+            AppLog.debug(
+                .network,
+                "tmdb season score mediaId=\(media.id) season=\(season.seasonNumber) ep=\(season.episodeCount) year=\(season.airYear ?? 0) epScore=\(String(format: "%.2f", epScore)) yearScore=\(String(format: "%.2f", yearScore)) titleScore=\(String(format: "%.2f", titleScore)) marker=\(String(format: "%.2f", markerScore)) total=\(String(format: "%.2f", score))"
+            )
+            if best == nil || score > best!.score {
+                best = (season, score)
+            }
         }
+
+        let chosen = best?.season.seasonNumber ?? relationSeason ?? preferredSeason ?? 1
+        AppLog.debug(
+            .network,
+            "tmdb season select mediaId=\(media.id) chosen=\(chosen) preferred=\(preferredSeason ?? 0) relation=\(relationSeason ?? 0) desired=\(desiredCount)"
+        )
+        return chosen
     }
 
     private func fetchTMDBSeason(showId: Int, seasonNumber: Int) async -> [Int: EpisodeMetadata] {
@@ -789,6 +801,244 @@ final class EpisodeMetadataService {
             return [:]
         }
     }
+
+    private func fetchTMDBShowDetails(showId: Int) async -> TMDBShowDetails? {
+        guard let tmdbKey else { return nil }
+        guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)?api_key=\(tmdbKey)") else {
+            return nil
+        }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let seasons = (root?["seasons"] as? [[String: Any]] ?? [])
+                .compactMap { SeasonInfo(from: $0) }
+            let total = root?["number_of_episodes"] as? Int ?? 0
+            let name = root?["name"] as? String ?? root?["original_name"] as? String
+            return TMDBShowDetails(name: name, numberOfEpisodes: total, seasons: seasons)
+        } catch {
+            return nil
+        }
+    }
+
+    private func buildRelationContext(
+        media: AniListMedia,
+        tmdbTitle: String,
+        tmdbTotalEpisodes: Int,
+        desiredCount: Int
+    ) async -> RelationContext? {
+        let base = await resolveAniListBaseMedia(
+            media: media,
+            tmdbTitle: tmdbTitle,
+            tmdbTotalEpisodes: tmdbTotalEpisodes,
+            desiredCount: desiredCount
+        )
+        let chain = await buildRelationsChain(root: base)
+        if chain.isEmpty {
+            return nil
+        }
+        let recovered = await recoverOrphansIfNeeded(
+            chain: chain,
+            base: base,
+            tmdbTotalEpisodes: tmdbTotalEpisodes
+        )
+        let ordered = orderRelationChain(recovered)
+        let index = relationSeasonIndex(chain: ordered, target: media)
+        AppLog.debug(.matching, "relations chain built base=\(base.id) count=\(ordered.count) index=\(index ?? 0)")
+        return RelationContext(base: base, chain: ordered, seasonIndex: index)
+    }
+
+    private func resolveAniListBaseMedia(
+        media: AniListMedia,
+        tmdbTitle: String,
+        tmdbTotalEpisodes: Int,
+        desiredCount: Int
+    ) async -> AniListMedia {
+        var candidates: [AniListMedia] = [media]
+        let queries = TitleMatcher.buildQueries(from: tmdbTitle)
+        for query in queries {
+            if let results = try? await aniListClient.searchAnime(query: query) {
+                candidates.append(contentsOf: results)
+            }
+        }
+        let deduped = Dictionary(grouping: candidates, by: \.id).compactMap { $0.value.first }
+        let best = pickBestAniListCandidate(
+            candidates: deduped,
+            tmdbTitle: tmdbTitle,
+            tmdbTotalEpisodes: tmdbTotalEpisodes,
+            desiredCount: desiredCount,
+            baseYear: media.seasonYear
+        )
+        let corrected = await applyOvaCorrectionIfNeeded(
+            base: best,
+            desiredCount: desiredCount,
+            tmdbTotalEpisodes: tmdbTotalEpisodes
+        )
+        if corrected.id != best.id {
+            AppLog.debug(.matching, "relations ova correction base=\(best.id) -> \(corrected.id)")
+        }
+        return corrected
+    }
+
+    private func pickBestAniListCandidate(
+        candidates: [AniListMedia],
+        tmdbTitle: String,
+        tmdbTotalEpisodes: Int,
+        desiredCount: Int,
+        baseYear: Int?
+    ) -> AniListMedia {
+        let targetTitle = TitleMatcher.cleanTitle(tmdbTitle)
+        var best = candidates.first
+        var bestScore = -Double.infinity
+        for candidate in candidates {
+            let titleScore = TitleMatcher.diceCoefficient(
+                TitleMatcher.cleanTitle(candidate.title.best),
+                targetTitle
+            )
+            let episodeTarget = tmdbTotalEpisodes > 0 ? tmdbTotalEpisodes : desiredCount
+            let epScore: Double
+            if episodeTarget > 0, let eps = candidate.episodes, eps > 0 {
+                let delta = abs(eps - episodeTarget)
+                epScore = 1.0 - min(Double(delta) / Double(max(episodeTarget, 1)), 1.0)
+            } else {
+                epScore = 0.5
+            }
+            let yearScore: Double
+            if let baseYear, let candidateYear = candidate.seasonYear {
+                yearScore = 1.0 - min(Double(abs(candidateYear - baseYear)) / 3.0, 1.0)
+            } else {
+                yearScore = 0.5
+            }
+            let score = (0.6 * titleScore) + (0.25 * epScore) + (0.15 * yearScore)
+            if score > bestScore {
+                bestScore = score
+                best = candidate
+            }
+        }
+        return best ?? candidates.first!
+    }
+
+    private func applyOvaCorrectionIfNeeded(
+        base: AniListMedia,
+        desiredCount: Int,
+        tmdbTotalEpisodes: Int
+    ) async -> AniListMedia {
+        let allowedFormats: Set<String> = ["TV", "ONA", "TV_SHORT"]
+        let episodeTarget = tmdbTotalEpisodes > 0 ? tmdbTotalEpisodes : desiredCount
+        let baseEpisodes = base.episodes ?? 0
+        let looksLikeOva = (base.format.map { !allowedFormats.contains($0) } ?? false)
+            || (episodeTarget > 0 && baseEpisodes > 0 && baseEpisodes < max(2, episodeTarget / 2))
+        guard looksLikeOva else { return base }
+        guard let edges = try? await aniListClient.relationsGraph(mediaId: base.id) else { return base }
+        let candidates = edges.filter { edge in
+            ["PARENT", "SOURCE", "PREQUEL"].contains(edge.relationType)
+        }.map(\.media)
+        let filtered = candidates.filter { media in
+            guard let format = media.format else { return false }
+            return allowedFormats.contains(format)
+        }
+        let best = filtered.max { (lhs, rhs) in
+            let l = lhs.episodes ?? 0
+            let r = rhs.episodes ?? 0
+            return l < r
+        }
+        return best ?? base
+    }
+
+    private func buildRelationsChain(root: AniListMedia) async -> [AniListMedia] {
+        let allowedFormats: Set<String> = ["TV", "ONA", "TV_SHORT"]
+        let allowedRelations: Set<String> = ["SEQUEL", "PREQUEL", "SEASON"]
+        var visited: Set<Int> = [root.id]
+        var queue: [(AniListMedia, Int)] = [(root, 0)]
+        var collected: [AniListMedia] = [root]
+        let maxDepth = 2
+        let maxNodes = 25
+
+        while !queue.isEmpty && collected.count < maxNodes {
+            let (current, depth) = queue.removeFirst()
+            if depth >= maxDepth { continue }
+            guard let edges = try? await aniListClient.relationsGraph(mediaId: current.id) else { continue }
+            for edge in edges where allowedRelations.contains(edge.relationType) {
+                let media = edge.media
+                if visited.contains(media.id) { continue }
+                visited.insert(media.id)
+                if let format = media.format, allowedFormats.contains(format) {
+                    collected.append(media)
+                    queue.append((media, depth + 1))
+                }
+            }
+        }
+        return collected
+    }
+
+    private func recoverOrphansIfNeeded(
+        chain: [AniListMedia],
+        base: AniListMedia,
+        tmdbTotalEpisodes: Int
+    ) async -> [AniListMedia] {
+        guard tmdbTotalEpisodes > 0 else { return chain }
+        let totalEpisodes = chain.reduce(0) { $0 + ($1.episodes ?? 0) }
+        guard totalEpisodes < Int(Double(tmdbTotalEpisodes) * 0.7) else { return chain }
+        AppLog.debug(.matching, "relations orphan recovery start base=\(base.id) tmdbTotal=\(tmdbTotalEpisodes) chainTotal=\(totalEpisodes)")
+        let allowedFormats: Set<String> = ["TV", "ONA", "TV_SHORT"]
+        var visited = Set(chain.map(\.id))
+        var recovered = chain
+        let queries = TitleMatcher.buildQueries(from: base.title.best)
+        for query in queries {
+            if let results = try? await aniListClient.searchAnime(query: query) {
+                for candidate in results {
+                    if visited.contains(candidate.id) { continue }
+                    guard let format = candidate.format, allowedFormats.contains(format) else { continue }
+                    let titleScore = TitleMatcher.diceCoefficient(
+                        TitleMatcher.cleanTitle(candidate.title.best),
+                        TitleMatcher.cleanTitle(base.title.best)
+                    )
+                    let yearDelta: Int?
+                    if let baseYear = base.seasonYear, let candidateYear = candidate.seasonYear {
+                        yearDelta = abs(candidateYear - baseYear)
+                    } else {
+                        yearDelta = nil
+                    }
+                    if titleScore < 0.55 && (yearDelta ?? 0) > 4 { continue }
+                    visited.insert(candidate.id)
+                    recovered.append(candidate)
+                }
+            }
+        }
+        return recovered
+    }
+
+    private func orderRelationChain(_ chain: [AniListMedia]) -> [AniListMedia] {
+        chain.sorted { lhs, rhs in
+            let leftYear = lhs.seasonYear ?? 9999
+            let rightYear = rhs.seasonYear ?? 9999
+            if leftYear != rightYear { return leftYear < rightYear }
+            return lhs.title.best < rhs.title.best
+        }
+    }
+
+    private func relationSeasonIndex(chain: [AniListMedia], target: AniListMedia) -> Int? {
+        if let index = chain.firstIndex(where: { $0.id == target.id }) {
+            return index + 1
+        }
+        var best: (index: Int, score: Double)?
+        let targetTitle = TitleMatcher.cleanTitle(target.title.best)
+        for (idx, item) in chain.enumerated() {
+            let score = TitleMatcher.diceCoefficient(
+                TitleMatcher.cleanTitle(item.title.best),
+                targetTitle
+            )
+            if score > (best?.score ?? 0.0) {
+                best = (idx, score)
+            }
+        }
+        if let best, best.score >= 0.72 {
+            return best.index + 1
+        }
+        return nil
+    }
 }
 
 private struct SeasonInfo {
@@ -809,6 +1059,18 @@ private struct SeasonInfo {
             self.airYear = nil
         }
     }
+}
+
+private struct TMDBShowDetails {
+    let name: String?
+    let numberOfEpisodes: Int
+    let seasons: [SeasonInfo]
+}
+
+private struct RelationContext {
+    let base: AniListMedia
+    let chain: [AniListMedia]
+    let seasonIndex: Int?
 }
 
 private struct OmdbSearchResponse: Decodable {

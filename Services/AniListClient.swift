@@ -536,6 +536,49 @@ final class AniListClient {
         return sections
     }
 
+    func relationsGraph(mediaId: Int, token: String? = nil) async throws -> [AniListRelationEdge] {
+        let query = """
+        query RelationGraph($id: Int) {
+          Media(id: $id, type: ANIME) {
+            relations {
+              edges {
+                relationType
+                node {
+                  id
+                  idMal
+                  title { romaji english native }
+                  coverImage { extraLarge large }
+                  bannerImage
+                  averageScore
+                  episodes
+                  seasonYear
+                  format
+                  status
+                  isAdult
+                  genres
+                  studios(isMain: true) { nodes { name } }
+                }
+              }
+            }
+          }
+        }
+        """
+        let data = try await graphql(query: query, variables: ["id": mediaId], token: token)
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let edges = traverse(root, keyPath: ["data", "Media", "relations", "edges"]) as? [[String: Any]] else {
+            AppLog.error(.network, "relations graph decode failed mediaId=\(mediaId)")
+            return []
+        }
+        var result: [AniListRelationEdge] = []
+        for edge in edges {
+            guard let relation = edge["relationType"] as? String,
+                  let node = edge["node"] as? [String: Any],
+                  let media = decodeMedia(node) else { continue }
+            result.append(AniListRelationEdge(relationType: relation, media: media))
+        }
+        return result
+    }
+
     func streamingEpisodes(mediaId: Int) async throws -> [AniListStreamingEpisode] {
         AppLog.debug(.network, "streaming episodes request start mediaId=\(mediaId)")
         let query = """
