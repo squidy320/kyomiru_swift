@@ -151,6 +151,9 @@ struct DiscoveryView: View {
 
     private var heroHeader: some View {
         let height = UIScreen.main.bounds.height * 0.5
+        let topInset = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
+            .first ?? 0
         return GeometryReader { proxy in
             let width = proxy.size.width
             let insetTop = proxy.safeAreaInsets.top
@@ -210,9 +213,7 @@ struct DiscoveryView: View {
             }
         }
         .frame(height: height)
-        .offset(y: -UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
-            .first ?? 0)
+        .offset(y: -topInset)
     }
 
     private var imdbCarousel: AnyView {
