@@ -158,6 +158,7 @@ struct DiscoveryView: View {
         return GeometryReader { proxy in
             let width = proxy.size.width
             let insetTop = proxy.safeAreaInsets.top
+            let topFeatherHeight = max(24.0, insetTop * 0.6)
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let heroTrending, let url = heroTrending.backdropURL {
@@ -172,6 +173,17 @@ struct DiscoveryView: View {
                 }
                 .frame(width: width, height: height + insetTop)
                 .clipped()
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [Color.clear, Color.black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: topFeatherHeight)
+                        Color.black
+                    }
+                )
 
                 LinearGradient(
                     colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
