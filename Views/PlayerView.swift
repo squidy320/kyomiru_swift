@@ -575,7 +575,7 @@ private struct AVPlayerScreen: View {
             asset = AVURLAsset(url: resolved)
         } else {
             asset = AVURLAsset(url: resolved, options: [
-                AVURLAssetHTTPHeaderFieldsKey: headers
+                "AVURLAssetHTTPHeaderFieldsKey": headers
             ])
         }
 
@@ -603,7 +603,7 @@ private struct AVPlayerScreen: View {
     }
 
     private func addObservers(to player: AVPlayer, item: AVPlayerItem) {
-        let startTime = PlaybackHistoryStore.shared.position(for: episode.id)
+        let startTime = PlaybackHistoryStore.shared.position(for: episode.id) ?? 0
 
         statusObserver = item.observe(\.status, options: [.initial, .new]) { observed, _ in
             switch observed.status {
@@ -624,18 +624,20 @@ private struct AVPlayerScreen: View {
             guard seconds.isFinite else { return }
             let duration = player.currentItem?.duration.seconds ?? 0
             if duration.isFinite && duration > 0 {
-                appState.services.playbackEngine.updateProgress(
-                    for: String(mediaId),
-                    currentTime: seconds,
-                    duration: duration
-                )
-                appState.services.playbackEngine.updateProgress(
-                    for: "episode:\(episode.id)",
-                    currentTime: seconds,
-                    duration: duration
-                )
-                PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
-                PlaybackHistoryStore.shared.saveDuration(duration, for: episode.id)
+                Task { @MainActor in
+                    appState.services.playbackEngine.updateProgress(
+                        for: String(mediaId),
+                        currentTime: seconds,
+                        duration: duration
+                    )
+                    appState.services.playbackEngine.updateProgress(
+                        for: "episode:\(episode.id)",
+                        currentTime: seconds,
+                        duration: duration
+                    )
+                    PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
+                    PlaybackHistoryStore.shared.saveDuration(duration, for: episode.id)
+                }
             }
         }
     }
