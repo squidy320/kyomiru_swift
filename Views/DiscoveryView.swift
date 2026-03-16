@@ -322,10 +322,10 @@ private extension DiscoveryView {
     func prefetchAniListMappings(items: [TrendingItem]) async {
         for item in items {
             if imdbAniListMap[item.id] != nil { continue }
-            if let media = try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
+            if let media = (try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
                 imdbId: item.imdbId,
                 title: item.title
-            ), let media {
+            )) ?? nil {
                 imdbAniListMap[item.id] = media
             }
         }
@@ -337,10 +337,10 @@ private extension DiscoveryView {
             return
         }
         Task {
-            if let media = try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
+            if let media = (try? await appState.services.aniListClient.searchAnimeByImdbOrTitle(
                 imdbId: item.imdbId,
                 title: item.title
-            ), let media {
+            )) ?? nil {
                 imdbAniListMap[item.id] = media
                 navigateMedia = media
             }
