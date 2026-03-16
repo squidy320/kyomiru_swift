@@ -10,10 +10,16 @@ struct MediaPosterCard: View {
     let cornerBadge: String?
     @EnvironmentObject private var appState: AppState
     @State private var imdbPosterURL: URL?
+    @State private var tmdbLookupComplete = false
 
     var body: some View {
         let useTMDB = appState.settings.cardImageSource == .tmdb
-        let resolvedURL = useTMDB ? imdbPosterURL : imageURL
+        let resolvedURL: URL? = {
+            if useTMDB {
+                return tmdbLookupComplete ? (imdbPosterURL ?? imageURL) : imdbPosterURL
+            }
+            return imageURL
+        }()
         ZStack(alignment: .topTrailing) {
             ZStack(alignment: .bottomLeading) {
                 RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
@@ -90,8 +96,10 @@ struct MediaPosterCard: View {
             guard let media else { return }
             if useTMDB {
                 imdbPosterURL = await appState.services.metadataService.posterURL(for: media)
+                tmdbLookupComplete = true
             } else {
                 imdbPosterURL = nil
+                tmdbLookupComplete = false
             }
         }
     }
@@ -107,9 +115,15 @@ struct ContinueWatchingCard: View {
     let media: AniListMedia?
     @EnvironmentObject private var appState: AppState
     @State private var imdbImageURL: URL?
+    @State private var tmdbLookupComplete = false
     var body: some View {
         let useTMDB = appState.settings.cardImageSource == .tmdb
-        let resolvedURL = useTMDB ? imdbImageURL : imageURL
+        let resolvedURL: URL? = {
+            if useTMDB {
+                return tmdbLookupComplete ? (imdbImageURL ?? imageURL) : imdbImageURL
+            }
+            return imageURL
+        }()
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.06))
@@ -171,8 +185,10 @@ struct ContinueWatchingCard: View {
             guard let media else { return }
             if useTMDB {
                 imdbImageURL = await appState.services.metadataService.backdropURL(for: media)
+                tmdbLookupComplete = true
             } else {
                 imdbImageURL = nil
+                tmdbLookupComplete = false
             }
         }
     }
@@ -343,10 +359,16 @@ private struct RelationCard: View {
     let badge: String
     @EnvironmentObject private var appState: AppState
     @State private var imdbPosterURL: URL?
+    @State private var tmdbLookupComplete = false
 
     var body: some View {
         let useTMDB = appState.settings.cardImageSource == .tmdb
-        let resolvedURL = useTMDB ? imdbPosterURL : media.coverURL
+        let resolvedURL: URL? = {
+            if useTMDB {
+                return tmdbLookupComplete ? (imdbPosterURL ?? media.coverURL) : imdbPosterURL
+            }
+            return media.coverURL
+        }()
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.06))
@@ -379,8 +401,10 @@ private struct RelationCard: View {
         .task(id: "\(media.id)-\(appState.settings.cardImageSource.rawValue)") {
             if useTMDB {
                 imdbPosterURL = await appState.services.metadataService.posterURL(for: media)
+                tmdbLookupComplete = true
             } else {
                 imdbPosterURL = nil
+                tmdbLookupComplete = false
             }
         }
     }

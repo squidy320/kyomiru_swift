@@ -16,10 +16,16 @@ struct HeroHeader: View {
     var height: CGFloat = 260
     @EnvironmentObject private var appState: AppState
     @State private var imdbBackdropURL: URL?
+    @State private var tmdbLookupComplete = false
 
     var body: some View {
         let useTMDB = appState.settings.cardImageSource == .tmdb
-        let resolvedURL = useTMDB ? imdbBackdropURL : imageURL
+        let resolvedURL: URL? = {
+            if useTMDB {
+                return tmdbLookupComplete ? (imdbBackdropURL ?? imageURL) : imdbBackdropURL
+            }
+            return imageURL
+        }()
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .fill(Theme.surface)
@@ -79,8 +85,10 @@ struct HeroHeader: View {
             guard let media else { return }
             if useTMDB {
                 imdbBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+                tmdbLookupComplete = true
             } else {
                 imdbBackdropURL = nil
+                tmdbLookupComplete = false
             }
         }
     }
