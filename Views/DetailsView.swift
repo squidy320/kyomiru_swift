@@ -315,7 +315,7 @@ struct DetailsView: View {
                     isPlayable: true,
                     isWatched: isEpisodeWatched(episode.number),
                     isDownloaded: isEpisodeDownloaded(episode.number),
-                    isNew: isEpisodeNew(episode.number),
+                    isNew: false,
                     onTap: {
                         selectEpisode(episode)
                     }
@@ -530,11 +530,6 @@ struct DetailsView: View {
 
     private func isEpisodeDownloaded(_ number: Int) -> Bool {
         DownloadManager.shared.downloadedItem(title: media.title.best, episode: number) != nil
-    }
-
-    private func isEpisodeNew(_ number: Int) -> Bool {
-        guard let item = appState.services.libraryStore.item(forExternalId: media.id) else { return false }
-        return number == item.currentEpisode + 1
     }
 
     private func ratingText(for number: Int) -> String? {

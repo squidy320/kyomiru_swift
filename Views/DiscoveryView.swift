@@ -64,7 +64,8 @@ struct DiscoveryView: View {
                                                             imageURL: media.coverURL,
                                                             media: media,
                                                             score: media.averageScore,
-                                                            statusBadge: statusBadge(for: media)
+                                                            statusBadge: statusBadge(for: media),
+                                                            cornerBadge: nil
                                                         )
                                                         .frame(width: UIConstants.posterCardWidth)
                                                     }
@@ -306,7 +307,8 @@ struct DiscoveryView: View {
                             imageURL: media.coverURL,
                             media: media,
                             score: media.averageScore,
-                            statusBadge: statusBadge(for: media)
+                            statusBadge: statusBadge(for: media),
+                            cornerBadge: nil
                         )
                         .frame(width: UIConstants.posterCardWidth)
                     }

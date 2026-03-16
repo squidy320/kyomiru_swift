@@ -7,6 +7,7 @@ struct MediaPosterCard: View {
     let media: AniListMedia?
     let score: Int?
     let statusBadge: String?
+    let cornerBadge: String?
     @EnvironmentObject private var appState: AppState
     @State private var imdbPosterURL: URL?
 
@@ -61,6 +62,20 @@ struct MediaPosterCard: View {
                     .background(
                         Capsule(style: .continuous)
                             .fill(Color.black.opacity(0.6))
+                    )
+                    .padding(.leading, UIConstants.mediumPadding)
+                    .padding(.top, UIConstants.mediumPadding)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            if let cornerBadge {
+                Text(cornerBadge)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.blue.opacity(0.9))
                     )
                     .padding(.leading, UIConstants.mediumPadding)
                     .padding(.top, UIConstants.mediumPadding)

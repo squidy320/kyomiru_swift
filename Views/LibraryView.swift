@@ -5,6 +5,7 @@ struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var librarySettings = LibrarySettingsManager()
     @State private var sections: [AniListLibrarySection] = []
+    @State private var availabilityById: [Int: AniListEpisodeAvailability] = [:]
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var filterText: String = ""
@@ -73,7 +74,11 @@ struct LibraryView: View {
                                 }
                             } else {
                                 ForEach(filteredSections()) { section in
-                                    LibrarySection(section: section, filterText: filterText)
+                                    LibrarySection(
+                                        section: section,
+                                        filterText: filterText,
+                                        availabilityById: availabilityById
+                                    )
                                 }
                             }
                         } else {
@@ -135,6 +140,7 @@ struct LibraryView: View {
                let cached = appState.services.aniListClient.cachedLibrarySections(token: token),
                !cached.isEmpty {
                 applyLibrarySections(cached)
+                await prefetchAvailability(sections: cached)
             }
             await loadLibrary()
         }
@@ -228,6 +234,7 @@ struct LibraryView: View {
         do {
             let items = try await appState.services.aniListClient.librarySections(token: token)
             applyLibrarySections(items)
+            await prefetchAvailability(sections: items)
         } catch {
             errorMessage = "Failed to load AniList library."
             AppLog.error(.network, "library load failed \(error.localizedDescription)")
@@ -243,6 +250,32 @@ struct LibraryView: View {
 
     private func statusForSection(_ title: String) -> MediaStatus {
         MediaStatus.fromSectionTitle(title)
+    }
+
+    private func prefetchAvailability(sections: [AniListLibrarySection]) async {
+        guard let token = appState.authState.token, appState.authState.isSignedIn else { return }
+        let watching = sections.first(where: { statusForSection($0.title) == .watching })?.items ?? []
+        if watching.isEmpty { return }
+        await withTaskGroup(of: (Int, AniListEpisodeAvailability?).self) { group in
+            for entry in watching {
+                group.addTask {
+                    let avail = try? await appState.services.aniListClient.episodeAvailability(
+                        token: token,
+                        mediaId: entry.media.id
+                    )
+                    return (entry.media.id, avail ?? nil)
+                }
+            }
+            var updated = availabilityById
+            for await (id, avail) in group {
+                if let avail {
+                    updated[id] = avail
+                }
+            }
+            await MainActor.run {
+                availabilityById = updated
+            }
+        }
     }
 
     private func formatRemaining(_ seconds: TimeInterval) -> String {
@@ -312,9 +345,11 @@ private struct LibraryTopBar: View {
 private struct LibrarySection: View {
     let section: AniListLibrarySection
     let filterText: String
+    let availabilityById: [Int: AniListEpisodeAvailability]
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
+        let isWatching = MediaStatus.fromSectionTitle(section.title) == .watching
         VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
             Text(section.title)
                 .font(.system(size: 18, weight: .bold))
@@ -329,16 +364,21 @@ private struct LibrarySection: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: UIConstants.interCardSpacing) {
                         ForEach(section.items, id: \.id) { entry in
+                            let availability = availabilityById[entry.media.id]
+                            let released = releasedEpisodeCount(media: entry.media, availability: availability)
+                            let isReleasing = isReleasing(media: entry.media, availability: availability)
+                            let showNew = isWatching && isReleasing && released > 0 && entry.progress < released
                             NavigationLink {
                                 DetailsView(media: entry.media)
                             } label: {
                                 MediaPosterCard(
                                     title: entry.media.title.best,
-                                    subtitle: "Ep \(entry.progress)",
+                                    subtitle: isWatching ? episodeSubtitle(progress: entry.progress, released: released) : nil,
                                     imageURL: entry.media.coverURL,
                                     media: entry.media,
                                     score: entry.media.averageScore,
-                                    statusBadge: nil
+                                    statusBadge: nil,
+                                    cornerBadge: showNew ? "NEW" : nil
                                 )
                                 .frame(width: UIConstants.posterCardWidth)
                             }
@@ -354,6 +394,28 @@ private struct LibrarySection: View {
         .padding(.bottom, UIConstants.microPadding)
     }
 
+    private func episodeSubtitle(progress: Int, released: Int) -> String {
+        if released > 0 {
+            return "Ep \(progress) / \(released)"
+        }
+        return "Ep \(progress)"
+    }
+
+    private func releasedEpisodeCount(media: AniListMedia, availability: AniListEpisodeAvailability?) -> Int {
+        if let availability, isReleasing(media: media, availability: availability),
+           let next = availability.nextAiringEpisode, next > 0 {
+            return max(next - 1, 0)
+        }
+        if let total = availability?.totalEpisodes, total > 0 {
+            return total
+        }
+        return media.episodes ?? 0
+    }
+
+    private func isReleasing(media: AniListMedia, availability: AniListEpisodeAvailability?) -> Bool {
+        let status = (availability?.status ?? media.status ?? "").uppercased()
+        return status == "RELEASING"
+    }
 }
 
 private struct ContinueItem: Identifiable {
