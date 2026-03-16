@@ -32,9 +32,9 @@
     <key>ANILIST_CLIENT_SECRET</key>
     <string>CHANGE_ME</string>
     <key>OMDB_API_KEY</key>
-    <string>CHANGE_ME</string>
+    <string>a74e0f71</string>
     <key>TMDB_API_KEY</key>
-    <string>CHANGE_ME</string>
+    <string>a74e0f71</string>
     <key>UILaunchScreen</key>
     <dict/>
     <key>UIBackgroundModes</key>
