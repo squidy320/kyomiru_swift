@@ -153,6 +153,7 @@ struct DiscoveryView: View {
         let height = UIScreen.main.bounds.height * 0.5
         return GeometryReader { proxy in
             let width = proxy.size.width
+            let insetTop = proxy.safeAreaInsets.top
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let heroTrending, let url = heroTrending.backdropURL {
@@ -165,7 +166,7 @@ struct DiscoveryView: View {
                         Theme.surface
                     }
                 }
-                .frame(width: width, height: height)
+                .frame(width: width, height: height + insetTop)
                 .clipped()
 
                 LinearGradient(
@@ -173,7 +174,7 @@ struct DiscoveryView: View {
                     startPoint: .bottom,
                     endPoint: .top
                 )
-                .frame(width: width, height: height)
+                .frame(width: width, height: height + insetTop)
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Discovery")
@@ -201,7 +202,7 @@ struct DiscoveryView: View {
                 .padding(.horizontal, UIConstants.standardPadding)
                 .padding(.bottom, 24)
             }
-            .frame(width: width, height: height)
+            .frame(width: width, height: height + insetTop)
             .clipped()
             .contentShape(Rectangle())
             .onTapGesture {
@@ -209,6 +210,9 @@ struct DiscoveryView: View {
             }
         }
         .frame(height: height)
+        .offset(y: -UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
+            .first ?? 0)
     }
 
     private var imdbCarousel: AnyView {
