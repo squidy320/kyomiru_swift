@@ -2,15 +2,7 @@ import Foundation
 
 enum TitleSanitizer {
     private static let patterns: [String] = [
-        #"(?i)\s*:\s*"#,
-        #"(?i)\s*-\s*"#,
-        #"(?i)\b(2nd|second|3rd|third|4th|fourth)\s+season\b"#,
-        #"(?i)\bseason\s+\d+\b"#,
-        #"(?i)\bpart\s+\d+\b"#,
-        #"(?i)\bcour\s+\d+\b"#,
-        #"(?i)\bfinal\s+season\b"#,
-        #"(?i)\bthe\s+final\s+season\b"#,
-        #"(?i)\b(OVA|OAD|SPECIALS?)\b"#
+        #"(?i)\s+((Season|Part|Cour|2nd|3rd|4th|Final|The Final)\s+(\d+|I+)|[:\-].*|\(TV\)|\(\d{4}\))"#
     ]
 
     static func sanitize(_ title: String) -> String {
@@ -18,7 +10,7 @@ enum TitleSanitizer {
         for pattern in patterns {
             result = result.replacingOccurrences(
                 of: pattern,
-                with: " ",
+                with: "",
                 options: [.regularExpression]
             )
         }

@@ -3,6 +3,7 @@ import Foundation
 struct TMDBSeasonMatch: Equatable, Codable {
     let showId: Int
     let seasonNumber: Int
+    let episodeOffset: Int
 }
 
 struct TMDBSeasonDetails: Equatable, Codable {
@@ -36,16 +37,29 @@ final class TMDBMatchingService {
 
     func matchShowAndSeason(
         media: AniListMedia,
-        franchiseStartYear: Int? = nil
+        franchiseStartYear: Int? = nil,
+        firstEpisodeNumber: Int? = nil
     ) async -> TMDBSeasonMatch? {
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
         let cacheKey = "tmdb:match:\(media.id)"
         if let cached = cacheManager.load(aniListId: media.id) {
-            return TMDBSeasonMatch(showId: cached.showId, seasonNumber: cached.seasonNumber)
+            if let firstEpisodeNumber, firstEpisodeNumber > 1, cached.episodeOffset == 0 {
+                AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=offset-zero firstEp=\(firstEpisodeNumber)")
+            } else {
+                return TMDBSeasonMatch(
+                    showId: cached.showId,
+                    seasonNumber: cached.seasonNumber,
+                    episodeOffset: cached.episodeOffset
+                )
+            }
         }
         if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
            let decoded = try? JSONDecoder().decode(TMDBSeasonMatch.self, from: cached) {
-            return decoded
+            if let firstEpisodeNumber, firstEpisodeNumber > 1, decoded.episodeOffset == 0 {
+                AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=offset-zero-cache firstEp=\(firstEpisodeNumber)")
+            } else {
+                return decoded
+            }
         }
 
         let title = media.title.english ?? media.title.romaji ?? media.title.native ?? media.title.best
@@ -53,13 +67,23 @@ final class TMDBMatchingService {
             ?? media.startDate?.year
             ?? media.seasonYear
         guard let showId = await findShowId(title: title, startYear: startYear) else { return nil }
-        guard let seasonNumber = await matchSeason(showId: showId, media: media) else { return nil }
-        let match = TMDBSeasonMatch(showId: showId, seasonNumber: seasonNumber)
-        if let seasonDetails = await fetchSeasonDetails(aniListId: media.id, showId: showId, seasonNumber: seasonNumber) {
+        let aniFirstEpisode = max(firstEpisodeNumber ?? 1, 1)
+        guard let seasonMatch = await matchSeason(showId: showId, media: media, aniFirstEpisode: aniFirstEpisode) else { return nil }
+        let match = TMDBSeasonMatch(
+            showId: showId,
+            seasonNumber: seasonMatch.seasonNumber,
+            episodeOffset: seasonMatch.episodeOffset
+        )
+        if let seasonDetails = await fetchSeasonDetails(
+            aniListId: media.id,
+            showId: showId,
+            seasonNumber: seasonMatch.seasonNumber
+        ) {
             let cachedMeta = TMDBCachedMetadata(
                 aniListId: media.id,
                 showId: showId,
-                seasonNumber: seasonNumber,
+                seasonNumber: seasonMatch.seasonNumber,
+                episodeOffset: seasonMatch.episodeOffset,
                 cachedAt: Date(),
                 seasonDetails: seasonDetails
             )
@@ -165,7 +189,7 @@ final class TMDBMatchingService {
         return best?.id
     }
 
-    private func matchSeason(showId: Int, media: AniListMedia) async -> Int? {
+    private func matchSeason(showId: Int, media: AniListMedia, aniFirstEpisode: Int) async -> TMDBSeasonMatch? {
         guard let apiKey else { return nil }
         guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)?api_key=\(apiKey)") else {
             return nil
@@ -183,17 +207,22 @@ final class TMDBMatchingService {
 
             let aniDate = date(from: media.startDate)
             if let aniDate {
+                if let deepMatch = await deepEpisodeMatch(showId: showId, targetDate: aniDate) {
+                    let offset = aniFirstEpisode - deepMatch.episodeNumber
+                    return TMDBSeasonMatch(
+                        showId: showId,
+                        seasonNumber: deepMatch.seasonNumber,
+                        episodeOffset: offset
+                    )
+                }
+
                 let within14 = seasons.compactMap { season -> (TMDBSeasonInfo, Int)? in
                     guard let airDate = dateFromSeason(season.airDateString) else { return nil }
                     let days = abs(Int(airDate.timeIntervalSince(aniDate) / 86400))
                     return days <= 14 ? (season, days) : nil
                 }
                 if let best = within14.min(by: { $0.1 < $1.1 }) {
-                    return best.0.seasonNumber
-                }
-
-                if let deepMatch = await deepEpisodeMatch(showId: showId, targetDate: aniDate) {
-                    return deepMatch
+                    return TMDBSeasonMatch(showId: showId, seasonNumber: best.0.seasonNumber, episodeOffset: 0)
                 }
             }
 
@@ -201,9 +230,14 @@ final class TMDBMatchingService {
                 let best = seasons.min { lhs, rhs in
                     abs(lhs.episodeCount - episodes) < abs(rhs.episodeCount - episodes)
                 }
-                return best?.seasonNumber
+                if let best {
+                    return TMDBSeasonMatch(showId: showId, seasonNumber: best.seasonNumber, episodeOffset: 0)
+                }
             }
-            return seasons.first?.seasonNumber
+            if let first = seasons.first {
+                return TMDBSeasonMatch(showId: showId, seasonNumber: first.seasonNumber, episodeOffset: 0)
+            }
+            return nil
         } catch {
             return nil
         }
@@ -230,7 +264,7 @@ final class TMDBMatchingService {
         return dateFormatter.date(from: airDate)
     }
 
-    private func deepEpisodeMatch(showId: Int, targetDate: Date) async -> Int? {
+    private func deepEpisodeMatch(showId: Int, targetDate: Date) async -> (seasonNumber: Int, episodeNumber: Int)? {
         guard let apiKey else { return nil }
         guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)?api_key=\(apiKey)") else {
             return nil
@@ -261,7 +295,8 @@ final class TMDBMatchingService {
                     }
                     let days = abs(Int(airDate.timeIntervalSince(targetDate) / 86400))
                     if days <= 7 {
-                        return season.seasonNumber
+                        let epNumber = episode["episode_number"] as? Int ?? 0
+                        return (season.seasonNumber, max(epNumber, 1))
                     }
                 }
             }

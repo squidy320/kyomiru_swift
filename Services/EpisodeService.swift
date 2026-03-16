@@ -83,8 +83,6 @@ final class EpisodeService {
         let slice = Array(episodes.dropFirst(offset).prefix(expected))
         if slice.isEmpty { return episodes }
         AppLog.debug(.matching, "season offset applied mediaId=\(media.id) season=\(season) offset=\(offset)")
-        return slice.enumerated().map { idx, ep in
-            SoraEpisode(id: ep.id, number: idx + 1, playURL: ep.playURL)
-        }
+        return slice
     }
 }

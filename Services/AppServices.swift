@@ -35,7 +35,7 @@ final class AppServices {
         )
         self.aniSkipService = AniSkipService()
         self.trendingService = TrendingService(cacheStore: cacheStore)
-        self.ratingService = RatingService(cacheStore: cacheStore)
+        self.ratingService = RatingService(cacheStore: cacheStore, tmdbMatcher: tmdbMatchingService)
         self.downloadManager = DownloadManager.shared
         self.libraryStore = MediaTracker()
         self.episodeService = EpisodeService()

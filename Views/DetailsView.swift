@@ -361,7 +361,12 @@ struct DetailsView: View {
                 episodeMetadata = meta
             }
             Task { @MainActor in
-                let ratings = await appState.services.ratingService.ratingsForSeason(media: media, seasonNumber: 1)
+                let firstEpisodeNumber = result.episodes.map(\.number).min()
+                let ratings = await appState.services.ratingService.ratingsForSeason(
+                    media: media,
+                    seasonNumber: 1,
+                    firstEpisodeNumber: firstEpisodeNumber
+                )
                 episodeRatings = ratings
             }
             Task { @MainActor in
