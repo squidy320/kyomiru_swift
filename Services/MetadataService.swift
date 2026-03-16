@@ -463,7 +463,7 @@ final class EpisodeMetadataService {
             let desiredCount = episodes.isEmpty ? (media.episodes ?? 0) : episodes.count
             let maxEpisodeNumber = episodes.map(\.number).max() ?? 0
             let preferredSeason = TitleMatcher.extractSeasonNumber(from: media.title.best)
-            let (primary, seasonNumber) = await fetchFromTMDB(
+            let (primary, seasonNumber, accepted, rejectReason) = await fetchFromTMDB(
                 media: media,
                 preferredSeason: preferredSeason,
                 desiredCount: desiredCount,
@@ -472,13 +472,21 @@ final class EpisodeMetadataService {
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
             let cacheKey = "episode-meta:tmdb:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)"
-            if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
+            if accepted, let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
             }
-            mapped = primary.isEmpty ? await fetchFromKitsu(media: media) : primary
-            if let data = try? JSONEncoder().encode(mapped) {
-                cacheStore.writeJSON(data, forKey: cacheKey)
+            if accepted, !primary.isEmpty {
+                mapped = primary
+                if let data = try? JSONEncoder().encode(mapped) {
+                    cacheStore.writeJSON(data, forKey: cacheKey)
+                }
+            } else {
+                if let reason = rejectReason {
+                    AppLog.debug(.matching, "tmdb season rejected mediaId=\(media.id) reason=\(reason)")
+                }
+                let aniList = await fetchFromAniListStreaming(media: media)
+                mapped = aniList.isEmpty ? await fetchFromKitsu(media: media) : aniList
             }
         }
         return mapped
@@ -489,6 +497,34 @@ final class EpisodeMetadataService {
         let animeId = await resolveKitsuAnimeId(malId: media.idMal, title: title)
         guard let animeId else { return [:] }
         return await fetchKitsuEpisodes(animeId: animeId)
+    }
+
+    private func fetchFromAniListStreaming(media: AniListMedia) async -> [Int: EpisodeMetadata] {
+        let cacheKey = "episode-meta:anilist:\(media.id)"
+        if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 6),
+           let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
+            return decoded
+        }
+        guard let episodes = try? await aniListClient.streamingEpisodes(mediaId: media.id) else {
+            return [:]
+        }
+        var result: [Int: EpisodeMetadata] = [:]
+        for episode in episodes {
+            guard let number = episode.episodeNumber, number > 0 else { continue }
+            let meta = EpisodeMetadata(
+                number: number,
+                title: episode.title,
+                summary: nil,
+                airDate: nil,
+                runtimeMinutes: nil,
+                thumbnailURL: episode.thumbnailURL
+            )
+            result[number] = meta
+        }
+        if let data = try? JSONEncoder().encode(result) {
+            cacheStore.writeJSON(data, forKey: cacheKey)
+        }
+        return result
     }
 
     private func resolveKitsuAnimeId(malId: Int?, title: String) async -> String? {
@@ -557,14 +593,16 @@ final class EpisodeMetadataService {
         preferredSeason: Int?,
         desiredCount: Int,
         maxEpisodeNumber: Int
-    ) async -> ([Int: EpisodeMetadata], Int) {
-        guard let tmdbKey, !tmdbKey.isEmpty, tmdbKey != "CHANGE_ME" else { return ([:], preferredSeason ?? 1) }
+    ) async -> ([Int: EpisodeMetadata], Int, Bool, String?) {
+        guard let tmdbKey, !tmdbKey.isEmpty, tmdbKey != "CHANGE_ME" else {
+            return ([:], preferredSeason ?? 1, false, "missing-key")
+        }
         let title = media.title.english ?? media.title.romaji ?? media.title.native ?? media.title.best
         guard let showId = await resolveTMDBShowId(media: media, title: title) else {
-            return ([:], preferredSeason ?? 1)
+            return ([:], preferredSeason ?? 1, false, "show-id-missing")
         }
         guard let showDetails = await fetchTMDBShowDetails(showId: showId) else {
-            return ([:], preferredSeason ?? 1)
+            return ([:], preferredSeason ?? 1, false, "show-details-missing")
         }
 
         let relationContext = await buildRelationContext(
@@ -574,7 +612,7 @@ final class EpisodeMetadataService {
             desiredCount: desiredCount
         )
         let relationSeason = relationContext?.seasonIndex
-        let seasonNumber = selectTMDBSeason(
+        let selection = selectTMDBSeason(
             showDetails: showDetails,
             media: media,
             preferredSeason: preferredSeason,
@@ -582,8 +620,11 @@ final class EpisodeMetadataService {
             maxEpisodeNumber: maxEpisodeNumber,
             relationSeason: relationSeason
         )
-        let data = await fetchTMDBSeason(showId: showId, seasonNumber: seasonNumber)
-        return (data, seasonNumber)
+        guard selection.accepted else {
+            return ([:], selection.seasonNumber, false, selection.rejectReason)
+        }
+        let data = await fetchTMDBSeason(showId: showId, seasonNumber: selection.seasonNumber)
+        return (data, selection.seasonNumber, !data.isEmpty, data.isEmpty ? "empty-season" : nil)
     }
 
     private func resolveTMDBShowId(media: AniListMedia, title: String) async -> Int? {
@@ -664,10 +705,14 @@ final class EpisodeMetadataService {
         desiredCount: Int,
         maxEpisodeNumber: Int,
         relationSeason: Int?
-    ) -> Int {
-        let candidates = showDetails.seasons.filter { $0.seasonNumber > 0 }
+    ) -> SeasonSelectionResult {
+        var candidates = showDetails.seasons.filter { $0.seasonNumber > 0 }
         if candidates.isEmpty {
-            return relationSeason ?? preferredSeason ?? 1
+            return SeasonSelectionResult(
+                seasonNumber: relationSeason ?? preferredSeason ?? 1,
+                accepted: false,
+                rejectReason: "no-seasons"
+            )
         }
 
         let title = media.title.best
@@ -680,6 +725,13 @@ final class EpisodeMetadataService {
         let titleLower = title.lowercased()
         let wantsFinal = titleLower.contains("final")
         let wantsPart = titleLower.contains("part")
+        let wantsCour = titleLower.contains("cour")
+
+        let normalizedTitle = TitleMatcher.cleanTitle(title)
+        let isTunedTitle = normalizedTitle.contains("attack on titan")
+            || normalizedTitle.contains("demon slayer")
+            || normalizedTitle.contains("fire force")
+            || normalizedTitle.contains("fruits basket")
 
         var rangeMatchSeason: Int?
         var ranges: [(season: Int, start: Int, end: Int)] = []
@@ -708,8 +760,28 @@ final class EpisodeMetadataService {
             "tmdb season global-numbering mediaId=\(media.id) maxEp=\(maxEpisode) desired=\(desired) detected=\(globalNumbering)"
         )
 
-        var best: (season: SeasonInfo, score: Double)?
+        if let relationSeason {
+            let aligned = candidates.filter { $0.seasonNumber == relationSeason }
+            if aligned.isEmpty {
+                return SeasonSelectionResult(
+                    seasonNumber: relationSeason,
+                    accepted: false,
+                    rejectReason: "relation-mismatch"
+                )
+            }
+            candidates = aligned
+        }
+
+        var best: (season: SeasonInfo, score: Double, confidence: Double, rejectReason: String?)?
         for season in candidates {
+            let countMismatch: Bool
+            if desired > 0 {
+                let delta = Double(abs(season.episodeCount - desired))
+                let ratio = delta / Double(max(desired, 1))
+                countMismatch = ratio > 0.4
+            } else {
+                countMismatch = false
+            }
             let epScore: Double
             if desired > 0 {
                 let delta = abs(season.episodeCount - desired)
@@ -738,6 +810,7 @@ final class EpisodeMetadataService {
             let seasonLower = (season.name ?? "").lowercased()
             if wantsFinal, seasonLower.contains("final") { markerScore += 0.2 }
             if wantsPart, seasonLower.contains("part") { markerScore += 0.2 }
+            if wantsCour, seasonLower.contains("cour") { markerScore += 0.2 }
             if let rangeMatchSeason, rangeMatchSeason == season.seasonNumber {
                 markerScore += 0.6
             }
@@ -745,22 +818,58 @@ final class EpisodeMetadataService {
                 markerScore += 1.2
             }
 
+            let markerConflict =
+                (wantsFinal && !seasonLower.contains("final"))
+                || (wantsPart && !seasonLower.contains("part"))
+                || (wantsCour && !seasonLower.contains("cour"))
+
+            let titleWeight = isTunedTitle ? 0.25 : 0.35
+            let yearWeight = isTunedTitle ? 0.3 : 0.2
+            let epWeight = 0.25
+            let relationWeight = 0.1
+            let rangeWeight = 0.1
+
+            let relationScore = relationSeason == season.seasonNumber ? 1.0 : 0.0
+            let rangeScore = rangeMatchSeason == season.seasonNumber ? 1.0 : 0.0
+            var confidence = (titleWeight * titleScore)
+                + (epWeight * epScore)
+                + (yearWeight * yearScore)
+                + (relationWeight * relationScore)
+                + (rangeWeight * rangeScore)
+            confidence = min(max(confidence, 0.0), 1.0)
+
             let score = (0.45 * epScore) + (0.25 * yearScore) + (0.2 * titleScore) + markerScore
             AppLog.debug(
                 .network,
                 "tmdb season score mediaId=\(media.id) season=\(season.seasonNumber) ep=\(season.episodeCount) year=\(season.airYear ?? 0) epScore=\(String(format: "%.2f", epScore)) yearScore=\(String(format: "%.2f", yearScore)) titleScore=\(String(format: "%.2f", titleScore)) marker=\(String(format: "%.2f", markerScore)) total=\(String(format: "%.2f", score))"
             )
+            let rejectReason: String?
+            if countMismatch {
+                rejectReason = "count-mismatch"
+            } else if markerConflict {
+                rejectReason = "marker-conflict"
+            } else {
+                rejectReason = nil
+            }
             if best == nil || score > best!.score {
-                best = (season, score)
+                best = (season, score, confidence, rejectReason)
             }
         }
 
         let chosen = best?.season.seasonNumber ?? relationSeason ?? preferredSeason ?? 1
+        let confidence = best?.confidence ?? 0.0
+        let strictThreshold = 0.72
+        let accepted = confidence >= strictThreshold && (best?.rejectReason == nil)
+        let rejectReason = accepted ? nil : (best?.rejectReason ?? "low-confidence")
         AppLog.debug(
             .network,
-            "tmdb season select mediaId=\(media.id) chosen=\(chosen) preferred=\(preferredSeason ?? 0) relation=\(relationSeason ?? 0) desired=\(desiredCount)"
+            "tmdb season select mediaId=\(media.id) chosen=\(chosen) preferred=\(preferredSeason ?? 0) relation=\(relationSeason ?? 0) desired=\(desiredCount) confidence=\(String(format: "%.2f", confidence)) accepted=\(accepted)"
         )
-        return chosen
+        return SeasonSelectionResult(
+            seasonNumber: chosen,
+            accepted: accepted,
+            rejectReason: rejectReason
+        )
     }
 
     private func fetchTMDBSeason(showId: Int, seasonNumber: Int) async -> [Int: EpisodeMetadata] {
@@ -1071,6 +1180,12 @@ private struct RelationContext {
     let base: AniListMedia
     let chain: [AniListMedia]
     let seasonIndex: Int?
+}
+
+private struct SeasonSelectionResult {
+    let seasonNumber: Int
+    let accepted: Bool
+    let rejectReason: String?
 }
 
 private struct OmdbSearchResponse: Decodable {
