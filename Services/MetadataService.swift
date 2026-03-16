@@ -305,6 +305,24 @@ final class TrendingService {
         }
     }
 
+    func fetchRandomDiscoverAnime(minVoteCount: Int = 50) async -> TrendingItem? {
+        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
+            AppLog.error(.network, "tmdb api key missing")
+            return nil
+        }
+
+        let totalPages = await fetchDiscoverTotalPages(apiKey: apiKey, minVoteCount: minVoteCount)
+        guard totalPages > 0 else { return nil }
+        let cappedPages = min(totalPages, 500)
+        let randomPage = Int.random(in: 1...cappedPages)
+        guard let item = await fetchDiscoverPage(apiKey: apiKey, page: randomPage, minVoteCount: minVoteCount)?.randomElement() else {
+            return nil
+        }
+        let imdbId = await fetchImdbId(tvId: item.id, apiKey: apiKey)
+        let logo = await fetchBestLogo(tvId: item.id, apiKey: apiKey)
+        return TrendingItem(id: item.id, title: item.title, backdropURL: item.backdropURL, logoURL: logo, imdbId: imdbId)
+    }
+
     private func fetchImdbId(tvId: Int, apiKey: String) async -> String? {
         guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(tvId)/external_ids?api_key=\(apiKey)") else {
             return nil
@@ -350,6 +368,56 @@ final class TrendingService {
             return nil
         }
         return nil
+    }
+
+    private func fetchDiscoverTotalPages(apiKey: String, minVoteCount: Int) async -> Int {
+        var components = URLComponents(string: "https://api.themoviedb.org/3/discover/tv")!
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "with_genres", value: "16"),
+            URLQueryItem(name: "with_original_language", value: "ja"),
+            URLQueryItem(name: "vote_count.gte", value: String(minVoteCount))
+        ]
+        guard let url = components.url else { return 0 }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return 0
+            }
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            return root?["total_pages"] as? Int ?? 0
+        } catch {
+            return 0
+        }
+    }
+
+    private func fetchDiscoverPage(apiKey: String, page: Int, minVoteCount: Int) async -> [TrendingItem]? {
+        var components = URLComponents(string: "https://api.themoviedb.org/3/discover/tv")!
+        components.queryItems = [
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "with_genres", value: "16"),
+            URLQueryItem(name: "with_original_language", value: "ja"),
+            URLQueryItem(name: "vote_count.gte", value: String(minVoteCount)),
+            URLQueryItem(name: "page", value: String(page))
+        ]
+        guard let url = components.url else { return nil }
+        do {
+            let (data, response) = try await session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                return nil
+            }
+            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let results = root?["results"] as? [[String: Any]] ?? []
+            let items: [TrendingItem] = results.compactMap { row in
+                guard let id = row["id"] as? Int else { return nil }
+                let name = row["name"] as? String ?? row["original_name"] as? String ?? "Unknown"
+                let backdrop = (row["backdrop_path"] as? String).flatMap { URL(string: "\(imageBase)\($0)") }
+                return TrendingItem(id: id, title: name, backdropURL: backdrop, logoURL: nil, imdbId: nil)
+            }
+            return items
+        } catch {
+            return nil
+        }
     }
 }
 

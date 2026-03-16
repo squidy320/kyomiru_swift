@@ -80,6 +80,7 @@ struct DiscoveryView: View {
                             }
                         }
                         .padding(.horizontal, UIConstants.standardPadding)
+                        .padding(.top, -8)
                     }
                     .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
@@ -176,6 +177,13 @@ struct DiscoveryView: View {
                     colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
+                )
+                .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
 
@@ -373,6 +381,14 @@ private extension DiscoveryView {
     func loadImdbTrending() async {
         await MainActor.run {
             isLoadingImdbTrending = true
+        }
+        if heroTrending == nil {
+            let randomHero = await appState.services.trendingService.fetchRandomDiscoverAnime(minVoteCount: 50)
+            await MainActor.run {
+                if let randomHero {
+                    heroTrending = randomHero
+                }
+            }
         }
         let items = await appState.services.trendingService.fetchTrending()
         await MainActor.run {
