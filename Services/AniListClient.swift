@@ -728,6 +728,7 @@ actor RequestGate {
 
     func release() {
         if !waiters.isEmpty {
+            current = max(0, current - 1)
             let next = waiters.removeFirst()
             next.resume()
         } else {
