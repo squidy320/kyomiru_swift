@@ -26,6 +26,7 @@
 		E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */; };
         01A2B3C4D5E6F708192A3B4C /* OfflineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */; };
         12B3C4D5E6F708192A3B4C5D /* MetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */; };
+        B3C4D5E6F708192A3B4C5D6F /* TMDBMatchingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3C4D5E6F708192A3B4C5D6F /* TMDBMatchingService.swift */; };
         AC09AF4D919E41E280CE52B0 /* EpisodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DBC32B3E0EE435FB94C4CA7 /* EpisodeService.swift */; };
         0CE0DC714378445E8D425F8B /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25A95FA1C7124A04B870C47B /* KeychainService.swift */; };
         8A78EA4EE58E445BB261744F /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9123772BA7C647A89887E9E2 /* Logging.swift */; };
@@ -91,6 +92,7 @@
 		F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackEngine.swift; sourceTree = "<group>"; };
         0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineManager.swift; sourceTree = "<group>"; };
         1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataService.swift; sourceTree = "<group>"; };
+        A3C4D5E6F708192A3B4C5D6F /* TMDBMatchingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TMDBMatchingService.swift; sourceTree = "<group>"; };
         3DBC32B3E0EE435FB94C4CA7 /* EpisodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeService.swift; sourceTree = "<group>"; };
         25A95FA1C7124A04B870C47B /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
         9123772BA7C647A89887E9E2 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
@@ -192,6 +194,7 @@
                 F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */,
                 0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */,
                 1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */,
+                A3C4D5E6F708192A3B4C5D6F /* TMDBMatchingService.swift */,
                 3DBC32B3E0EE435FB94C4CA7 /* EpisodeService.swift */,
                 25A95FA1C7124A04B870C47B /* KeychainService.swift */,
                 9123772BA7C647A89887E9E2 /* Logging.swift */,
@@ -359,9 +362,10 @@
 				1C8D9E8A5B544EAA8D7083E1 /* MPVSupport.swift in Sources */,
 				8E7C6B5A4D3C2B1A0F9E8D7C /* MPVPlayer.swift in Sources */,
 				B6D7E8F9A0B1C2D3E4F50617 /* PlaybackService.swift in Sources */,
-				E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */,
+                E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */,
                 01A2B3C4D5E6F708192A3B4C /* OfflineManager.swift in Sources */,
                 12B3C4D5E6F708192A3B4C5D /* MetadataService.swift in Sources */,
+                B3C4D5E6F708192A3B4C5D6F /* TMDBMatchingService.swift in Sources */,
                 AC09AF4D919E41E280CE52B0 /* EpisodeService.swift in Sources */,
                 0CE0DC714378445E8D425F8B /* KeychainService.swift in Sources */,
                 8A78EA4EE58E445BB261744F /* Logging.swift in Sources */,
