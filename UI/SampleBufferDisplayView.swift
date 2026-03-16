@@ -12,7 +12,7 @@ import AppKit
 typealias PlatformView = NSView
 #endif
 
-final class SampleBufferDisplayView: PlatformView {
+class SampleBufferDisplayView: PlatformView {
     private(set) var displayLayer: AVSampleBufferDisplayLayer
 
 #if os(iOS)

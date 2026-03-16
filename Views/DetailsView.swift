@@ -420,15 +420,15 @@ struct DetailsView: View {
                     return
                 }
                 async let sourceTask = appState.services.episodeService.loadSources(for: episode)
-                async let skipTask: Void = {
-                    guard let malId = media.idMal else { return }
-                    let segments = await appState.services.aniSkipService.fetchSkipSegments(malId: malId, episode: episode.number)
-                    if !segments.isEmpty {
-                        appState.services.downloadManager.storeSkipSegments(segments, malId: malId, episode: episode.number)
-                    }
+                async let skipSegmentsTask: [AniSkipSegment] = {
+                    guard let malId = media.idMal else { return [] }
+                    return await appState.services.aniSkipService.fetchSkipSegments(malId: malId, episode: episode.number)
                 }()
                 sources = try await sourceTask
-                _ = await skipTask
+                let skipSegments = await skipSegmentsTask
+                if !skipSegments.isEmpty, let malId = media.idMal {
+                    appState.services.downloadManager.storeSkipSegments(skipSegments, malId: malId, episode: episode.number)
+                }
                 if sources.isEmpty {
                     errorMessage = "No streams available."
                 } else {
