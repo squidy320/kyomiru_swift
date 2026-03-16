@@ -60,11 +60,11 @@ struct DiscoveryView: View {
                                                     } label: {
                                                         MediaPosterCard(
                                                             title: media.title.best,
-                                                            subtitle: "New release",
+                                                            subtitle: nil,
                                                             imageURL: media.coverURL,
                                                             media: media,
                                                             score: media.averageScore,
-                                                            isWatched: isWatched(media)
+                                                            statusBadge: statusBadge(for: media)
                                                         )
                                                         .frame(width: UIConstants.posterCardWidth)
                                                     }
@@ -94,6 +94,7 @@ struct DiscoveryView: View {
         }
         .task {
             AppLog.debug(.ui, "discovery view load")
+            await appState.bootstrap()
             if sections.isEmpty,
                let cached = appState.services.aniListClient.cachedDiscoverySectionsSnapshot() {
                 sections = cached
@@ -305,7 +306,7 @@ struct DiscoveryView: View {
                             imageURL: media.coverURL,
                             media: media,
                             score: media.averageScore,
-                            isWatched: isWatched(media)
+                            statusBadge: statusBadge(for: media)
                         )
                         .frame(width: UIConstants.posterCardWidth)
                     }
@@ -375,11 +376,9 @@ private extension DiscoveryView {
         AppLog.debug(.network, "discovery load complete sections=\(sections.count)")
     }
 
-    func isWatched(_ media: AniListMedia) -> Bool {
-        guard let item = appState.services.libraryStore.item(forExternalId: media.id) else { return false }
-        if item.status == .completed { return true }
-        if let total = media.episodes, total > 0, item.currentEpisode >= total { return true }
-        return false
+    func statusBadge(for media: AniListMedia) -> String? {
+        guard let item = appState.services.libraryStore.item(forExternalId: media.id) else { return nil }
+        return item.status.badgeTitle
     }
 
     func loadImdbTrending() async {

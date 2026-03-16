@@ -6,7 +6,7 @@ struct MediaPosterCard: View {
     let imageURL: URL?
     let media: AniListMedia?
     let score: Int?
-    let isWatched: Bool
+    let statusBadge: String?
     @EnvironmentObject private var appState: AppState
     @State private var imdbPosterURL: URL?
 
@@ -52,8 +52,8 @@ struct MediaPosterCard: View {
             RatingBadge(score: score)
                 .padding(UIConstants.mediumPadding)
 
-            if isWatched {
-                Text("Watched")
+            if let statusBadge {
+                Text(statusBadge)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 8)

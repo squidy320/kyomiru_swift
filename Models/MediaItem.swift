@@ -59,3 +59,35 @@ enum MediaStatus: String, CaseIterable, Hashable {
     case paused
     case dropped
 }
+
+extension MediaStatus {
+    static func fromSectionTitle(_ title: String) -> MediaStatus {
+        let lower = title.lowercased()
+        if lower.contains("watching") || lower.contains("current") {
+            return .watching
+        }
+        if lower.contains("planning") {
+            return .planning
+        }
+        if lower.contains("completed") {
+            return .completed
+        }
+        if lower.contains("paused") {
+            return .paused
+        }
+        if lower.contains("dropped") {
+            return .dropped
+        }
+        return .planning
+    }
+
+    var badgeTitle: String {
+        switch self {
+        case .watching: return "Watching"
+        case .planning: return "Planning"
+        case .completed: return "Watched"
+        case .paused: return "Paused"
+        case .dropped: return "Dropped"
+        }
+    }
+}

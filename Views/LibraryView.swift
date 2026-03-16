@@ -238,48 +238,11 @@ struct LibraryView: View {
 
     private func applyLibrarySections(_ items: [AniListLibrarySection]) {
         sections = items
-        let mediaItems = items.flatMap { section -> [MediaItem] in
-            let status = statusForSection(section.title)
-            return section.items.map { entry in
-                MediaItem(
-                    externalId: entry.media.id,
-                    title: entry.media.title.best,
-                    subtitle: entry.media.format,
-                    posterImageURL: entry.media.coverURL,
-                    heroImageURL: entry.media.bannerURL ?? entry.media.coverURL,
-                    ratingScore: entry.media.averageScore,
-                    matchPercent: entry.media.averageScore,
-                    contentRating: entry.media.isAdult ? "TV-MA" : "TV-14",
-                    genres: entry.media.genres,
-                    totalEpisodes: entry.media.episodes,
-                    currentEpisode: entry.progress,
-                    userRating: entry.media.averageScore ?? 0,
-                    studio: entry.media.studios.first,
-                    status: status
-                )
-            }
-        }
-        appState.services.libraryStore.setItems(mediaItems)
+        appState.updateLibraryStore(with: items)
     }
 
     private func statusForSection(_ title: String) -> MediaStatus {
-        let lower = title.lowercased()
-        if lower.contains("watching") || lower.contains("current") {
-            return .watching
-        }
-        if lower.contains("planning") {
-            return .planning
-        }
-        if lower.contains("completed") {
-            return .completed
-        }
-        if lower.contains("paused") {
-            return .paused
-        }
-        if lower.contains("dropped") {
-            return .dropped
-        }
-        return .planning
+        MediaStatus.fromSectionTitle(title)
     }
 
     private func formatRemaining(_ seconds: TimeInterval) -> String {
@@ -375,7 +338,7 @@ private struct LibrarySection: View {
                                     imageURL: entry.media.coverURL,
                                     media: entry.media,
                                     score: entry.media.averageScore,
-                                    isWatched: isWatched(entry.media)
+                                    statusBadge: nil
                                 )
                                 .frame(width: UIConstants.posterCardWidth)
                             }
@@ -391,12 +354,6 @@ private struct LibrarySection: View {
         .padding(.bottom, UIConstants.microPadding)
     }
 
-    private func isWatched(_ media: AniListMedia) -> Bool {
-        guard let item = appState.services.libraryStore.item(forExternalId: media.id) else { return false }
-        if item.status == .completed { return true }
-        if let total = media.episodes, total > 0, item.currentEpisode >= total { return true }
-        return false
-    }
 }
 
 private struct ContinueItem: Identifiable {
