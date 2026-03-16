@@ -77,6 +77,15 @@ struct AlertsView: View {
             await appState.bootstrap()
             await loadNotifications()
         }
+        .onChange(of: appState.authState.token) { _, newToken in
+            if newToken == nil {
+                notifications = []
+                return
+            }
+            Task {
+                await loadNotifications()
+            }
+        }
     }
 
     private var tabBarInset: CGFloat {

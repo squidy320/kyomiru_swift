@@ -144,6 +144,16 @@ struct LibraryView: View {
             }
             await loadLibrary()
         }
+        .onChange(of: appState.authState.token) { _, newToken in
+            if newToken == nil {
+                sections = []
+                availabilityById = [:]
+                return
+            }
+            Task {
+                await loadLibrary()
+            }
+        }
     }
 
     private func filteredSections() -> [AniListLibrarySection] {
