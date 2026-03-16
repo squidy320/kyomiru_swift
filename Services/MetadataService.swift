@@ -760,16 +760,14 @@ final class EpisodeMetadataService {
             "tmdb season global-numbering mediaId=\(media.id) maxEp=\(maxEpisode) desired=\(desired) detected=\(globalNumbering)"
         )
 
+        var relationAligned = true
         if let relationSeason {
             let aligned = candidates.filter { $0.seasonNumber == relationSeason }
             if aligned.isEmpty {
-                return SeasonSelectionResult(
-                    seasonNumber: relationSeason,
-                    accepted: false,
-                    rejectReason: "relation-mismatch"
-                )
+                relationAligned = false
+            } else {
+                candidates = aligned
             }
-            candidates = aligned
         }
 
         var best: (season: SeasonInfo, score: Double, confidence: Double, rejectReason: String?)?
@@ -859,8 +857,24 @@ final class EpisodeMetadataService {
         let chosen = best?.season.seasonNumber ?? relationSeason ?? preferredSeason ?? 1
         let confidence = best?.confidence ?? 0.0
         let strictThreshold = 0.72
-        let accepted = confidence >= strictThreshold && (best?.rejectReason == nil)
-        let rejectReason = accepted ? nil : (best?.rejectReason ?? "low-confidence")
+        let overrideThreshold = 0.85
+        let hasHardReject = best?.rejectReason != nil
+        let accepted: Bool
+        let rejectReason: String?
+        if !relationAligned {
+            if confidence >= overrideThreshold && !hasHardReject {
+                accepted = true
+                rejectReason = nil
+                AppLog.debug(.matching, "tmdb season override accept mediaId=\(media.id) confidence=\(String(format: \"%.2f\", confidence)) relationAligned=false")
+            } else {
+                accepted = false
+                rejectReason = "relation-mismatch"
+                AppLog.debug(.matching, "tmdb season override reject mediaId=\(media.id) confidence=\(String(format: \"%.2f\", confidence)) relationAligned=false")
+            }
+        } else {
+            accepted = confidence >= strictThreshold && !hasHardReject
+            rejectReason = accepted ? nil : (best?.rejectReason ?? "low-confidence")
+        }
         AppLog.debug(
             .network,
             "tmdb season select mediaId=\(media.id) chosen=\(chosen) preferred=\(preferredSeason ?? 0) relation=\(relationSeason ?? 0) desired=\(desiredCount) confidence=\(String(format: "%.2f", confidence)) accepted=\(accepted)"
