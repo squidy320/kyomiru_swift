@@ -431,18 +431,21 @@ final class EpisodeMetadataService {
     private let cacheStore: CacheStore
     private let provider: Provider
     private let aniListClient: AniListClient
+    private let tmdbMatcher: TMDBMatchingService
     private let tmdbKey: String?
 
     init(
         cacheStore: CacheStore,
         aniListClient: AniListClient,
         provider: Provider = .kitsu,
-        session: URLSession = .custom
+        session: URLSession = .custom,
+        tmdbMatcher: TMDBMatchingService? = nil
     ) {
         self.cacheStore = cacheStore
         self.session = session
         self.provider = provider
         self.aniListClient = aniListClient
+        self.tmdbMatcher = tmdbMatcher ?? TMDBMatchingService(cacheStore: cacheStore, session: session)
         self.tmdbKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
     }
 
@@ -598,6 +601,21 @@ final class EpisodeMetadataService {
             return ([:], preferredSeason ?? 1, false, "missing-key")
         }
         let title = media.title.english ?? media.title.romaji ?? media.title.native ?? media.title.best
+        let relationContext = await buildRelationContext(
+            media: media,
+            tmdbTitle: title,
+            tmdbTotalEpisodes: desiredCount,
+            desiredCount: desiredCount
+        )
+        let franchiseStartYear = relationContext?.chain.compactMap(\.seasonYear).min()
+            ?? media.startDate?.year
+            ?? media.seasonYear
+
+        if let match = await tmdbMatcher.matchShowAndSeason(media: media, franchiseStartYear: franchiseStartYear) {
+            let data = await fetchTMDBSeason(showId: match.showId, seasonNumber: match.seasonNumber)
+            return (data, match.seasonNumber, !data.isEmpty, data.isEmpty ? "empty-season" : nil)
+        }
+
         guard let showId = await resolveTMDBShowId(media: media, title: title) else {
             return ([:], preferredSeason ?? 1, false, "show-id-missing")
         }
@@ -605,12 +623,6 @@ final class EpisodeMetadataService {
             return ([:], preferredSeason ?? 1, false, "show-details-missing")
         }
 
-        let relationContext = await buildRelationContext(
-            media: media,
-            tmdbTitle: showDetails.name ?? title,
-            tmdbTotalEpisodes: showDetails.numberOfEpisodes,
-            desiredCount: desiredCount
-        )
         let relationSeason = relationContext?.seasonIndex
         let selection = selectTMDBSeason(
             showDetails: showDetails,
@@ -1170,13 +1182,16 @@ private struct SeasonInfo {
     let episodeCount: Int
     let airYear: Int?
     let name: String?
+    let airDateString: String?
 
     init?(from dict: [String: Any]) {
         guard let seasonNumber = dict["season_number"] as? Int else { return nil }
         self.seasonNumber = seasonNumber
         self.episodeCount = dict["episode_count"] as? Int ?? 0
         self.name = dict["name"] as? String
-        if let airDate = dict["air_date"] as? String, airDate.count >= 4 {
+        let airDate = dict["air_date"] as? String
+        self.airDateString = airDate
+        if let airDate, airDate.count >= 4 {
             let yearString = String(airDate.prefix(4))
             self.airYear = Int(yearString)
         } else {

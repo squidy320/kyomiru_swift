@@ -11,6 +11,7 @@ final class AppServices {
     let offlineManager: OfflineManager
     let metadataService: MetadataService
     let episodeMetadataService: EpisodeMetadataService
+    let tmdbMatchingService: TMDBMatchingService
     let aniSkipService: AniSkipService
     let trendingService: TrendingService
     let ratingService: RatingService
@@ -25,10 +26,12 @@ final class AppServices {
         self.playbackEngine = PlaybackEngine()
         self.offlineManager = OfflineManager()
         self.metadataService = MetadataService(cacheStore: cacheStore)
+        self.tmdbMatchingService = TMDBMatchingService(cacheStore: cacheStore)
         self.episodeMetadataService = EpisodeMetadataService(
             cacheStore: cacheStore,
             aniListClient: aniListClient,
-            provider: .tmdb
+            provider: .tmdb,
+            tmdbMatcher: tmdbMatchingService
         )
         self.aniSkipService = AniSkipService()
         self.trendingService = TrendingService(cacheStore: cacheStore)

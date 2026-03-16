@@ -72,6 +72,7 @@ final class AniListClient {
               averageScore
               episodes
               seasonYear
+              startDate { year month day }
               format
               status
               isAdult
@@ -112,6 +113,7 @@ final class AniListClient {
               averageScore
               episodes
               seasonYear
+              startDate { year month day }
               format
               status
               isAdult
@@ -129,6 +131,7 @@ final class AniListClient {
               averageScore
               episodes
               seasonYear
+              startDate { year month day }
               format
               status
               isAdult
@@ -208,6 +211,7 @@ final class AniListClient {
                   averageScore
                   episodes
                   seasonYear
+                  startDate { year month day }
                   format
                   status
                   isAdult
@@ -463,6 +467,7 @@ final class AniListClient {
                   averageScore
                   episodes
                   seasonYear
+                  startDate { year month day }
                   format
                   status
                   isAdult
@@ -512,6 +517,7 @@ final class AniListClient {
                 averageScore
                 episodes
                 seasonYear
+                startDate { year month day }
                 format
                 status
                 isAdult
@@ -552,6 +558,7 @@ final class AniListClient {
                   averageScore
                   episodes
                   seasonYear
+                  startDate { year month day }
                   format
                   status
                   isAdult
@@ -707,6 +714,12 @@ final class AniListClient {
         let score = media["averageScore"] as? Int
         let episodes = media["episodes"] as? Int
         let seasonYear = media["seasonYear"] as? Int
+        let startDateMap = media["startDate"] as? [String: Any]
+        let startDate = AniListFuzzyDate(
+            year: startDateMap?["year"] as? Int,
+            month: startDateMap?["month"] as? Int,
+            day: startDateMap?["day"] as? Int
+        )
         let format = media["format"] as? String
         let status = media["status"] as? String
         let isAdult = media["isAdult"] as? Bool ?? false
@@ -722,6 +735,7 @@ final class AniListClient {
             averageScore: score,
             episodes: episodes,
             seasonYear: seasonYear,
+            startDate: startDate,
             format: format,
             status: status,
             isAdult: isAdult,

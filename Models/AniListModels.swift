@@ -26,11 +26,18 @@ struct AniListMedia: Identifiable, Equatable, Hashable {
     let averageScore: Int?
     let episodes: Int?
     let seasonYear: Int?
+    let startDate: AniListFuzzyDate?
     let format: String?
     let status: String?
     let isAdult: Bool
     let genres: [String]
     let studios: [String]
+}
+
+struct AniListFuzzyDate: Equatable, Hashable {
+    let year: Int?
+    let month: Int?
+    let day: Int?
 }
 
 struct AniListLibraryEntry: Identifiable, Equatable {
