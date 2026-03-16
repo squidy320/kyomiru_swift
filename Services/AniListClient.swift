@@ -475,26 +475,64 @@ final class AniListClient {
         }
         """
         let data = try await graphql(query: query, variables: ["id": mediaId])
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let edges = traverse(root, keyPath: ["data", "Media", "relations", "edges"]) as? [[String: Any]] else {
+        if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let edges = traverse(root, keyPath: ["data", "Media", "relations", "edges"]) as? [[String: Any]] {
+            var map: [String: [AniListMedia]] = [:]
+            for edge in edges {
+                guard let relation = edge["relationType"] as? String,
+                      let node = edge["node"] as? [String: Any],
+                      let media = decodeMedia(node) else { continue }
+                map[relation, default: []].append(media)
+            }
+            let sections = map.map { relation, items in
+                AniListRelatedSection(
+                    id: relation.lowercased(),
+                    title: relation.replacingOccurrences(of: "_", with: " ").capitalized,
+                    items: items
+                )
+            }
+            if !sections.isEmpty {
+                AppLog.debug(.network, "related sections request success mediaId=\(mediaId) count=\(sections.count)")
+                return sections
+            }
+        } else {
             AppLog.error(.network, "related sections decode failed mediaId=\(mediaId)")
+        }
+
+        let fallbackQuery = """
+        query RelatedFallback($id: Int) {
+          Media(id: $id, type: ANIME) {
+            relations {
+              nodes {
+                id
+                idMal
+                title { romaji english native }
+                coverImage { extraLarge large }
+                bannerImage
+                averageScore
+                episodes
+                seasonYear
+                format
+                status
+                isAdult
+                genres
+                studios(isMain: true) { nodes { name } }
+              }
+            }
+          }
+        }
+        """
+        let fallbackData = try await graphql(query: fallbackQuery, variables: ["id": mediaId])
+        guard let fallbackRoot = try? JSONSerialization.jsonObject(with: fallbackData) as? [String: Any],
+              let nodes = traverse(fallbackRoot, keyPath: ["data", "Media", "relations", "nodes"]) as? [[String: Any]] else {
+            AppLog.error(.network, "related sections fallback decode failed mediaId=\(mediaId)")
             return []
         }
-        var map: [String: [AniListMedia]] = [:]
-        for edge in edges {
-            guard let relation = edge["relationType"] as? String,
-                  let node = edge["node"] as? [String: Any],
-                  let media = decodeMedia(node) else { continue }
-            map[relation, default: []].append(media)
-        }
-        let sections = map.map { relation, items in
-            AniListRelatedSection(
-                id: relation.lowercased(),
-                title: relation.replacingOccurrences(of: "_", with: " ").capitalized,
-                items: items
-            )
-        }
-        AppLog.debug(.network, "related sections request success mediaId=\(mediaId) count=\(sections.count)")
+        let items = nodes.compactMap { decodeMedia($0) }
+        let sections = items.isEmpty ? [] : [
+            AniListRelatedSection(id: "related", title: "Related", items: items)
+        ]
+        AppLog.debug(.network, "related sections fallback success mediaId=\(mediaId) count=\(sections.count)")
         return sections
     }
 
