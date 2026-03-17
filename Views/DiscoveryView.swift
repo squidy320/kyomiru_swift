@@ -51,9 +51,24 @@ struct DiscoveryView: View {
                             } else {
                                 ForEach(sections) { section in
                                     VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                                        Text(section.title)
-                                            .font(.system(size: 18, weight: .bold))
-                                            .foregroundColor(.white)
+                                        HStack {
+                                            Text(section.title)
+                                                .font(.system(size: 18, weight: .bold))
+                                                .foregroundColor(.white)
+                                            Spacer()
+                                            NavigationLink {
+                                                DiscoverySectionView(
+                                                    sectionId: section.id,
+                                                    title: section.title,
+                                                    sort: discoverySort()
+                                                )
+                                            } label: {
+                                                Text("Show More")
+                                                    .font(.system(size: 12, weight: .semibold))
+                                                    .foregroundColor(Theme.textSecondary)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
                                         ScrollView(.horizontal, showsIndicators: false) {
                                             LazyHStack(spacing: UIConstants.interCardSpacing) {
                                                 ForEach(section.items, id: \.id) { media in
@@ -555,6 +570,108 @@ private struct CinematicTrendingCard: View {
             .padding(12)
         }
         .frame(width: UIConstants.continueCardWidth, height: UIConstants.continueCardHeight * 1.3)
+    }
+}
+
+private struct DiscoverySectionView: View {
+    let sectionId: String
+    let title: String
+    let sort: String
+    @EnvironmentObject private var appState: AppState
+    @State private var items: [AniListMedia] = []
+    @State private var page = 1
+    @State private var isLoading = false
+    @State private var hasMore = true
+    @State private var errorMessage: String?
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                if let errorMessage {
+                    GlassCard {
+                        Text(errorMessage)
+                            .foregroundColor(Theme.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                LazyVGrid(columns: gridColumns, spacing: UIConstants.interCardSpacing) {
+                    ForEach(items, id: \.id) { media in
+                        NavigationLink {
+                            DetailsView(media: media)
+                        } label: {
+                            MediaPosterCard(
+                                title: media.title.best,
+                                subtitle: nil,
+                                imageURL: media.coverURL,
+                                media: media,
+                                score: media.averageScore,
+                                statusBadge: statusBadge(for: media),
+                                cornerBadge: nil
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .onAppear {
+                            if media.id == items.last?.id {
+                                Task { await loadMoreIfNeeded() }
+                            }
+                        }
+                    }
+                }
+                if isLoading {
+                    ProgressView("Loading...")
+                        .tint(.white)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, UIConstants.smallPadding)
+                }
+            }
+            .padding(UIConstants.standardPadding)
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await loadMoreIfNeeded(reset: true)
+        }
+    }
+
+    private var gridColumns: [GridItem] {
+        let count = isPad ? 5 : 2
+        return Array(repeating: GridItem(.flexible(), spacing: UIConstants.interCardSpacing), count: count)
+    }
+
+    private func statusBadge(for media: AniListMedia) -> String? {
+        guard let item = appState.services.libraryStore.item(forExternalId: media.id) else { return nil }
+        return item.status.badgeTitle
+    }
+
+    private func loadMoreIfNeeded(reset: Bool = false) async {
+        if reset {
+            items = []
+            page = 1
+            hasMore = true
+            errorMessage = nil
+        }
+        guard !isLoading, hasMore else { return }
+        isLoading = true
+        do {
+            let results = try await appState.services.aniListClient.discoverySectionItems(
+                sectionId: sectionId,
+                sort: sort,
+                page: page,
+                perPage: 30
+            )
+            if results.isEmpty {
+                hasMore = false
+            } else {
+                items.append(contentsOf: results)
+                page += 1
+            }
+        } catch {
+            hasMore = false
+            errorMessage = "Failed to load more."
+            AppLog.error(.network, "discovery section load failed id=\(sectionId) \(error.localizedDescription)")
+        }
+        isLoading = false
     }
 }
 

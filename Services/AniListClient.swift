@@ -119,13 +119,13 @@ func discoverySections(sort: String) async throws -> [AniListDiscoverySection] {
           genres
           studios(isMain: true) { nodes { name } }
     """
-    let baseQuery = """
-    query DiscoveryBase($sort: [MediaSort]) {
-      trending: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, isAdult: false) { \(mediaFields) } }
-      topRated: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, isAdult: false) { \(mediaFields) } }
-      hotNow: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, isAdult: false) { \(mediaFields) } }
-    }
-    """
+        let baseQuery = """
+        query DiscoveryBase {
+          trending: Page(page: 1, perPage: 12) { media(type: ANIME, sort: TRENDING_DESC, isAdult: false) { \(mediaFields) } }
+          topRated: Page(page: 1, perPage: 12) { media(type: ANIME, sort: SCORE_DESC, isAdult: false) { \(mediaFields) } }
+          hotNow: Page(page: 1, perPage: 12) { media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) { \(mediaFields) } }
+        }
+        """
     let genreQueryA = """
     query DiscoveryGenresA($sort: [MediaSort]) {
       action: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Action"], isAdult: false) { \(mediaFields) } }
@@ -198,13 +198,13 @@ func discoverySections(sort: String) async throws -> [AniListDiscoverySection] {
     ]
 
     var sections: [AniListDiscoverySection] = []
-    sections += try await loadDiscoveryBatch(
-        sort: sort,
-        batch: "base",
-        query: baseQuery,
-        variables: ["sort": [sort]],
-        sectionDefs: baseSections
-    )
+        sections += try await loadDiscoveryBatch(
+            sort: sort,
+            batch: "base",
+            query: baseQuery,
+            variables: [:],
+            sectionDefs: baseSections
+        )
     sections += try await loadDiscoveryBatch(
         sort: sort,
         batch: "genresA",
@@ -319,6 +319,39 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         return titleResults.first
     }
 
+    func discoverySectionItems(
+        sectionId: String,
+        sort: String,
+        page: Int,
+        perPage: Int = 30
+    ) async throws -> [AniListMedia] {
+        let (sortValue, filterClause) = discoverySectionQueryConfig(sectionId: sectionId, sort: sort)
+        let query = """
+        query DiscoverySection($page: Int, $perPage: Int) {
+          Page(page: $page, perPage: $perPage) {
+            media(type: ANIME, sort: \(sortValue), isAdult: false\(filterClause)) {
+              id
+              idMal
+              title { romaji english native }
+              coverImage { extraLarge large }
+              bannerImage
+              averageScore
+              episodes
+              seasonYear
+              startDate { year month day }
+              format
+              status
+              isAdult
+              genres
+              studios(isMain: true) { nodes { name } }
+            }
+          }
+        }
+        """
+        let data = try await graphql(query: query, variables: ["page": page, "perPage": perPage])
+        return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
+    }
+
     func cachedDiscoverySectionsSnapshot(sort: String) -> [AniListDiscoverySection]? {
         cachedDiscoverySectionsFromDisk(sort: sort)
     }
@@ -337,6 +370,59 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
     private func cachedTrendingFromDisk() -> [AniListMedia]? {
         guard let data = cacheStore.readJSON(forKey: "discovery:trending") else { return nil }
         return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
+    }
+
+    private func discoverySectionQueryConfig(sectionId: String, sort: String) -> (String, String) {
+        let fixedSort: String? = {
+            switch sectionId {
+            case "trending":
+                return "TRENDING_DESC"
+            case "topRated":
+                return "SCORE_DESC"
+            case "hotNow":
+                return "POPULARITY_DESC"
+            default:
+                return nil
+            }
+        }()
+        let sortValue = "[\(fixedSort ?? sort)]"
+
+        let genreMap: [String: String] = [
+            "action": "Action",
+            "adventure": "Adventure",
+            "comedy": "Comedy",
+            "drama": "Drama",
+            "ecchi": "Ecchi",
+            "fantasy": "Fantasy",
+            "horror": "Horror",
+            "mahouShoujo": "Mahou Shoujo",
+            "mecha": "Mecha",
+            "music": "Music",
+            "mystery": "Mystery",
+            "psychological": "Psychological",
+            "romance": "Romance",
+            "sciFi": "Sci-Fi",
+            "sliceOfLife": "Slice of Life",
+            "sports": "Sports",
+            "supernatural": "Supernatural",
+            "thriller": "Thriller"
+        ]
+
+        let tagMap: [String: String] = [
+            "shounen": "Shounen",
+            "shoujo": "Shoujo",
+            "seinen": "Seinen",
+            "josei": "Josei",
+            "isekai": "Isekai"
+        ]
+
+        if let genre = genreMap[sectionId] {
+            return (sortValue, ", genre_in: [\"\(genre)\"]")
+        }
+        if let tag = tagMap[sectionId] {
+            return (sortValue, ", tag_in: [\"\(tag)\"]")
+        }
+        return (sortValue, "")
     }
 
 private func cachedDiscoverySectionsFromDisk(sort: String) -> [AniListDiscoverySection]? {

@@ -192,7 +192,7 @@ struct DetailsView: View {
 
                     actionRow
 
-                    episodeTabs
+                    ipadGenreChips
 
                     if isLoading {
                         GlassCard {
@@ -550,6 +550,19 @@ struct DetailsView: View {
                 }
             }
         }
+    }
+
+    private var ipadGenreChips: some View {
+        let genres = media.genres
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: UIConstants.interCardSpacing) {
+                ForEach(genres, id: \.self) { genre in
+                    FilterChip(title: genre, isSelected: false, action: {})
+                }
+            }
+        }
+        .opacity(genres.isEmpty ? 0 : 1)
+        .frame(height: genres.isEmpty ? 0 : nil)
     }
 
     private var episodeList: some View {
