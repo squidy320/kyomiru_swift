@@ -1175,9 +1175,10 @@ actor MediaConversionManager {
         try? FileManager.default.removeItem(at: outputURL)
 
         let duration = await probeDurationSeconds(path: inputPath)
-        let baseArgs = "-y -fflags +genpts -avoid_negative_ts make_zero -i \(quoted(path: inputPath)) -map 0 -c copy"
-        let commandWithBsf = "\(baseArgs) -bsf:a aac_adtstoasc \(quoted(path: outputPath))"
-        let commandNoBsf = "\(baseArgs) \(quoted(path: outputPath))"
+        let baseArgs = "-y -fflags +genpts -avoid_negative_ts make_zero -i \(quoted(path: inputPath)) -map 0"
+        let commandWithBsf = "\(baseArgs) -c copy -bsf:a aac_adtstoasc \(quoted(path: outputPath))"
+        let commandNoBsf = "\(baseArgs) -c copy \(quoted(path: outputPath))"
+        let commandAudioReencode = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
 
         AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration)")
 
@@ -1208,7 +1209,21 @@ actor MediaConversionManager {
             throw ConversionError.cancelled
         }
 
-        let message = second.logs ?? first.logs ?? "ffmpeg conversion failed"
+        AppLog.error(.downloads, "ffmpeg remux failed copy, retrying with audio reencode input=\(inputPath)")
+        let third = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
+        if ReturnCode.isSuccess(third.code) {
+            if inputURL.pathExtension.lowercased() == "ts" {
+                try? FileManager.default.removeItem(at: inputURL)
+            }
+            AppLog.debug(.downloads, "ffmpeg remux success (audio reencode) output=\(outputPath)")
+            return outputURL
+        }
+        if ReturnCode.isCancel(third.code) {
+            AppLog.error(.downloads, "ffmpeg remux cancelled (audio reencode) input=\(inputPath)")
+            throw ConversionError.cancelled
+        }
+
+        let message = third.logs ?? second.logs ?? first.logs ?? "ffmpeg conversion failed"
         AppLog.error(.downloads, "ffmpeg remux failed input=\(inputPath) error=\(message)")
         throw ConversionError.exportFailed(message)
     }
