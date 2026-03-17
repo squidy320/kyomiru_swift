@@ -8,7 +8,7 @@ struct MediaPosterCard: View {
     let score: Int?
     let statusBadge: String?
     let cornerBadge: String?
-    let size: CGSize? = nil
+    let size: CGSize?
     @EnvironmentObject private var appState: AppState
     @State private var imdbPosterURL: URL?
     @State private var tmdbLookupComplete = false
