@@ -531,7 +531,10 @@ private struct LibraryTopBar: View {
                         .fill(Color.white.opacity(0.08))
                         .frame(width: UIConstants.avatarSize, height: UIConstants.avatarSize)
                     if let url = avatarURL {
-                        CachedImage(url: url) { image in
+                        CachedImage(
+                            url: url,
+                            targetSize: CGSize(width: UIConstants.posterCardWidth, height: UIConstants.posterCardHeight)
+                        ) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {
                             ProgressView()

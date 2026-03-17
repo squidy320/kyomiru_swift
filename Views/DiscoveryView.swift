@@ -528,7 +528,10 @@ private struct CinematicTrendingCard: View {
         ZStack(alignment: .bottomLeading) {
             Group {
                 if let url = item.backdropURL {
-                    CachedImage(url: url) { image in
+                    CachedImage(
+                        url: url,
+                        targetSize: CGSize(width: UIConstants.continueCardWidth, height: UIConstants.continueCardHeight * 1.3)
+                    ) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
                         Theme.surface
@@ -551,7 +554,10 @@ private struct CinematicTrendingCard: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 if let logo = item.logoURL {
-                    CachedImage(url: logo) { image in
+                    CachedImage(
+                        url: logo,
+                        targetSize: CGSize(width: 180, height: 80)
+                    ) { image in
                         image.resizable().scaledToFit()
                     } placeholder: {
                         Color.clear

@@ -305,7 +305,10 @@ struct DetailsView: View {
             ZStack {
                 Group {
                     if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
-                        AsyncImage(url: url) { image in
+                        CachedImage(
+                            url: url,
+                            targetSize: CGSize(width: width, height: height + insetTop)
+                        ) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {
                             Theme.surface
@@ -359,7 +362,10 @@ struct DetailsView: View {
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
-                        AsyncImage(url: url) { image in
+                        CachedImage(
+                            url: url,
+                            targetSize: CGSize(width: width, height: height + insetTop)
+                        ) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {
                             Theme.surface
@@ -406,7 +412,10 @@ struct DetailsView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     if let logo = tmdbHeroLogoURL {
-                        AsyncImage(url: logo) { image in
+                        CachedImage(
+                            url: logo,
+                            targetSize: CGSize(width: 320, height: 120)
+                        ) { image in
                             image.resizable().scaledToFit()
                         } placeholder: {
                             Color.clear
@@ -1006,7 +1015,10 @@ private struct EpisodeRow: View {
                     .fill(Color.white.opacity(0.06))
                     .frame(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
                 if let resolved = resolvedURL {
-                    CachedImage(url: resolved) { img in
+                    CachedImage(
+                        url: resolved,
+                        targetSize: CGSize(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
+                    ) { img in
                         img.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
                         Color.white.opacity(0.08)
@@ -1074,7 +1086,10 @@ private struct EpisodeThumbCard: View {
                     .fill(Color.white.opacity(0.06))
                     .frame(width: 260, height: 140)
                 if let imageURL {
-                    CachedImage(url: imageURL) { image in
+                    CachedImage(
+                        url: imageURL,
+                        targetSize: CGSize(width: 260, height: 140)
+                    ) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
                         Color.white.opacity(0.08)
@@ -1351,7 +1366,10 @@ private struct MatchPickerSheet: View {
                     ForEach(candidates) { match in
                         HStack(spacing: UIConstants.interCardSpacing) {
                             if let url = match.imageURL {
-                                CachedImage(url: url) { img in
+                                CachedImage(
+                                    url: url,
+                                    targetSize: CGSize(width: UIConstants.sourceRowImageWidth, height: UIConstants.sourceRowImageHeight)
+                                ) { img in
                                     img.resizable().scaledToFill()
                                 } placeholder: {
                                     Color.white.opacity(0.1)

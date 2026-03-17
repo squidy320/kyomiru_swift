@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import CryptoKit
 import Foundation
+import ImageIO
 
 enum Theme {
     static let baseBackground = Color(red: 0.04, green: 0.04, blue: 0.06)
@@ -45,6 +46,8 @@ actor ImageCache {
             diskPath: "KyomiruURLCache"
         )
         session = URLSession(configuration: config)
+        memory.totalCostLimit = 40 * 1024 * 1024
+        memory.countLimit = 200
     }
 
     func data(for url: URL) async -> Data? {
@@ -55,14 +58,14 @@ actor ImageCache {
 
         let fileURL = fileURLFor(url: url)
         if let data = try? Data(contentsOf: fileURL) {
-            memory.setObject(data as NSData, forKey: key)
+            memory.setObject(data as NSData, forKey: key, cost: data.count)
             return data
         }
 
         do {
             let (data, response) = try await session.data(from: url)
             if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
-                memory.setObject(data as NSData, forKey: key)
+                memory.setObject(data as NSData, forKey: key, cost: data.count)
                 try? data.write(to: fileURL, options: .atomic)
                 return data
             }
@@ -111,10 +114,33 @@ actor ImageCache {
         let hash = SHA256.hash(data: data)
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
+
+    func image(for url: URL, targetSize: CGSize, scale: CGFloat = UIScreen.main.scale) async -> UIImage? {
+        guard let data = await data(for: url) else { return nil }
+        return downsample(data: data, targetSize: targetSize, scale: scale)
+    }
+
+    private func downsample(data: Data, targetSize: CGSize, scale: CGFloat) -> UIImage? {
+        let maxDimension = max(targetSize.width, targetSize.height) * scale
+        guard maxDimension > 0 else { return nil }
+        let options: CFDictionary = [
+            kCGImageSourceShouldCache: false
+        ] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, options) else { return nil }
+        let downsampleOptions: CFDictionary = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int(maxDimension)
+        ] as CFDictionary
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, downsampleOptions) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
 }
 
 struct CachedImage<Content: View, Placeholder: View>: View {
     let url: URL?
+    let targetSize: CGSize?
     let content: (Image) -> Content
     let placeholder: () -> Placeholder
 
@@ -136,6 +162,11 @@ struct CachedImage<Content: View, Placeholder: View>: View {
     private func load() async {
         guard let url else {
             await MainActor.run { uiImage = nil }
+            return
+        }
+        if let targetSize,
+           let image = await ImageCache.shared.image(for: url, targetSize: targetSize) {
+            await MainActor.run { uiImage = image }
             return
         }
         if let data = await ImageCache.shared.data(for: url),

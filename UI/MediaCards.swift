@@ -26,7 +26,10 @@ struct MediaPosterCard: View {
                     .fill(Color.white.opacity(0.06))
 
                 if let resolved = resolvedURL {
-                    CachedImage(url: resolved) { image in
+                    CachedImage(
+                        url: resolved,
+                        targetSize: CGSize(width: UIConstants.posterCardWidth, height: UIConstants.posterCardHeight)
+                    ) { image in
                         image.resizable().scaledToFill()
                     } placeholder: {
                         Color.white.opacity(0.08)
@@ -129,7 +132,10 @@ struct ContinueWatchingCard: View {
                 .fill(Color.white.opacity(0.06))
 
             if let resolved = resolvedURL {
-                CachedImage(url: resolved) { img in
+                CachedImage(
+                    url: resolved,
+                    targetSize: CGSize(width: UIConstants.continueCardWidth, height: UIConstants.continueCardHeight)
+                ) { img in
                     img.resizable().scaledToFill()
                 } placeholder: {
                     Color.white.opacity(0.08)
@@ -218,7 +224,10 @@ struct EpisodeRowView: View {
                         .fill(Color.white.opacity(0.06))
                         .frame(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
                     if let thumbnailURL {
-                        CachedImage(url: thumbnailURL) { img in
+                        CachedImage(
+                            url: thumbnailURL,
+                            targetSize: CGSize(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
+                        ) { img in
                             img.resizable().aspectRatio(contentMode: .fill)
                         } placeholder: {
                             Color.white.opacity(0.08)
@@ -365,7 +374,10 @@ private struct RelationCard: View {
                 .fill(Color.white.opacity(0.06))
 
             if let url = resolvedURL {
-                CachedImage(url: url) { image in
+                CachedImage(
+                    url: url,
+                    targetSize: CGSize(width: UIConstants.posterCardWidth, height: UIConstants.posterCardHeight)
+                ) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {
                     Color.white.opacity(0.08)

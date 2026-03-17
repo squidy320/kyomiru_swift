@@ -22,9 +22,12 @@ struct SettingsView: View {
                             GlassCard {
                                 HStack(spacing: 12) {
                                     if let url = appState.authState.user?.avatarURL {
-                                        CachedImage(url: url) { image in
-                                            image.resizable().scaledToFill()
-                                        } placeholder: {
+                                    CachedImage(
+                                        url: url,
+                                        targetSize: CGSize(width: 42, height: 42)
+                                    ) { image in
+                                        image.resizable().scaledToFill()
+                                    } placeholder: {
                                             Color.white.opacity(0.1)
                                         }
                                         .frame(width: 42, height: 42)

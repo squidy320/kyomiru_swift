@@ -115,7 +115,10 @@ private struct AlertRow: View {
         GlassCard {
             HStack(alignment: .top, spacing: 12) {
                 if let url = item.media?.coverURL {
-                    CachedImage(url: url) { image in
+                    CachedImage(
+                        url: url,
+                        targetSize: CGSize(width: UIConstants.posterCardWidth, height: UIConstants.posterCardHeight)
+                    ) { image in
                         image.resizable().scaledToFill()
                     } placeholder: {
                         Color.white.opacity(0.1)

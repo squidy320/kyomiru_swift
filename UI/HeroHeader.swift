@@ -33,7 +33,10 @@ struct HeroHeader: View {
                 .overlay(
                     Group {
                         if let resolved = resolvedURL {
-                            CachedImage(url: resolved) { img in
+                            CachedImage(
+                                url: resolved,
+                                targetSize: CGSize(width: UIScreen.main.bounds.width, height: height)
+                            ) { img in
                                 img.resizable().scaledToFill()
                             } placeholder: {
                                 Theme.surface
