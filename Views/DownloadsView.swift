@@ -570,7 +570,11 @@ private struct DownloadsDetailView: View {
             genres: mediaItem.genres,
             studios: []
         )
-        let episodes = sortedItems.map { SoraEpisode(id: $0.id, number: $0.episode, playURL: nil) }
+        let fallbackURL = URL(fileURLWithPath: NSTemporaryDirectory())
+        let episodes = sortedItems.map { item in
+            let url = DownloadManager.shared.playableURL(for: item) ?? fallbackURL
+            return SoraEpisode(id: item.id, number: item.episode, playURL: url)
+        }
         if let cached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: episodes) {
             episodeMetadata = cached
         }
