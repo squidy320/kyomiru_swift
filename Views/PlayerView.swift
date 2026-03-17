@@ -10,7 +10,7 @@ struct PlayerView: View {
     let mediaId: Int
     let malId: Int?
     let mediaTitle: String?
-    let startAt: Double? = nil
+    let startAt: Double?
     @EnvironmentObject private var appState: AppState
 
     init(
