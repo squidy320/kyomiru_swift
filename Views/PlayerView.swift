@@ -203,18 +203,22 @@ private struct AVPlayerScreen: View {
         guard let malId else {
             skipSegments = []
             activeSkip = nil
+            AppLog.debug(.player, "aniskip: no malId for mediaId=\(mediaId) ep=\(episode.number)")
             return
         }
         if let cached = appState.services.downloadManager.cachedSkipSegments(malId: malId, episode: episode.number) {
             skipSegments = cached
+            AppLog.debug(.player, "aniskip: cache hit malId=\(malId) ep=\(episode.number) count=\(cached.count)")
         } else {
             skipSegments = []
+            AppLog.debug(.player, "aniskip: cache miss malId=\(malId) ep=\(episode.number)")
         }
         Task {
             let segments = await appState.services.aniSkipService.fetchSkipSegments(malId: malId, episode: episode.number)
             guard !segments.isEmpty else { return }
             await MainActor.run {
                 skipSegments = segments
+                AppLog.debug(.player, "aniskip: fetched malId=\(malId) ep=\(episode.number) count=\(segments.count)")
             }
             appState.services.downloadManager.storeSkipSegments(segments, malId: malId, episode: episode.number)
         }
@@ -229,6 +233,7 @@ private struct AVPlayerScreen: View {
         if let match = matches.min(by: { $0.end < $1.end }) {
             if activeSkip?.start != match.start || activeSkip?.end != match.end || activeSkip?.type != match.type {
                 activeSkip = match
+                AppLog.debug(.player, "aniskip: active type=\(match.type) start=\(match.start) end=\(match.end) time=\(time)")
             }
         } else if activeSkip != nil {
             activeSkip = nil
