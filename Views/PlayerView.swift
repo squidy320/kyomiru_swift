@@ -19,6 +19,7 @@ struct PlayerView: View {
                 episode: episode,
                 sources: sources,
                 mediaId: mediaId,
+                malId: malId,
                 mediaTitle: mediaTitle
             )
 #else
@@ -33,6 +34,7 @@ private struct AVPlayerScreen: View {
     let episode: SoraEpisode
     let sources: [SoraSource]
     let mediaId: Int
+    let malId: Int?
     let mediaTitle: String?
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -41,6 +43,8 @@ private struct AVPlayerScreen: View {
     @State private var timeObserver: Any?
     @State private var statusObserver: NSKeyValueObservation?
     @State private var errorMessage: String?
+    @State private var skipSegments: [AniSkipSegment] = []
+    @State private var activeSkip: AniSkipSegment?
 
     var body: some View {
         ZStack {
@@ -53,8 +57,31 @@ private struct AVPlayerScreen: View {
                     .tint(.white)
                     .foregroundColor(.white)
             }
+
+            if let activeSkip {
+                Button {
+                    seekToSkipEnd(activeSkip)
+                } label: {
+                    Text(skipButtonTitle(for: activeSkip))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(Color.black.opacity(0.7))
+                        )
+                }
+                .padding(.trailing, 16)
+                .padding(.bottom, 22)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .buttonStyle(.plain)
+            }
         }
-        .onAppear(perform: startPlayback)
+        .onAppear {
+            loadSkipSegments()
+            startPlayback()
+        }
         .onDisappear(perform: stopPlayback)
         .alert("Playback Error", isPresented: Binding(
             get: { errorMessage != nil },
@@ -124,6 +151,7 @@ private struct AVPlayerScreen: View {
         }
         statusObserver?.invalidate()
         statusObserver = nil
+        activeSkip = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
         self.player = nil
@@ -150,6 +178,7 @@ private struct AVPlayerScreen: View {
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             let seconds = time.seconds
             guard seconds.isFinite else { return }
+            updateActiveSkip(at: seconds)
             let duration = player.currentItem?.duration.seconds ?? 0
             if duration.isFinite && duration > 0 {
                 Task { @MainActor in
@@ -167,6 +196,64 @@ private struct AVPlayerScreen: View {
                     PlaybackHistoryStore.shared.saveDuration(duration, for: episode.id)
                 }
             }
+        }
+    }
+
+    private func loadSkipSegments() {
+        guard let malId else {
+            skipSegments = []
+            activeSkip = nil
+            return
+        }
+        if let cached = appState.services.downloadManager.cachedSkipSegments(malId: malId, episode: episode.number) {
+            skipSegments = cached
+        } else {
+            skipSegments = []
+        }
+        Task {
+            let segments = await appState.services.aniSkipService.fetchSkipSegments(malId: malId, episode: episode.number)
+            guard !segments.isEmpty else { return }
+            await MainActor.run {
+                skipSegments = segments
+            }
+            appState.services.downloadManager.storeSkipSegments(segments, malId: malId, episode: episode.number)
+        }
+    }
+
+    private func updateActiveSkip(at time: Double) {
+        guard !skipSegments.isEmpty else {
+            if activeSkip != nil { activeSkip = nil }
+            return
+        }
+        let matches = skipSegments.filter { time >= $0.start && time <= $0.end }
+        if let match = matches.min(by: { $0.end < $1.end }) {
+            if activeSkip?.start != match.start || activeSkip?.end != match.end || activeSkip?.type != match.type {
+                activeSkip = match
+            }
+        } else if activeSkip != nil {
+            activeSkip = nil
+        }
+    }
+
+    private func seekToSkipEnd(_ segment: AniSkipSegment) {
+        guard let player else { return }
+        let target = CMTime(seconds: segment.end, preferredTimescale: 600)
+        activeSkip = nil
+        player.seek(to: target)
+    }
+
+    private func skipButtonTitle(for segment: AniSkipSegment) -> String {
+        switch segment.type.lowercased() {
+        case "op":
+            return "Skip Intro"
+        case "ed":
+            return "Skip Outro"
+        case "recap":
+            return "Skip Recap"
+        case "preview":
+            return "Skip Preview"
+        default:
+            return "Skip"
         }
     }
 }
