@@ -206,9 +206,11 @@ final class AppState: ObservableObject {
         let currentItem = services.libraryStore.item(forExternalId: mediaId)
         var totalEpisodes: Int? = currentItem?.totalEpisodes
         if authState.isSignedIn, let token = authState.token {
-            if let availability = try? await services.aniListClient.episodeAvailability(token: token, mediaId: mediaId),
-               let availTotal = availability.totalEpisodes, availTotal > 0 {
-                totalEpisodes = availTotal
+            if let availability = try? await services.aniListClient.episodeAvailability(token: token, mediaId: mediaId) {
+                let availTotal = availability.totalEpisodes
+                if availTotal > 0 {
+                    totalEpisodes = availTotal
+                }
             }
         }
         let newProgress = totalEpisodes ?? currentItem?.currentEpisode ?? 0
