@@ -1175,7 +1175,7 @@ actor MediaConversionManager {
         try? FileManager.default.removeItem(at: outputURL)
 
         let duration = await probeDurationSeconds(path: inputPath)
-        let baseArgs = "-y -i \(quoted(path: inputPath)) -map 0 -c copy"
+        let baseArgs = "-y -fflags +genpts -avoid_negative_ts make_zero -i \(quoted(path: inputPath)) -map 0 -c copy"
         let commandWithBsf = "\(baseArgs) -bsf:a aac_adtstoasc \(quoted(path: outputPath))"
         let commandNoBsf = "\(baseArgs) \(quoted(path: outputPath))"
 
