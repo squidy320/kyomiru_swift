@@ -596,15 +596,10 @@ final class DownloadManager: NSObject, ObservableObject {
             },
                 preferLocalHLS: false
             )
-            if MPVSupport.isAvailable {
-                updateStatus(id: id, status: "Completed", localFile: localFile)
-                AppLog.debug(.downloads, "hls download complete id=\(id) (mpv)")
-            } else {
-                updateStatus(id: id, status: "Remuxing", localFile: localFile)
-                AppLog.debug(.downloads, "hls download complete id=\(id) starting remux")
-                Task { @MainActor in
-                    await remuxIfNeeded(id: id, localFile: localFile)
-                }
+            updateStatus(id: id, status: "Remuxing", localFile: localFile)
+            AppLog.debug(.downloads, "hls download complete id=\(id) starting remux")
+            Task { @MainActor in
+                await remuxIfNeeded(id: id, localFile: localFile)
             }
             let segmentFolder = localHLSFolder(title: item.title, episode: item.episode)
             if fm.fileExists(atPath: segmentFolder.path) {
@@ -619,11 +614,6 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func remuxIfNeeded(id: String, localFile: URL) async {
-        if !preferMp4Conversion {
-            AppLog.debug(.downloads, "remux skipped id=\(id) reason=preferMp4Conversion=false")
-            updateStatus(id: id, status: "Completed", localFile: localFile)
-            return
-        }
         guard localFile.pathExtension.lowercased() == "ts" else {
             AppLog.debug(.downloads, "remux skipped id=\(id) reason=not-ts ext=\(localFile.pathExtension)")
             updateStatus(id: id, status: "Completed", localFile: localFile)
