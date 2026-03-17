@@ -9,7 +9,7 @@ struct NavigationShell: View {
                 .ignoresSafeArea()
 
             TabView(selection: $appState.selectedTab) {
-                DiscoveryView()
+                BrowseView()
                     .tabItem {
                         Image(systemName: "house")
                         Text("Home")

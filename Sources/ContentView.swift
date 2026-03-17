@@ -5,7 +5,7 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $appState.selectedTab) {
-            DiscoveryView()
+            BrowseView()
                 .tabItem {
                     Image(systemName: "house")
                     Text("Home")

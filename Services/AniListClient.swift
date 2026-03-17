@@ -352,6 +352,52 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
     }
 
+    func browseMedia(
+        filters: BrowseFilterState,
+        page: Int,
+        perPage: Int = 30
+    ) async throws -> [AniListMedia] {
+        let cacheKey = "browse:\(filters.cacheKey):p\(page)"
+        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 10) {
+            return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
+        }
+
+        let sortValue = aniListSort(for: filters.sort)
+        let query = """
+        query Browse($page: Int, $perPage: Int, $genre: [String], $tag: [String], $format: MediaFormat, $season: MediaSeason, $year: Int) {
+          Page(page: $page, perPage: $perPage) {
+            media(type: ANIME, sort: [\(sortValue)], isAdult: false, genre_in: $genre, tag_in: $tag, format: $format, season: $season, seasonYear: $year) {
+              id
+              idMal
+              title { romaji english native }
+              coverImage { extraLarge large }
+              bannerImage
+              averageScore
+              episodes
+              seasonYear
+              startDate { year month day }
+              format
+              status
+              isAdult
+              genres
+              studios(isMain: true) { nodes { name } }
+            }
+          }
+        }
+        """
+
+        var variables: [String: Any] = ["page": page, "perPage": perPage]
+        if let genre = filters.genre { variables["genre"] = [genre] }
+        if let tag = filters.tag { variables["tag"] = [tag] }
+        if let format = filters.format { variables["format"] = aniListFormat(for: format) }
+        if let season = filters.season { variables["season"] = aniListSeason(for: season) }
+        if let year = filters.year { variables["year"] = year }
+
+        let data = try await graphql(query: query, variables: variables)
+        cacheStore.writeJSON(data, forKey: cacheKey)
+        return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
+    }
+
     func cachedDiscoverySectionsSnapshot(sort: String) -> [AniListDiscoverySection]? {
         cachedDiscoverySectionsFromDisk(sort: sort)
     }
@@ -423,6 +469,38 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
             return (sortValue, ", tag_in: [\"" + tag + "\"]")
         }
         return (sortValue, "")
+    }
+
+    private func aniListSort(for sort: BrowseSortOption) -> String {
+        switch sort {
+        case .trending:
+            return "TRENDING_DESC"
+        case .score:
+            return "SCORE_DESC"
+        case .popularity:
+            return "POPULARITY_DESC"
+        case .title:
+            return "TITLE_ROMAJI"
+        }
+    }
+
+    private func aniListFormat(for format: BrowseFormat) -> String {
+        switch format {
+        case .TV: return "TV"
+        case .Movie: return "MOVIE"
+        case .OVA: return "OVA"
+        case .ONA: return "ONA"
+        case .Special: return "SPECIAL"
+        }
+    }
+
+    private func aniListSeason(for season: BrowseSeason) -> String {
+        switch season {
+        case .Winter: return "WINTER"
+        case .Spring: return "SPRING"
+        case .Summer: return "SUMMER"
+        case .Fall: return "FALL"
+        }
     }
 
 private func cachedDiscoverySectionsFromDisk(sort: String) -> [AniListDiscoverySection]? {
