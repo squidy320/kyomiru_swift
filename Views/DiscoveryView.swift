@@ -20,6 +20,9 @@ struct DiscoveryView: View {
     @StateObject private var networkMonitor = NetworkMonitor.shared
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var coreSections: [AniListDiscoverySection] {
+        sections.filter { $0.id == "trending" || $0.id == "hotNow" }
+    }
 
     var body: some View {
         ZStack {
@@ -31,6 +34,7 @@ struct DiscoveryView: View {
 
                         VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
                             SearchField(placeholder: "Search anime...", text: $query)
+                            GenreFilterCarousel(genres: GenreFilterCarousel.defaultGenres)
 
                             if isSearching {
                                 GlassCard {
@@ -49,7 +53,7 @@ struct DiscoveryView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             } else {
-                                ForEach(sections) { section in
+                                ForEach(coreSections) { section in
                                     VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
                                         HStack {
                                             Text(section.title)
@@ -516,6 +520,153 @@ private extension DiscoveryView {
             if let logo = heroTrending.logoURL { urls.append(logo) }
         }
         await ImageCache.shared.prefetch(urls: urls)
+    }
+}
+
+struct GenreFilterCarousel: View {
+    let genres: [String]
+
+    static let defaultGenres: [String] = [
+        "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Romance",
+        "Sci-Fi", "Slice of Life", "Mystery", "Thriller", "Horror",
+        "Supernatural", "Sports", "Music", "Mecha"
+    ]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: UIConstants.interCardSpacing) {
+                ForEach(genres, id: \.self) { genre in
+                    NavigationLink {
+                        GenreDetailGridView(genre: genre)
+                    } label: {
+                        Text(genre)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(Color.white.opacity(0.08))
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, UIConstants.tinyPadding)
+            .padding(.vertical, UIConstants.tinyPadding)
+        }
+        .scrollClipDisabled()
+    }
+}
+
+struct GenreDetailGridView: View {
+    let genre: String
+    @EnvironmentObject private var appState: AppState
+    @State private var items: [AniListMedia] = []
+    @State private var isLoading = false
+    @State private var page = 1
+    @State private var hasMore = true
+
+    private let gridSpacing = UIConstants.interCardSpacing
+    private var gridItems: [GridItem] {
+        [GridItem(.adaptive(minimum: 100), spacing: gridSpacing)]
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: gridItems, spacing: gridSpacing) {
+                ForEach(items, id: \.id) { media in
+                    NavigationLink {
+                        DetailsView(media: media)
+                    } label: {
+                        MediaPosterCard(
+                            title: media.title.best,
+                            subtitle: nil,
+                            imageURL: media.coverURL,
+                            media: media,
+                            score: media.averageScore,
+                            statusBadge: nil,
+                            cornerBadge: nil,
+                            size: cardSize()
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                    .onAppear {
+                        if media.id == items.last?.id {
+                            Task { await loadMoreIfNeeded() }
+                        }
+                    }
+                }
+
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, UIConstants.standardPadding)
+                }
+            }
+            .padding(.horizontal, UIConstants.standardPadding)
+            .padding(.top, UIConstants.smallPadding)
+            .padding(.bottom, UIConstants.bottomBarHeight)
+        }
+        .navigationTitle(genre)
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if items.isEmpty {
+                await loadPage(reset: true)
+            }
+        }
+        .refreshable {
+            await loadPage(reset: true)
+        }
+    }
+
+    private func loadMoreIfNeeded() async {
+        guard !isLoading, hasMore else { return }
+        await loadPage(reset: false)
+    }
+
+    private func loadPage(reset: Bool) async {
+        await MainActor.run { isLoading = true }
+        if reset {
+            page = 1
+            hasMore = true
+        }
+        do {
+            let filters = BrowseFilterState(
+                genre: genre,
+                tag: nil,
+                format: nil,
+                season: nil,
+                year: nil,
+                sort: .trending
+            )
+            let result = try await appState.services.aniListClient.browseMedia(filters: filters, page: page, perPage: 30)
+            await MainActor.run {
+                if reset {
+                    items = result
+                } else {
+                    items += result
+                }
+                hasMore = result.count >= 30
+                if hasMore { page += 1 }
+            }
+        } catch {
+            await MainActor.run {
+                hasMore = false
+            }
+        }
+        await MainActor.run { isLoading = false }
+    }
+
+    private func cardSize() -> CGSize {
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        let width: CGFloat = isPad ? 150 : 120
+        return CGSize(width: width, height: width * 1.47)
     }
 }
 

@@ -119,112 +119,25 @@ func discoverySections(sort: String) async throws -> [AniListDiscoverySection] {
           genres
           studios(isMain: true) { nodes { name } }
     """
-        let baseQuery = """
+    let baseQuery = """
         query DiscoveryBase {
           trending: Page(page: 1, perPage: 12) { media(type: ANIME, sort: TRENDING_DESC, isAdult: false) { \(mediaFields) } }
-          topRated: Page(page: 1, perPage: 12) { media(type: ANIME, sort: SCORE_DESC, isAdult: false) { \(mediaFields) } }
           hotNow: Page(page: 1, perPage: 12) { media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) { \(mediaFields) } }
         }
         """
-    let genreQueryA = """
-    query DiscoveryGenresA($sort: [MediaSort]) {
-      action: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Action"], isAdult: false) { \(mediaFields) } }
-      adventure: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Adventure"], isAdult: false) { \(mediaFields) } }
-      comedy: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Comedy"], isAdult: false) { \(mediaFields) } }
-      drama: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Drama"], isAdult: false) { \(mediaFields) } }
-      fantasy: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Fantasy"], isAdult: false) { \(mediaFields) } }
-      romance: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Romance"], isAdult: false) { \(mediaFields) } }
-      sciFi: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Sci-Fi"], isAdult: false) { \(mediaFields) } }
-      sliceOfLife: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Slice of Life"], isAdult: false) { \(mediaFields) } }
-    }
-    """
-    let genreQueryB = """
-    query DiscoveryGenresB($sort: [MediaSort]) {
-      horror: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Horror"], isAdult: false) { \(mediaFields) } }
-      mystery: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Mystery"], isAdult: false) { \(mediaFields) } }
-      psychological: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Psychological"], isAdult: false) { \(mediaFields) } }
-      supernatural: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Supernatural"], isAdult: false) { \(mediaFields) } }
-      thriller: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Thriller"], isAdult: false) { \(mediaFields) } }
-      sports: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Sports"], isAdult: false) { \(mediaFields) } }
-      music: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Music"], isAdult: false) { \(mediaFields) } }
-      mecha: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Mecha"], isAdult: false) { \(mediaFields) } }
-      mahouShoujo: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Mahou Shoujo"], isAdult: false) { \(mediaFields) } }
-      ecchi: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Ecchi"], isAdult: false) { \(mediaFields) } }
-    }
-    """
-    let tagQuery = """
-    query DiscoveryTags($sort: [MediaSort]) {
-      shounen: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, tag_in: ["Shounen"], isAdult: false) { \(mediaFields) } }
-      shoujo: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, tag_in: ["Shoujo"], isAdult: false) { \(mediaFields) } }
-      seinen: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, tag_in: ["Seinen"], isAdult: false) { \(mediaFields) } }
-      josei: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, tag_in: ["Josei"], isAdult: false) { \(mediaFields) } }
-      isekai: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, tag_in: ["Isekai"], isAdult: false) { \(mediaFields) } }
-    }
-    """
 
     let baseSections = [
         ("trending", "Trending"),
-        ("topRated", "Top Rated"),
         ("hotNow", "Hot Now")
-    ]
-    let genreSectionsA = [
-        ("action", "Top Action"),
-        ("adventure", "Top Adventure"),
-        ("comedy", "Top Comedy"),
-        ("drama", "Top Drama"),
-        ("fantasy", "Top Fantasy"),
-        ("romance", "Top Romance"),
-        ("sciFi", "Top Sci-Fi"),
-        ("sliceOfLife", "Top Slice of Life")
-    ]
-    let genreSectionsB = [
-        ("horror", "Top Horror"),
-        ("mystery", "Top Mystery"),
-        ("psychological", "Top Psychological"),
-        ("supernatural", "Top Supernatural"),
-        ("thriller", "Top Thriller"),
-        ("sports", "Top Sports"),
-        ("music", "Top Music"),
-        ("mecha", "Top Mecha"),
-        ("mahouShoujo", "Top Mahou Shoujo"),
-        ("ecchi", "Top Ecchi")
-    ]
-    let tagSections = [
-        ("shounen", "Top Shounen"),
-        ("shoujo", "Top Shoujo"),
-        ("seinen", "Top Seinen"),
-        ("josei", "Top Josei"),
-        ("isekai", "Top Isekai")
     ]
 
     var sections: [AniListDiscoverySection] = []
-        sections += try await loadDiscoveryBatch(
-            sort: sort,
-            batch: "base",
-            query: baseQuery,
-            variables: [:],
-            sectionDefs: baseSections
-        )
     sections += try await loadDiscoveryBatch(
         sort: sort,
-        batch: "genresA",
-        query: genreQueryA,
-        variables: ["sort": [sort]],
-        sectionDefs: genreSectionsA
-    )
-    sections += try await loadDiscoveryBatch(
-        sort: sort,
-        batch: "genresB",
-        query: genreQueryB,
-        variables: ["sort": [sort]],
-        sectionDefs: genreSectionsB
-    )
-    sections += try await loadDiscoveryBatch(
-        sort: sort,
-        batch: "tags",
-        query: tagQuery,
-        variables: ["sort": [sort]],
-        sectionDefs: tagSections
+        batch: "base",
+        query: baseQuery,
+        variables: [:],
+        sectionDefs: baseSections
     )
 
     cachedDiscoverySections = (sort, sections, Date().addingTimeInterval(60 * 10))
@@ -504,7 +417,7 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
     }
 
 private func cachedDiscoverySectionsFromDisk(sort: String) -> [AniListDiscoverySection]? {
-    let batches = ["base", "genresA", "genresB", "tags"]
+    let batches = ["base"]
     var sections: [AniListDiscoverySection] = []
     for batch in batches {
         let cacheKey = discoverySectionsCacheKey(batch: batch, sort: sort)
