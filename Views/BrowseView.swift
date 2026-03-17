@@ -8,6 +8,8 @@ struct BrowseView: View {
     @State private var hasMore = true
     @State private var errorMessage: String?
     @State private var filters = BrowseFilterState()
+    @State private var pendingFilters = BrowseFilterState()
+    @State private var showFilters = false
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -25,30 +27,37 @@ struct BrowseView: View {
                             .padding(.horizontal, UIConstants.standardPadding)
                         }
 
-                        LazyVGrid(columns: gridColumns, spacing: UIConstants.interCardSpacing) {
-                            ForEach(items, id: \.id) { media in
-                                NavigationLink {
-                                    DetailsView(media: media)
-                                } label: {
-                                    MediaPosterCard(
-                                        title: media.title.best,
-                                        subtitle: nil,
-                                        imageURL: media.coverURL,
-                                        media: media,
-                                        score: media.averageScore,
-                                        statusBadge: statusBadge(for: media),
-                                        cornerBadge: nil
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                .onAppear {
-                                    if media.id == items.last?.id {
-                                        Task { await loadMoreIfNeeded() }
+                        GeometryReader { proxy in
+                            let horizontalPadding = UIConstants.standardPadding
+                            let availableWidth = proxy.size.width - (horizontalPadding * 2)
+                            let (columns, cardSize) = gridLayout(for: availableWidth)
+                            LazyVGrid(columns: columns, spacing: gridSpacing) {
+                                ForEach(items, id: \.id) { media in
+                                    NavigationLink {
+                                        DetailsView(media: media)
+                                    } label: {
+                                        MediaPosterCard(
+                                            title: media.title.best,
+                                            subtitle: nil,
+                                            imageURL: media.coverURL,
+                                            media: media,
+                                            score: media.averageScore,
+                                            statusBadge: statusBadge(for: media),
+                                            cornerBadge: nil,
+                                            size: cardSize
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .onAppear {
+                                        if media.id == items.last?.id {
+                                            Task { await loadMoreIfNeeded() }
+                                        }
                                     }
                                 }
                             }
+                            .padding(.horizontal, horizontalPadding)
                         }
-                        .padding(.horizontal, UIConstants.standardPadding)
+                        .frame(minHeight: 0)
 
                         if isLoading {
                             ProgressView("Loading...")
@@ -63,73 +72,76 @@ struct BrowseView: View {
                 await reload()
             }
         }
-        .task {
-            await reload()
+        .task { await reload() }
+        .sheet(isPresented: $showFilters) {
+            BrowseFilterSheet(
+                filters: $pendingFilters,
+                onApply: {
+                    filters = pendingFilters
+                    showFilters = false
+                    Task { await reload() }
+                },
+                onClear: {
+                    pendingFilters = BrowseFilterState()
+                }
+            )
         }
     }
 
-    private var gridColumns: [GridItem] {
-        let count = isPad ? 5 : 2
-        return Array(repeating: GridItem(.flexible(), spacing: UIConstants.interCardSpacing), count: count)
-    }
+    private var gridSpacing: CGFloat { 10 }
 
     private var filterBar: some View {
-        VStack(alignment: .leading, spacing: UIConstants.smallPadding) {
-            Text("Browse")
-                .font(.system(size: 24, weight: .bold))
-                .foregroundColor(.white)
-                .padding(.horizontal, UIConstants.standardPadding)
-                .padding(.top, UIConstants.smallPadding)
+        VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
+            HStack {
+                Text("Browse")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.white)
+                Spacer()
+                Button {
+                    pendingFilters = filters
+                    showFilters = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "slider.horizontal.3")
+                        Text(filterButtonTitle)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.white.opacity(0.12))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, UIConstants.standardPadding)
+            .padding(.top, UIConstants.microPadding)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: UIConstants.interCardSpacing) {
-                    filterMenu(title: "Genre", value: filters.genre ?? "All", options: BrowseFilterState.genres) {
-                        filters.genre = $0 == "All" ? nil : $0
-                    }
-                    filterMenu(title: "Tag", value: filters.tag ?? "All", options: BrowseFilterState.tags) {
-                        filters.tag = $0 == "All" ? nil : $0
-                    }
-                    filterMenu(title: "Format", value: filters.format?.rawValue ?? "All", options: BrowseFilterState.formatOptions) {
-                        filters.format = BrowseFormat(rawValue: $0)
-                    }
-                    filterMenu(title: "Season", value: filters.season?.rawValue ?? "All", options: BrowseFilterState.seasonOptions) {
-                        filters.season = BrowseSeason(rawValue: $0)
-                    }
-                    filterMenu(title: "Year", value: filters.year.map(String.init) ?? "All", options: BrowseFilterState.yearOptions) {
-                        filters.year = Int($0)
-                    }
-                    filterMenu(title: "Sort", value: filters.sort.title, options: BrowseSortOption.allCases.map(\.title)) { selection in
-                        if let sort = BrowseSortOption.allCases.first(where: { $0.title == selection }) {
-                            filters.sort = sort
+            if !activeChips.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(activeChips, id: \.label) { chip in
+                            browseChipLabel(text: "\(chip.label): \(chip.value)", isSelected: true)
                         }
                     }
+                    .padding(.horizontal, UIConstants.standardPadding)
+                    .padding(.bottom, UIConstants.smallPadding)
                 }
-                .padding(.horizontal, UIConstants.standardPadding)
-                .padding(.bottom, UIConstants.smallPadding)
+            } else {
+                Spacer().frame(height: 4)
             }
         }
         .background(Theme.baseBackground)
-        .onChange(of: filters) { _, _ in
-            Task { await reload() }
-        }
-    }
-
-    private func filterMenu(title: String, value: String, options: [String], onSelect: @escaping (String) -> Void) -> some View {
-        Menu {
-            ForEach(options, id: \.self) { option in
-                Button(option) { onSelect(option) }
-            }
-        } label: {
-            browseChipLabel(text: "\(title): \(value)", isSelected: value != "All")
-        }
     }
 
     private func browseChipLabel(text: String, isSelected: Bool) -> some View {
         Text(text)
             .font(.system(size: 12, weight: .semibold))
             .foregroundColor(isSelected ? .white : Theme.textSecondary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
             .background(
                 Capsule(style: .continuous)
                     .fill(isSelected ? Theme.accent.opacity(0.22) : Color.white.opacity(0.06))
@@ -143,6 +155,36 @@ struct BrowseView: View {
     private func statusBadge(for media: AniListMedia) -> String? {
         guard let item = appState.services.libraryStore.item(forExternalId: media.id) else { return nil }
         return item.status.badgeTitle
+    }
+
+    private func gridLayout(for availableWidth: CGFloat) -> ([GridItem], CGSize) {
+        let targetColumns: Int
+        if isPad {
+            targetColumns = availableWidth > 1024 ? 5 : 4
+        } else {
+            targetColumns = 2
+        }
+        let totalSpacing = CGFloat(targetColumns - 1) * gridSpacing
+        let cardWidth = floor((availableWidth - totalSpacing) / CGFloat(targetColumns))
+        let cardHeight = cardWidth * 1.47
+        let items = Array(repeating: GridItem(.fixed(cardWidth), spacing: gridSpacing), count: targetColumns)
+        return (items, CGSize(width: cardWidth, height: cardHeight))
+    }
+
+    private var activeChips: [(label: String, value: String)] {
+        var chips: [(String, String)] = []
+        if let genre = filters.genre { chips.append(("Genre", genre)) }
+        if let tag = filters.tag { chips.append(("Tag", tag)) }
+        if let format = filters.format { chips.append(("Format", format.rawValue)) }
+        if let season = filters.season { chips.append(("Season", season.rawValue)) }
+        if let year = filters.year { chips.append(("Year", String(year))) }
+        if filters.sort != .trending { chips.append(("Sort", filters.sort.title)) }
+        return chips
+    }
+
+    private var filterButtonTitle: String {
+        let count = activeChips.count
+        return count == 0 ? "Filters" : "Filters (\(count))"
     }
 
     private func reload() async {
@@ -231,5 +273,129 @@ enum BrowseSortOption: String, CaseIterable {
         case .popularity: return "Popularity"
         case .title: return "Title"
         }
+    }
+}
+
+private struct BrowseFilterSheet: View {
+    @Binding var filters: BrowseFilterState
+    let onApply: () -> Void
+    let onClear: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Genre") {
+                    Picker("Genre", selection: genreBinding) {
+                        ForEach(BrowseFilterState.genres, id: \.self) { option in
+                            Text(option).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                Section("Tag") {
+                    Picker("Tag", selection: tagBinding) {
+                        ForEach(BrowseFilterState.tags, id: \.self) { option in
+                            Text(option).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                Section("Format") {
+                    Picker("Format", selection: formatBinding) {
+                        ForEach(BrowseFilterState.formatOptions, id: \.self) { option in
+                            Text(option).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                Section("Season") {
+                    Picker("Season", selection: seasonBinding) {
+                        ForEach(BrowseFilterState.seasonOptions, id: \.self) { option in
+                            Text(option).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                Section("Year") {
+                    Picker("Year", selection: yearBinding) {
+                        ForEach(BrowseFilterState.yearOptions, id: \.self) { option in
+                            Text(option).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                Section("Sort") {
+                    Picker("Sort", selection: sortBinding) {
+                        ForEach(BrowseSortOption.allCases, id: \.self) { option in
+                            Text(option.title).tag(option.title)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.baseBackground)
+            .navigationTitle("Filters")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Clear") { onClear() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Apply") { onApply() }
+                }
+            }
+        }
+    }
+
+    private var genreBinding: Binding<String> {
+        Binding(
+            get: { filters.genre ?? "All" },
+            set: { filters.genre = $0 == "All" ? nil : $0 }
+        )
+    }
+
+    private var tagBinding: Binding<String> {
+        Binding(
+            get: { filters.tag ?? "All" },
+            set: { filters.tag = $0 == "All" ? nil : $0 }
+        )
+    }
+
+    private var formatBinding: Binding<String> {
+        Binding(
+            get: { filters.format?.rawValue ?? "All" },
+            set: { filters.format = BrowseFormat(rawValue: $0) }
+        )
+    }
+
+    private var seasonBinding: Binding<String> {
+        Binding(
+            get: { filters.season?.rawValue ?? "All" },
+            set: { filters.season = BrowseSeason(rawValue: $0) }
+        )
+    }
+
+    private var yearBinding: Binding<String> {
+        Binding(
+            get: { filters.year.map(String.init) ?? "All" },
+            set: { filters.year = Int($0) }
+        )
+    }
+
+    private var sortBinding: Binding<String> {
+        Binding(
+            get: { filters.sort.title },
+            set: { selection in
+                if let sort = BrowseSortOption.allCases.first(where: { $0.title == selection }) {
+                    filters.sort = sort
+                }
+            }
+        )
     }
 }

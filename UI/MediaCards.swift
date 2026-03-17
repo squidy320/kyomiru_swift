@@ -8,12 +8,15 @@ struct MediaPosterCard: View {
     let score: Int?
     let statusBadge: String?
     let cornerBadge: String?
+    let size: CGSize? = nil
     @EnvironmentObject private var appState: AppState
     @State private var imdbPosterURL: URL?
     @State private var tmdbLookupComplete = false
 
     var body: some View {
         let useTMDB = appState.settings.cardImageSource == .tmdb
+        let cardWidth = size?.width ?? UIConstants.posterCardWidth
+        let cardHeight = size?.height ?? UIConstants.posterCardHeight
         let resolvedURL: URL? = {
             if useTMDB {
                 return tmdbLookupComplete ? (imdbPosterURL ?? imageURL) : imdbPosterURL
@@ -28,7 +31,7 @@ struct MediaPosterCard: View {
                 if let resolved = resolvedURL {
                     CachedImage(
                         url: resolved,
-                        targetSize: CGSize(width: UIConstants.posterCardWidth, height: UIConstants.posterCardHeight)
+                        targetSize: CGSize(width: cardWidth, height: cardHeight)
                     ) { image in
                         image.resizable().scaledToFill()
                     } placeholder: {
@@ -58,7 +61,7 @@ struct MediaPosterCard: View {
                 }
                 .padding(UIConstants.rowPadding)
             }
-            .frame(maxWidth: .infinity, maxHeight: UIConstants.posterCardHeight)
+            .frame(maxWidth: .infinity, maxHeight: cardHeight)
             .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
 
             RatingBadge(score: score)
@@ -93,7 +96,7 @@ struct MediaPosterCard: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
-        .frame(width: UIConstants.posterCardWidth, height: UIConstants.posterCardHeight)
+        .frame(width: cardWidth, height: cardHeight)
         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
         .task(id: "\(media?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
             guard let media else { return }
