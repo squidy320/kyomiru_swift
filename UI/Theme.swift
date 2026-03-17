@@ -26,6 +26,7 @@ actor ImageCache {
     private let memory = NSCache<NSURL, NSData>()
     private let folder: URL
     private let session: URLSession
+    private var inFlight: Set<URL> = []
 
     init() {
         let fm = FileManager.default
@@ -69,6 +70,27 @@ actor ImageCache {
             return nil
         }
         return nil
+    }
+
+    func prefetch(urls: [URL]) async {
+        let unique = Array(Set(urls))
+        if unique.isEmpty { return }
+        for url in unique {
+            let key = url as NSURL
+            if memory.object(forKey: key) != nil { continue }
+            let fileURL = fileURLFor(url: url)
+            if FileManager.default.fileExists(atPath: fileURL.path) { continue }
+            if inFlight.contains(url) { continue }
+            inFlight.insert(url)
+            Task {
+                _ = await data(for: url)
+                await removeInFlight(url)
+            }
+        }
+    }
+
+    private func removeInFlight(_ url: URL) async {
+        inFlight.remove(url)
     }
 
     func clearAll() async {

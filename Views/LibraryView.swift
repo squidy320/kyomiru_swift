@@ -4,6 +4,7 @@ import UIKit
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var librarySettings = LibrarySettingsManager()
+    @StateObject private var networkMonitor = NetworkMonitor.shared
     @State private var sections: [AniListLibrarySection] = []
     @State private var availabilityById: [Int: AniListEpisodeAvailability] = [:]
     @State private var isLoading = false
@@ -140,6 +141,7 @@ struct LibraryView: View {
                !cached.isEmpty {
                 applyLibrarySections(cached)
                 await prefetchAvailability(sections: cached)
+                await prefetchLibraryImages(sections: cached)
             }
             await loadLibrary()
         }
@@ -152,6 +154,12 @@ struct LibraryView: View {
             Task {
                 await loadLibrary()
             }
+        }
+        .onChange(of: sections) { _, _ in
+            Task { await prefetchLibraryImages(sections: sections) }
+        }
+        .onChange(of: appState.settings.cardImageSource) { _, _ in
+            Task { await prefetchLibraryImages(sections: sections) }
         }
     }
 
@@ -244,6 +252,7 @@ struct LibraryView: View {
             let items = try await appState.services.aniListClient.librarySections(token: token, forceRefresh: true)
             applyLibrarySections(items)
             await prefetchAvailability(sections: items)
+            await prefetchLibraryImages(sections: items)
         } catch {
             errorMessage = "Failed to load AniList library."
             AppLog.error(.network, "library load failed \(error.localizedDescription)")
@@ -285,6 +294,37 @@ struct LibraryView: View {
                 availabilityById = updated
             }
         }
+    }
+
+    private func prefetchLibraryImages(sections: [AniListLibrarySection], limit: Int = 18) async {
+        guard networkMonitor.isOnWiFi else { return }
+        let useTMDB = appState.settings.cardImageSource == .tmdb
+        let mediaItems = sections.flatMap(\.items).map(\.media)
+        var urls: [URL] = []
+
+        let continueItems = continueWatchingItems()
+        for item in continueItems.prefix(6) {
+            if useTMDB, let media = item.media,
+               let backdrop = await appState.services.metadataService.backdropURL(for: media) {
+                urls.append(backdrop)
+            } else if let url = item.imageURL {
+                urls.append(url)
+            }
+        }
+
+        for media in mediaItems.prefix(limit) {
+            if useTMDB {
+                if let poster = await appState.services.metadataService.posterURL(for: media) {
+                    urls.append(poster)
+                } else if let cover = media.coverURL {
+                    urls.append(cover)
+                }
+            } else if let cover = media.coverURL {
+                urls.append(cover)
+            }
+        }
+
+        await ImageCache.shared.prefetch(urls: urls)
     }
 
     private func formatRemaining(_ seconds: TimeInterval) -> String {

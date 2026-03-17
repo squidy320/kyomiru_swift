@@ -16,6 +16,7 @@ struct DiscoveryView: View {
     @State private var isLoadingImdbTrending = false
     @State private var imdbAniListMap: [Int: AniListMedia] = [:]
     @State private var navigateMedia: AniListMedia?
+    @StateObject private var networkMonitor = NetworkMonitor.shared
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
@@ -109,6 +110,13 @@ struct DiscoveryView: View {
             if heroIndex >= heroItems().count {
                 heroIndex = 0
             }
+            Task { await prefetchDiscoveryImages() }
+        }
+        .onChange(of: imdbTrending) { _, _ in
+            Task { await prefetchDiscoveryImages() }
+        }
+        .onChange(of: appState.settings.cardImageSource) { _, _ in
+            Task { await prefetchDiscoveryImages() }
         }
     }
     private var heroCarousel: AnyView {
@@ -163,7 +171,7 @@ struct DiscoveryView: View {
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let heroTrending, let url = heroTrending.backdropURL {
-                        AsyncImage(url: url) { image in
+                        CachedImage(url: url) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {
                             Theme.surface
@@ -202,7 +210,7 @@ struct DiscoveryView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     if let logo = heroTrending?.logoURL {
-                        AsyncImage(url: logo) { image in
+                        CachedImage(url: logo) { image in
                             image.resizable().scaledToFit()
                         } placeholder: {
                             Color.clear
@@ -375,6 +383,7 @@ private extension DiscoveryView {
         }
         isLoading = false
         AppLog.debug(.network, "discovery load complete sections=\(sections.count)")
+        await prefetchDiscoveryImages()
     }
 
     func statusBadge(for media: AniListMedia) -> String? {
@@ -409,6 +418,7 @@ private extension DiscoveryView {
         await MainActor.run {
             isLoadingImdbTrending = false
         }
+        await prefetchDiscoveryImages()
     }
 
     func prefetchAniListMappings(items: [TrendingItem]) async {
@@ -448,6 +458,34 @@ private extension DiscoveryView {
             }
         }
     }
+
+    func prefetchDiscoveryImages(limit: Int = 16) async {
+        guard networkMonitor.isOnWiFi else { return }
+        var urls: [URL] = []
+        let useTMDB = appState.settings.cardImageSource == .tmdb
+        let mediaItems = sections.flatMap(\.items).prefix(limit)
+        for media in mediaItems {
+            if useTMDB {
+                if let tmdb = await appState.services.metadataService.posterURL(for: media) {
+                    urls.append(tmdb)
+                } else if let cover = media.coverURL {
+                    urls.append(cover)
+                }
+            } else if let cover = media.coverURL {
+                urls.append(cover)
+            }
+        }
+        let trendingItems = imdbTrending.prefix(limit)
+        for item in trendingItems {
+            if let backdrop = item.backdropURL { urls.append(backdrop) }
+            if let logo = item.logoURL { urls.append(logo) }
+        }
+        if let heroTrending {
+            if let backdrop = heroTrending.backdropURL { urls.append(backdrop) }
+            if let logo = heroTrending.logoURL { urls.append(logo) }
+        }
+        await ImageCache.shared.prefetch(urls: urls)
+    }
 }
 
 // Card components moved to UI/MediaCards.swift
@@ -459,7 +497,7 @@ private struct CinematicTrendingCard: View {
         ZStack(alignment: .bottomLeading) {
             Group {
                 if let url = item.backdropURL {
-                    AsyncImage(url: url) { image in
+                    CachedImage(url: url) { image in
                         image.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: {
                         Theme.surface
@@ -482,7 +520,7 @@ private struct CinematicTrendingCard: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 if let logo = item.logoURL {
-                    AsyncImage(url: logo) { image in
+                    CachedImage(url: logo) { image in
                         image.resizable().scaledToFit()
                     } placeholder: {
                         Color.clear
