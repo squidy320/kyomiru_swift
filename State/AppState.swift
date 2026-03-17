@@ -156,6 +156,98 @@ final class AppState: ObservableObject {
         }
     }
 
+    func markEpisodeUnwatched(mediaId: Int, episodeNumber: Int) async {
+        let currentItem = services.libraryStore.item(forExternalId: mediaId)
+        let currentProgress = currentItem?.currentEpisode ?? 0
+        let targetProgress = max(episodeNumber - 1, 0)
+        let newProgress = min(currentProgress, targetProgress)
+        var newStatus = currentItem?.status ?? .watching
+        if newStatus != .watching {
+            newStatus = .watching
+        }
+
+        if let currentItem {
+            let updated = MediaItem(
+                externalId: mediaId,
+                title: currentItem.title,
+                subtitle: currentItem.subtitle,
+                posterImageURL: currentItem.posterImageURL,
+                heroImageURL: currentItem.heroImageURL,
+                ratingScore: currentItem.ratingScore,
+                matchPercent: currentItem.matchPercent,
+                contentRating: currentItem.contentRating,
+                genres: currentItem.genres,
+                totalEpisodes: currentItem.totalEpisodes,
+                currentEpisode: newProgress,
+                userRating: currentItem.userRating,
+                studio: currentItem.studio,
+                status: newStatus
+            )
+            services.libraryStore.upsert(updated)
+        }
+
+        guard settings.autoSyncAniList,
+              authState.isSignedIn,
+              let token = authState.token else { return }
+        do {
+            _ = try await services.aniListClient.saveMediaListEntry(
+                token: token,
+                mediaId: mediaId,
+                status: aniListStatus(for: newStatus),
+                progress: newProgress
+            )
+            services.aniListClient.clearLibraryCache(token: token)
+        } catch {
+            AppLog.error(.network, "episode unwatch sync failed mediaId=\(mediaId) \(error.localizedDescription)")
+        }
+    }
+
+    func markMediaCompleted(mediaId: Int) async {
+        let currentItem = services.libraryStore.item(forExternalId: mediaId)
+        var totalEpisodes: Int? = currentItem?.totalEpisodes
+        if authState.isSignedIn, let token = authState.token {
+            if let availability = try? await services.aniListClient.episodeAvailability(token: token, mediaId: mediaId),
+               let availTotal = availability.totalEpisodes, availTotal > 0 {
+                totalEpisodes = availTotal
+            }
+        }
+        let newProgress = totalEpisodes ?? currentItem?.currentEpisode ?? 0
+        if let currentItem {
+            let updated = MediaItem(
+                externalId: mediaId,
+                title: currentItem.title,
+                subtitle: currentItem.subtitle,
+                posterImageURL: currentItem.posterImageURL,
+                heroImageURL: currentItem.heroImageURL,
+                ratingScore: currentItem.ratingScore,
+                matchPercent: currentItem.matchPercent,
+                contentRating: currentItem.contentRating,
+                genres: currentItem.genres,
+                totalEpisodes: totalEpisodes ?? currentItem.totalEpisodes,
+                currentEpisode: newProgress,
+                userRating: currentItem.userRating,
+                studio: currentItem.studio,
+                status: .completed
+            )
+            services.libraryStore.upsert(updated)
+        }
+
+        guard settings.autoSyncAniList,
+              authState.isSignedIn,
+              let token = authState.token else { return }
+        do {
+            _ = try await services.aniListClient.saveMediaListEntry(
+                token: token,
+                mediaId: mediaId,
+                status: aniListStatus(for: .completed),
+                progress: newProgress
+            )
+            services.aniListClient.clearLibraryCache(token: token)
+        } catch {
+            AppLog.error(.network, "media completion sync failed mediaId=\(mediaId) \(error.localizedDescription)")
+        }
+    }
+
     private func aniListStatus(for status: MediaStatus) -> String {
         switch status {
         case .watching:

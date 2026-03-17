@@ -63,5 +63,32 @@ final class PlaybackHistoryStore {
         guard let value = map?[String(mediaId)] else { return nil }
         return Date(timeIntervalSince1970: value)
     }
+
+    func clearEpisode(episodeId: String) {
+        var positions = defaults.dictionary(forKey: key) as? [String: Double] ?? [:]
+        var durations = defaults.dictionary(forKey: durationKey) as? [String: Double] ?? [:]
+        positions.removeValue(forKey: episodeId)
+        durations.removeValue(forKey: episodeId)
+        defaults.set(positions, forKey: key)
+        defaults.set(durations, forKey: durationKey)
+        AppLog.debug(.player, "playback cleared episode=\(episodeId)")
+    }
+
+    func clearMedia(mediaId: Int) {
+        let mediaKey = String(mediaId)
+        var idMap = defaults.dictionary(forKey: lastEpisodeKey) as? [String: String] ?? [:]
+        var numberMap = defaults.dictionary(forKey: lastEpisodeNumberKey) as? [String: Int] ?? [:]
+        var updatedMap = defaults.dictionary(forKey: lastUpdatedKey) as? [String: TimeInterval] ?? [:]
+        if let lastEpisode = idMap[mediaKey] {
+            clearEpisode(episodeId: lastEpisode)
+        }
+        idMap.removeValue(forKey: mediaKey)
+        numberMap.removeValue(forKey: mediaKey)
+        updatedMap.removeValue(forKey: mediaKey)
+        defaults.set(idMap, forKey: lastEpisodeKey)
+        defaults.set(numberMap, forKey: lastEpisodeNumberKey)
+        defaults.set(updatedMap, forKey: lastUpdatedKey)
+        AppLog.debug(.player, "playback cleared mediaId=\(mediaId)")
+    }
 }
 

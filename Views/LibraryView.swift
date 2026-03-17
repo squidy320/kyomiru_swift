@@ -64,6 +64,21 @@ struct LibraryView: View {
                                                 .frame(height: UIConstants.continueCardHeight)
                                             }
                                             .buttonStyle(.plain)
+                                            .contextMenu {
+                                                Button("Remove") {
+                                                    PlaybackHistoryStore.shared.clearMedia(mediaId: item.id)
+                                                    continueThumbs.removeValue(forKey: item.id)
+                                                    continueEpisodes.removeValue(forKey: item.id)
+                                                }
+                                                Button("Mark Completed") {
+                                                    Task {
+                                                        await appState.markMediaCompleted(mediaId: item.id)
+                                                        PlaybackHistoryStore.shared.clearMedia(mediaId: item.id)
+                                                        continueThumbs.removeValue(forKey: item.id)
+                                                        continueEpisodes.removeValue(forKey: item.id)
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                     .padding(.horizontal, UIConstants.tinyPadding)

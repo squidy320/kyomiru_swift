@@ -10,6 +10,7 @@ struct PlayerView: View {
     let mediaId: Int
     let malId: Int?
     let mediaTitle: String?
+    let startAt: Double? = nil
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
@@ -20,7 +21,8 @@ struct PlayerView: View {
                 sources: sources,
                 mediaId: mediaId,
                 malId: malId,
-                mediaTitle: mediaTitle
+                mediaTitle: mediaTitle,
+                startAt: startAt
             )
 #else
             Text("Playback is only supported on iOS.")
@@ -36,6 +38,7 @@ private struct AVPlayerScreen: View {
     let mediaId: Int
     let malId: Int?
     let mediaTitle: String?
+    let startAt: Double?
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var player: AVPlayer?
@@ -174,7 +177,7 @@ private struct AVPlayerScreen: View {
     }
 
     private func addObservers(to player: AVPlayer, item: AVPlayerItem) {
-        let startTime = PlaybackHistoryStore.shared.position(for: episode.id) ?? 0
+        let startTime = startAt ?? (PlaybackHistoryStore.shared.position(for: episode.id) ?? 0)
 
         statusObserver = item.observe(\.status, options: [.initial, .new]) { observed, _ in
             switch observed.status {

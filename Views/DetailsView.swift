@@ -16,6 +16,7 @@ struct DetailsView: View {
     @State private var showSourceSheet = false
     @State private var showMatchSheet = false
     @State private var showListManager = false
+    @State private var playerStartAt: Double?
     @State private var listManagerModel = ListManagerViewModel(item: MediaItem(title: "", status: .planning))
     @State private var isLoadingMatch = false
     @State private var matchCandidates: [SoraAnimeMatch] = []
@@ -75,7 +76,14 @@ struct DetailsView: View {
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let episode = selectedEpisode, !sources.isEmpty {
-                PlayerView(episode: episode, sources: sources, mediaId: media.id, malId: media.idMal, mediaTitle: media.title.best)
+                PlayerView(
+                    episode: episode,
+                    sources: sources,
+                    mediaId: media.id,
+                    malId: media.idMal,
+                    mediaTitle: media.title.best,
+                    startAt: playerStartAt
+                )
             }
         }
         .sheet(isPresented: $showSourceSheet) {
@@ -392,6 +400,21 @@ struct DetailsView: View {
                         selectEpisode(episode)
                     }
                 )
+                .contextMenu {
+                    Button("Mark Watched") {
+                        Task { await appState.markEpisodeWatched(mediaId: media.id, episodeNumber: episode.number) }
+                    }
+                    Button("Mark Unwatched") {
+                        Task { await appState.markEpisodeUnwatched(mediaId: media.id, episodeNumber: episode.number) }
+                    }
+                    Button("Download") {
+                        openSourcePicker(for: episode)
+                    }
+                    Button("Play from Start") {
+                        playerStartAt = 0
+                        selectEpisode(episode)
+                    }
+                }
             }
         }
     }
@@ -494,6 +517,7 @@ struct DetailsView: View {
     }
 
     private func selectEpisode(_ episode: SoraEpisode) {
+        playerStartAt = nil
         selectedEpisode = episode
         AppLog.debug(.ui, "episode selected ep=\(episode.number)")
         Task {
@@ -528,6 +552,27 @@ struct DetailsView: View {
                 if sources.isEmpty {
                     errorMessage = "No streams available."
                 } else {
+                    showSourceSheet = true
+                }
+            } catch {
+                errorMessage = "Failed to load streams."
+                AppLog.error(.network, "sources load failed ep=\(episode.number) \(error.localizedDescription)")
+            }
+            isLoadingSources = false
+        }
+    }
+
+    private func openSourcePicker(for episode: SoraEpisode) {
+        playerStartAt = nil
+        selectedEpisode = episode
+        Task {
+            isLoadingSources = true
+            do {
+                let sources = try await appState.services.episodeService.loadSources(for: episode)
+                if sources.isEmpty {
+                    errorMessage = "No streams available."
+                } else {
+                    self.sources = sources
                     showSourceSheet = true
                 }
             } catch {
