@@ -109,6 +109,9 @@ struct DiscoveryView: View {
                     .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
+                .refreshable {
+                    await loadDiscovery(forceRefresh: true)
+                }
                 .navigationTitle(isPad ? "Discovery" : "")
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationDestination(item: $navigateMedia) { media in
@@ -123,7 +126,9 @@ struct DiscoveryView: View {
                 sections = cached
             }
             await loadImdbTrending()
-            await loadDiscovery()
+            if sections.isEmpty {
+                await loadDiscovery(forceRefresh: false)
+            }
         }
         .onChange(of: query) { _, _ in
             runSearch()
@@ -141,7 +146,7 @@ struct DiscoveryView: View {
             Task { await prefetchDiscoveryImages() }
         }
         .onChange(of: librarySortRaw) { _, _ in
-            Task { await loadDiscovery() }
+            Task { await loadDiscovery(forceRefresh: true) }
         }
     }
     private var heroCarousel: AnyView {
@@ -397,11 +402,14 @@ private extension DiscoveryView {
         return Array(items.prefix(5))
     }
 
-    func loadDiscovery() async {
+    func loadDiscovery(forceRefresh: Bool) async {
         AppLog.debug(.network, "discovery load start")
         isLoading = true
         do {
-            sections = try await appState.services.aniListClient.discoverySections(sort: discoverySort())
+            sections = try await appState.services.aniListClient.discoverySections(
+                sort: discoverySort(),
+                forceRefresh: forceRefresh
+            )
         } catch {
             sections = []
             AppLog.error(.network, "discovery load failed \(error.localizedDescription)")

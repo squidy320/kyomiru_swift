@@ -91,15 +91,19 @@ final class AniListClient {
         return items
     }
 
-func discoverySections(sort: String) async throws -> [AniListDiscoverySection] {
-    if let cached = cachedDiscoverySections, cached.expires > Date(), cached.sort == sort {
-        AppLog.debug(.cache, "discovery sections cache hit")
-        return cached.items
-    }
-    if let cached = cachedDiscoverySectionsFromDisk(sort: sort) {
-        AppLog.debug(.cache, "discovery sections disk cache hit")
-        cachedDiscoverySections = (sort, cached, Date().addingTimeInterval(60 * 10))
-        return cached
+func discoverySections(sort: String, forceRefresh: Bool = false) async throws -> [AniListDiscoverySection] {
+    if !forceRefresh {
+        if let cached = cachedDiscoverySections, cached.expires > Date(), cached.sort == sort {
+            AppLog.debug(.cache, "discovery sections cache hit")
+            return cached.items
+        }
+        if let cached = cachedDiscoverySectionsFromDisk(sort: sort) {
+            AppLog.debug(.cache, "discovery sections disk cache hit")
+            cachedDiscoverySections = (sort, cached, Date().addingTimeInterval(60 * 10))
+            return cached
+        }
+    } else {
+        AppLog.debug(.cache, "discovery sections cache bypass")
     }
     AppLog.debug(.network, "discovery sections request start")
 

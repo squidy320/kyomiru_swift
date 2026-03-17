@@ -122,6 +122,9 @@ struct LibraryView: View {
                     .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
+                .refreshable {
+                    await loadLibrary(forceRefresh: true)
+                }
                 .navigationTitle(isPad ? "Library" : "")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -204,7 +207,9 @@ struct LibraryView: View {
                 await prefetchLibraryImages(sections: cached)
                 await prefetchContinueWatchingThumbnails(items: continueWatchingItems())
             }
-            await loadLibrary()
+            if sections.isEmpty {
+                await loadLibrary(forceRefresh: false)
+            }
         }
         .onChange(of: appState.authState.token) { _, newToken in
             if newToken == nil {
@@ -219,7 +224,7 @@ struct LibraryView: View {
                 return
             }
             Task {
-                await loadLibrary()
+                await loadLibrary(forceRefresh: true)
             }
         }
         .onChange(of: sections) { _, _ in
@@ -313,14 +318,14 @@ struct LibraryView: View {
         }
     }
 
-    private func loadLibrary() async {
+    private func loadLibrary(forceRefresh: Bool = false) async {
         guard appState.authState.isSignedIn,
               let token = appState.authState.token else { return }
         AppLog.debug(.network, "library load start")
         isLoading = true
         errorMessage = nil
         do {
-            let items = try await appState.services.aniListClient.librarySections(token: token, forceRefresh: true)
+            let items = try await appState.services.aniListClient.librarySections(token: token, forceRefresh: forceRefresh)
             applyLibrarySections(items)
             await prefetchAvailability(sections: items)
             await prefetchLibraryImages(sections: items)
