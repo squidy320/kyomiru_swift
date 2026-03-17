@@ -468,6 +468,9 @@ struct DownloadItem: Identifiable, Equatable {
     var localFile: URL?
     var status: String
     var isHls: Bool
+    var downloadedBytes: Int64?
+    var totalBytes: Int64?
+    var speedBytesPerSec: Double?
 }
 
 @MainActor
@@ -476,6 +479,7 @@ final class DownloadManager: NSObject, ObservableObject {
     @Published private(set) var items: [DownloadItem] = []
     private var aniSkipCache: [String: [AniSkipSegment]] = [:]
     private let aniSkipIndexKey = "aniskip_cache.json"
+    private var speedSamples: [String: (bytes: Int64, time: TimeInterval)] = [:]
 
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.background(withIdentifier: "kyomiru.downloads")
@@ -511,7 +515,19 @@ final class DownloadManager: NSObject, ObservableObject {
             AppLog.debug(.downloads, "download already queued id=\(id)")
             return
         }
-        let item = DownloadItem(id: id, title: title, episode: episode, url: url, progress: 0, localFile: nil, status: "Queued", isHls: false)
+        let item = DownloadItem(
+            id: id,
+            title: title,
+            episode: episode,
+            url: url,
+            progress: 0,
+            localFile: nil,
+            status: "Queued",
+            isHls: false,
+            downloadedBytes: nil,
+            totalBytes: nil,
+            speedBytesPerSec: nil
+        )
         items.append(item)
         saveIndex()
         AppLog.debug(.downloads, "download enqueue id=\(id)")
@@ -527,7 +543,19 @@ final class DownloadManager: NSObject, ObservableObject {
             AppLog.debug(.downloads, "hls already queued id=\(id)")
             return
         }
-        let item = DownloadItem(id: id, title: title, episode: episode, url: url, progress: 0, localFile: nil, status: "Queued", isHls: true)
+        let item = DownloadItem(
+            id: id,
+            title: title,
+            episode: episode,
+            url: url,
+            progress: 0,
+            localFile: nil,
+            status: "Queued",
+            isHls: true,
+            downloadedBytes: nil,
+            totalBytes: nil,
+            speedBytesPerSec: nil
+        )
         items.append(item)
         saveIndex()
         updateStatus(id: id, status: "Downloading HLS")
@@ -566,6 +594,24 @@ final class DownloadManager: NSObject, ObservableObject {
             items[idx].progress = progress
             saveIndex()
         }
+    }
+
+    private func updateTransferStats(id: String, written: Int64, expected: Int64) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        let now = Date().timeIntervalSince1970
+        let previous = speedSamples[id]
+        var speed: Double? = items[idx].speedBytesPerSec
+        if let previous {
+            let deltaBytes = written - previous.bytes
+            let deltaTime = now - previous.time
+            if deltaBytes > 0, deltaTime > 0.2 {
+                speed = Double(deltaBytes) / deltaTime
+            }
+        }
+        speedSamples[id] = (written, now)
+        items[idx].downloadedBytes = written
+        items[idx].totalBytes = expected > 0 ? expected : nil
+        items[idx].speedBytesPerSec = speed
     }
 
     private func updateStatus(id: String, status: String, localFile: URL? = nil) {
@@ -672,6 +718,12 @@ final class DownloadManager: NSObject, ObservableObject {
         try? fm.removeItem(at: target)
         do {
             try fm.moveItem(at: location, to: target)
+            if let idx = items.firstIndex(where: { $0.id == id }) {
+                let size = (try? fm.attributesOfItem(atPath: target.path)[.size] as? NSNumber)?.int64Value ?? 0
+                items[idx].downloadedBytes = size > 0 ? size : nil
+                items[idx].totalBytes = size > 0 ? size : items[idx].totalBytes
+                items[idx].speedBytesPerSec = nil
+            }
             updateStatus(id: id, status: "Completed", localFile: target)
             AppLog.debug(.downloads, "download complete id=\(id)")
             markWatched(mediaTitle: item.title, episode: item.episode)
@@ -686,6 +738,7 @@ final class DownloadManager: NSObject, ObservableObject {
                                     totalBytesExpectedToWrite: Int64) {
         guard totalBytesExpectedToWrite > 0,
               let id = task.taskDescription else { return }
+        updateTransferStats(id: id, written: totalBytesWritten, expected: totalBytesExpectedToWrite)
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
         updateProgress(id: id, progress: progress)
     }
@@ -1055,7 +1108,10 @@ private struct PersistedDownload: Codable {
             progress: progress,
             localFile: localFile.flatMap(URL.init(string:)),
             status: status,
-            isHls: isHls
+            isHls: isHls,
+            downloadedBytes: nil,
+            totalBytes: nil,
+            speedBytesPerSec: nil
         )
     }
 }

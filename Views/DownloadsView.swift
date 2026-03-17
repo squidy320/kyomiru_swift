@@ -23,6 +23,13 @@ struct DownloadsView: View {
                     }
 
                     let completed = manager.items.filter { $0.status == "Completed" }
+                    let active = manager.items.filter { $0.status != "Completed" }
+                    if !active.isEmpty {
+                        queueSummary(active)
+                        ForEach(active) { item in
+                            queueRow(item)
+                        }
+                    }
                     if completed.isEmpty {
                         GlassCard {
                             Text("No downloads yet.")
@@ -109,6 +116,64 @@ private struct DownloadGroup: Identifiable {
 }
 
 private extension DownloadsView {
+    @ViewBuilder
+    func queueSummary(_ items: [DownloadItem]) -> some View {
+        let totalBytes = items.compactMap { $0.totalBytes }.reduce(0, +)
+        GlassCard {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Download Queue")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                HStack(spacing: 8) {
+                    Text("\(items.count) active")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                    if totalBytes > 0 {
+                        Text("• \(formatBytes(totalBytes)) total")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    func queueRow(_ item: DownloadItem) -> some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("\(item.title) • Ep \(item.episode)")
+                        .foregroundColor(.white)
+                        .font(.system(size: 14, weight: .semibold))
+                    Spacer()
+                    Text(item.status)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                ProgressView(value: item.progress)
+                    .tint(.white)
+                HStack(spacing: 8) {
+                    if let downloaded = item.downloadedBytes, let total = item.totalBytes, total > 0 {
+                        Text("\(formatBytes(downloaded)) / \(formatBytes(total))")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                    } else {
+                        Text("\(Int(item.progress * 100))%")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    if let speed = item.speedBytesPerSec, speed > 0 {
+                        Text("• \(formatSpeed(speed))")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+
     func groupedDownloads(_ items: [DownloadItem]) -> [DownloadGroup] {
         let grouped = Dictionary(grouping: items, by: { $0.title })
         let sortedKeys = grouped.keys.sorted { $0.lowercased() < $1.lowercased() }
@@ -116,5 +181,20 @@ private extension DownloadsView {
             let episodes = grouped[key, default: []].sorted { $0.episode < $1.episode }
             return DownloadGroup(title: key, items: episodes)
         }
+    }
+
+    func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB, .useKB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    func formatSpeed(_ bytesPerSecond: Double) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB, .useKB]
+        formatter.countStyle = .file
+        let text = formatter.string(fromByteCount: Int64(bytesPerSecond))
+        return "\(text)/s"
     }
 }
