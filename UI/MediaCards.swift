@@ -9,6 +9,7 @@ struct MediaPosterCard: View {
     let statusBadge: String?
     let cornerBadge: String?
     let size: CGSize?
+    let overlayOpacity: Double
     @EnvironmentObject private var appState: AppState
     @State private var imdbPosterURL: URL?
     @State private var tmdbLookupComplete = false
@@ -21,7 +22,8 @@ struct MediaPosterCard: View {
         score: Int?,
         statusBadge: String?,
         cornerBadge: String?,
-        size: CGSize? = nil
+        size: CGSize? = nil,
+        overlayOpacity: Double = 0.85
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -31,6 +33,7 @@ struct MediaPosterCard: View {
         self.statusBadge = statusBadge
         self.cornerBadge = cornerBadge
         self.size = size
+        self.overlayOpacity = overlayOpacity
     }
 
     var body: some View {
@@ -62,7 +65,7 @@ struct MediaPosterCard: View {
                 }
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.85), Color.clear],
+                    colors: [Color.black.opacity(overlayOpacity), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )

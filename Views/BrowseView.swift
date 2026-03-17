@@ -10,69 +10,84 @@ struct BrowseView: View {
     @State private var filters = BrowseFilterState()
     @State private var pendingFilters = BrowseFilterState()
     @State private var showFilters = false
+    @State private var heroTrending: TrendingItem?
+    @State private var navigateMedia: AniListMedia?
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         ZStack {
             Theme.baseBackground.ignoresSafeArea()
-            ScrollView {
-                LazyVStack(pinnedViews: [.sectionHeaders]) {
-                    Section(header: filterBar) {
-                        if let errorMessage {
-                            GlassCard {
-                                Text(errorMessage)
-                                    .foregroundColor(Theme.textSecondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .padding(.horizontal, UIConstants.standardPadding)
-                        }
-
-                        GeometryReader { proxy in
-                            let horizontalPadding = UIConstants.standardPadding
-                            let availableWidth = proxy.size.width - (horizontalPadding * 2)
-                            let (columns, cardSize) = gridLayout(for: availableWidth)
-                            LazyVGrid(columns: columns, spacing: gridSpacing) {
-                                ForEach(items, id: \.id) { media in
-                                    NavigationLink {
-                                        DetailsView(media: media)
-                                    } label: {
-                                        MediaPosterCard(
-                                            title: media.title.best,
-                                            subtitle: nil,
-                                            imageURL: media.coverURL,
-                                            media: media,
-                                            score: media.averageScore,
-                                            statusBadge: statusBadge(for: media),
-                                            cornerBadge: nil,
-                                            size: cardSize
-                                        )
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                        heroHeader
+                        LazyVStack(pinnedViews: [.sectionHeaders]) {
+                            Section(header: filterBar) {
+                                if let errorMessage {
+                                    GlassCard {
+                                        Text(errorMessage)
+                                            .foregroundColor(Theme.textSecondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
                                     }
-                                    .buttonStyle(.plain)
-                                    .onAppear {
-                                        if media.id == items.last?.id {
-                                            Task { await loadMoreIfNeeded() }
+                                    .padding(.horizontal, UIConstants.standardPadding)
+                                }
+
+                                GeometryReader { proxy in
+                                    let horizontalPadding = UIConstants.standardPadding
+                                    let availableWidth = proxy.size.width - (horizontalPadding * 2)
+                                    let (columns, cardSize) = gridLayout(for: availableWidth)
+                                    LazyVGrid(columns: columns, spacing: gridSpacing) {
+                                        ForEach(items, id: \.id) { media in
+                                            NavigationLink {
+                                                DetailsView(media: media)
+                                            } label: {
+                                                MediaPosterCard(
+                                                    title: media.title.best,
+                                                    subtitle: nil,
+                                                    imageURL: media.coverURL,
+                                                    media: media,
+                                                    score: media.averageScore,
+                                                    statusBadge: statusBadge(for: media),
+                                                    cornerBadge: nil,
+                                                    size: cardSize,
+                                                    overlayOpacity: 0.6
+                                                )
+                                            }
+                                            .buttonStyle(.plain)
+                                            .onAppear {
+                                                if media.id == items.last?.id {
+                                                    Task { await loadMoreIfNeeded() }
+                                                }
+                                            }
                                         }
                                     }
+                                    .padding(.horizontal, horizontalPadding)
+                                }
+                                .frame(minHeight: 0)
+
+                                if isLoading {
+                                    ProgressView("Loading...")
+                                        .tint(.white)
+                                        .frame(maxWidth: .infinity, alignment: .center)
+                                        .padding(.vertical, UIConstants.smallPadding)
                                 }
                             }
-                            .padding(.horizontal, horizontalPadding)
-                        }
-                        .frame(minHeight: 0)
-
-                        if isLoading {
-                            ProgressView("Loading...")
-                                .tint(.white)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.vertical, UIConstants.smallPadding)
                         }
                     }
+                    .padding(.bottom, UIConstants.bottomBarHeight)
+                }
+                .navigationDestination(item: $navigateMedia) { media in
+                    DetailsView(media: media)
+                }
+                .refreshable {
+                    await reload()
                 }
             }
-            .refreshable {
-                await reload()
-            }
         }
-        .task { await reload() }
+        .task {
+            await loadHero()
+            await reload()
+        }
         .sheet(isPresented: $showFilters) {
             BrowseFilterSheet(
                 filters: $pendingFilters,
@@ -157,6 +172,84 @@ struct BrowseView: View {
         return item.status.badgeTitle
     }
 
+    private var heroHeader: some View {
+        let height = UIScreen.main.bounds.height * 0.5
+        let topInset = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
+            .first ?? 0
+        return GeometryReader { proxy in
+            let width = proxy.size.width
+            let insetTop = proxy.safeAreaInsets.top
+            let topFeatherHeight = max(24.0, insetTop * 0.6)
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let heroTrending, let url = heroTrending.backdropURL {
+                        CachedImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
+                        Theme.surface
+                    }
+                }
+                .frame(width: width, height: height + insetTop)
+                .clipped()
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [Color.clear, Color.black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: topFeatherHeight)
+                        Color.black
+                    }
+                )
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: height + insetTop)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    if let logo = heroTrending?.logoURL {
+                        CachedImage(url: logo) { image in
+                            image.resizable().scaledToFit()
+                        } placeholder: {
+                            Color.clear
+                        }
+                        .frame(maxWidth: 220)
+                    } else if let title = heroTrending?.title {
+                        Text(title)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                    }
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, 24)
+            }
+            .frame(width: width, height: height + insetTop)
+            .clipped()
+            .contentShape(Rectangle())
+            .onTapGesture {
+                handleHeroTap()
+            }
+        }
+        .frame(height: height)
+        .offset(y: -topInset)
+    }
+
     private func gridLayout(for availableWidth: CGFloat) -> ([GridItem], CGSize) {
         let targetColumns: Int
         if isPad {
@@ -193,6 +286,34 @@ struct BrowseView: View {
         hasMore = true
         errorMessage = nil
         await loadMoreIfNeeded()
+    }
+
+    private func loadHero() async {
+        if heroTrending == nil {
+            let randomHero = await appState.services.trendingService.fetchRandomDiscoverAnime(minVoteCount: 50)
+            await MainActor.run {
+                if let randomHero {
+                    heroTrending = randomHero
+                }
+            }
+        }
+        if heroTrending == nil {
+            let items = await appState.services.trendingService.fetchTrending()
+            await MainActor.run {
+                heroTrending = items.randomElement()
+            }
+        }
+    }
+
+    private func handleHeroTap() {
+        guard let heroTrending else { return }
+        Task {
+            if let media = (try? await appState.services.aniListClient.searchAnimeByTitle(heroTrending.title)) ?? nil {
+                await MainActor.run {
+                    navigateMedia = media
+                }
+            }
+        }
     }
 
     private func loadMoreIfNeeded() async {
