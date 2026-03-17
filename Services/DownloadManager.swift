@@ -1,7 +1,7 @@
 import Foundation
 import AVFoundation
 import CommonCrypto
-import FFmpegKit
+import ffmpegkit
 
 struct AniSkipSegment: Codable, Equatable, Hashable {
     let type: String
