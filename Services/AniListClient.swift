@@ -823,8 +823,7 @@ final class AniListClient {
 
     private func cachedDiscoverySectionsFromDisk(sort: String) -> [AniListDiscoverySection]? {
         let cacheKey = discoverySectionsCacheKey(for: sort)
-        let data = cacheStore.readJSON(forKey: cacheKey) ?? cacheStore.readJSON(forKey: "discovery:sections")
-        guard let data else { return nil }
+        guard let data = cacheStore.readJSON(forKey: cacheKey) else { return nil }
         return [
             AniListDiscoverySection(
                 id: "trending",
