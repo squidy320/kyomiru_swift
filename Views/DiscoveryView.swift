@@ -128,6 +128,8 @@ struct DiscoveryView: View {
             await loadImdbTrending()
             if sections.isEmpty {
                 await loadDiscovery(forceRefresh: false)
+            } else if !hasAllCoreSections(sections) {
+                await loadDiscovery(forceRefresh: true)
             }
         }
         .onChange(of: query) { _, _ in
@@ -411,12 +413,22 @@ private extension DiscoveryView {
                 forceRefresh: forceRefresh
             )
         } catch {
-            sections = []
+            if sections.isEmpty {
+                sections = []
+            }
             AppLog.error(.network, "discovery load failed \(error.localizedDescription)")
         }
         isLoading = false
         AppLog.debug(.network, "discovery load complete sections=\(sections.count)")
         await prefetchDiscoveryImages()
+    }
+
+    func hasAllCoreSections(_ items: [AniListDiscoverySection]) -> Bool {
+        let ids = Set(items.map(\.id))
+        return ids.contains("trending")
+            && ids.contains("hotNow")
+            && ids.contains("upcoming")
+            && ids.contains("allTime")
     }
 
     func discoverySort() -> String {

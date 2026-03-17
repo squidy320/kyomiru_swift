@@ -330,7 +330,9 @@ struct LibraryView: View {
             await prefetchAvailability(sections: items)
             await prefetchLibraryImages(sections: items)
         } catch {
-            errorMessage = "Failed to load AniList library."
+            if sections.isEmpty {
+                errorMessage = "Failed to load AniList library."
+            }
             AppLog.error(.network, "library load failed \(error.localizedDescription)")
         }
         isLoading = false

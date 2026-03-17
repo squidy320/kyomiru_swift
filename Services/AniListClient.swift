@@ -127,7 +127,7 @@ func discoverySections(sort: String, forceRefresh: Bool = false) async throws ->
     let baseQuery = """
         query DiscoveryBase {
           trending: Page(page: 1, perPage: 12) { media(type: ANIME, sort: TRENDING_DESC, isAdult: false) { \(mediaFields) } }
-          hotNow: Page(page: 1, perPage: 12) { media(type: ANIME, sort: POPULARITY_DESC, isAdult: false, season: \(seasonValue), seasonYear: \(seasonYear)) { \(mediaFields) } }
+          hotNow: Page(page: 1, perPage: 12) { media(type: ANIME, sort: POPULARITY_DESC, isAdult: false, season: \(seasonValue), seasonYear: \(seasonYear), status: RELEASING) { \(mediaFields) } }
           upcoming: Page(page: 1, perPage: 12) { media(type: ANIME, sort: START_DATE, isAdult: false, status: NOT_YET_RELEASED) { \(mediaFields) } }
           allTime: Page(page: 1, perPage: 12) { media(type: ANIME, sort: SCORE_DESC, isAdult: false) { \(mediaFields) } }
         }
@@ -388,7 +388,7 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
 
         if sectionId == "hotNow" {
             let (seasonValue, seasonYear) = currentSeasonAndYear()
-            return (sortValue, ", season: \(seasonValue), seasonYear: \(seasonYear)")
+            return (sortValue, ", season: \(seasonValue), seasonYear: \(seasonYear), status: RELEASING")
         }
         if sectionId == "upcoming" {
             return (sortValue, ", status: NOT_YET_RELEASED")
@@ -468,6 +468,7 @@ private func cachedDiscoverySectionsFromDisk(sort: String) -> [AniListDiscoveryS
 }
 
 private func discoverySectionsCacheKey(batch: String, sort: String) -> String {
+    let version = "v2"
     let suffix: String
     switch sort {
     case "TRENDING_DESC":
@@ -479,7 +480,7 @@ private func discoverySectionsCacheKey(batch: String, sort: String) -> String {
     default:
         suffix = sort.lowercased()
     }
-    return "discovery:sections:\(batch):\(suffix)"
+    return "discovery:sections:\(batch):\(suffix):\(version)"
 }
 
 private func loadDiscoveryBatch(
@@ -510,8 +511,9 @@ private func decodeDiscoveryBatch(data: Data, batch: String) -> [AniListDiscover
     case "base":
         sectionDefs = [
             ("trending", "Trending"),
-            ("topRated", "Top Rated"),
-            ("hotNow", "Hot Now")
+            ("hotNow", "Popular This Season"),
+            ("upcoming", "Upcoming"),
+            ("allTime", "All Time")
         ]
     case "genresA":
         sectionDefs = [
