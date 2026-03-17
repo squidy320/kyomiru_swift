@@ -17,7 +17,12 @@ final class AniSkipService {
     }
 
     func fetchSkipSegments(malId: Int, episode: Int) async -> [AniSkipSegment] {
-        guard let url = URL(string: "https://api.aniskip.com/v2/skip-times/\(malId)/\(episode)?types=op,ed,recap,preview") else {
+        let base = "https://api.aniskip.com/v2/skip-times/\(malId)/\(episode)"
+        let types = [
+            "op", "ed", "mixed-op", "mixed-ed", "recap", "preview"
+        ]
+        let query = types.map { "types=\($0)" }.joined(separator: "&") + "&episodeLength=0"
+        guard let url = URL(string: "\(base)?\(query)") else {
             return []
         }
         AppLog.debug(.player, "aniskip: request start malId=\(malId) ep=\(episode) url=\(url.absoluteString)")
@@ -28,7 +33,9 @@ final class AniSkipService {
                 AppLog.error(.player, "aniskip: request failed malId=\(malId) ep=\(episode) status=\(code)")
                 return []
             }
-            let decoded = try JSONDecoder().decode(AniSkipResponse.self, from: data)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let decoded = try decoder.decode(AniSkipResponse.self, from: data)
             AppLog.debug(.player, "aniskip: request success malId=\(malId) ep=\(episode) count=\(decoded.results.count)")
             return decoded.results.map {
                 AniSkipSegment(
