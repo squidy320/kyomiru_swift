@@ -52,12 +52,15 @@ jobs:
         run: |
           git config --global url."https://x-access-token:${{ github.token }}@github.com/".insteadOf "https://github.com/"
 
-      - name: Resolve Swift Packages
-        run: |
-          xcodebuild -resolvePackageDependencies \
-            -project Kyomiru.xcodeproj \
-            -scheme Kyomiru \
-            -clonedSourcePackagesDirPath $RUNNER_TEMP/spm
+      - name: Cache Swift Packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/spm
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
 
       - name: Lint String Interpolation
         run: |
@@ -73,6 +76,7 @@ jobs:
               -configuration Release \
               -sdk iphoneos \
               -destination 'generic/platform=iOS' \
+              -clonedSourcePackagesDirPath $RUNNER_TEMP/spm \
               -derivedDataPath $RUNNER_TEMP/DerivedData \
               -archivePath $PWD/Kyomiru.xcarchive \
               CODE_SIGNING_ALLOWED=NO \
