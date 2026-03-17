@@ -398,7 +398,7 @@
             hasScannedForEncodings = 0;
             mainGroup = A1F6688393CD43E789FC9C3D;
 			packageReferences = (
-				C0A1B2C3D4E5F60718293A4B /* MPVKit */,
+				C0A1B2C3D4E5F60718293A4B /* MPVKit (Local) */,
 			);
             productRefGroup = A1F6688393CD43E789FC9C3D;
             projectDirPath = "";
@@ -493,23 +493,22 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		C0A1B2C3D4E5F60718293A4B /* MPVKit */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/mpvkit/MPVKit";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.41.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		C1A1B2C3D4E5F60718293A4B /* MPVKit-GPL */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = "MPVKit-GPL";
-			package = C0A1B2C3D4E5F60718293A4B /* MPVKit */;
+			package = C0A1B2C3D4E5F60718293A4B /* MPVKit (Local) */;
 		};
 /* End XCSwiftPackageProductDependency section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		C0A1B2C3D4E5F60718293A4B /* MPVKit (Local) */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/MPVKit;
+		};
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCBuildConfiguration section */
         9352DCBE24924B6D87856072 /* Debug */ = {
