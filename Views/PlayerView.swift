@@ -46,6 +46,9 @@ private struct AVPlayerScreen: View {
     @State private var skipSegments: [AniSkipSegment] = []
     @State private var activeSkip: AniSkipSegment?
     @State private var didMarkWatched: Bool = false
+    @State private var seekToken: UUID?
+    @State private var isSeeking: Bool = false
+    @State private var shouldLogBufferState: Bool = true
 
     var body: some View {
         ZStack {
@@ -123,6 +126,7 @@ private struct AVPlayerScreen: View {
         }
 
         let resolved = PlaybackService.resolvePlayableURL(for: source.url, title: mediaTitle, episode: episode.number)
+        let isRemoteStream = !resolved.isFileURL
         let headers = resolved.isFileURL ? [:] : source.headers
 
         let asset: AVURLAsset
@@ -135,6 +139,12 @@ private struct AVPlayerScreen: View {
         }
 
         let item = AVPlayerItem(asset: asset)
+        if isRemoteStream {
+            item.preferredForwardBufferDuration = 8
+            if #available(iOS 10.0, *) {
+                item.canUseNetworkResourcesForLiveStreamingWhilePaused = true
+            }
+        }
         self.playerItem = item
         let avPlayer = AVPlayer(playerItem: item)
         avPlayer.automaticallyWaitsToMinimizeStalling = true
@@ -152,6 +162,9 @@ private struct AVPlayerScreen: View {
         }
         statusObserver?.invalidate()
         statusObserver = nil
+        seekToken = nil
+        isSeeking = false
+        shouldLogBufferState = true
         activeSkip = nil
         didMarkWatched = false
         player.pause()
@@ -167,7 +180,7 @@ private struct AVPlayerScreen: View {
             switch observed.status {
             case .readyToPlay:
                 if startTime > 0 {
-                    player.seek(to: CMTime(seconds: startTime, preferredTimescale: 600))
+                    requestSeek(to: startTime, reason: "resume")
                 }
             case .failed:
                 errorMessage = observed.error?.localizedDescription ?? "Playback failed."
@@ -176,11 +189,28 @@ private struct AVPlayerScreen: View {
             }
         }
 
+        item.observe(\.isPlaybackBufferEmpty, options: [.new]) { observed, _ in
+            if observed.isPlaybackBufferEmpty {
+                AppLog.debug(.player, "buffer: empty")
+            }
+        }
+        item.observe(\.isPlaybackBufferFull, options: [.new]) { observed, _ in
+            if observed.isPlaybackBufferFull {
+                AppLog.debug(.player, "buffer: full")
+            }
+        }
+        item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { observed, _ in
+            if shouldLogBufferState {
+                AppLog.debug(.player, "buffer: likelyToKeepUp=\(observed.isPlaybackLikelyToKeepUp)")
+            }
+        }
+
         let interval = CMTime(seconds: 1.0, preferredTimescale: 2)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             let seconds = time.seconds
             guard seconds.isFinite else { return }
             updateActiveSkip(at: seconds)
+            if isSeeking { return }
             let duration = player.currentItem?.duration.seconds ?? 0
             if duration.isFinite && duration > 0 {
                 let fraction = seconds / duration
@@ -251,10 +281,27 @@ private struct AVPlayerScreen: View {
     }
 
     private func seekToSkipEnd(_ segment: AniSkipSegment) {
-        guard let player else { return }
-        let target = CMTime(seconds: segment.end, preferredTimescale: 600)
         activeSkip = nil
-        player.seek(to: target)
+        requestSeek(to: segment.end, reason: "skip:\(segment.type)")
+    }
+
+    private func requestSeek(to seconds: Double, reason: String) {
+        guard let player else { return }
+        let token = UUID()
+        seekToken = token
+        isSeeking = true
+        let target = CMTime(seconds: seconds, preferredTimescale: 600)
+        let tolerance = CMTime(seconds: 0.35, preferredTimescale: 600)
+        AppLog.debug(.player, "seek: request time=\(seconds) reason=\(reason)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            guard seekToken == token else { return }
+            player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { finished in
+                if seekToken == token {
+                    isSeeking = false
+                }
+                AppLog.debug(.player, "seek: finished=\(finished) time=\(seconds)")
+            }
+        }
     }
 
     private func skipButtonTitle(for segment: AniSkipSegment) -> String {
