@@ -10,6 +10,14 @@ struct LibraryView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var filterText: String = ""
+    @State private var continueThumbs: [Int: URL] = [:]
+    @State private var continueEpisodes: [Int: [SoraEpisode]] = [:]
+    @State private var continueLoading = false
+    @State private var continueError: String?
+    @State private var selectedContinueEpisode: SoraEpisode?
+    @State private var selectedContinueMedia: AniListMedia?
+    @State private var continueSources: [SoraSource] = []
+    @State private var showContinuePlayer = false
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -41,16 +49,21 @@ struct LibraryView: View {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     LazyHStack(spacing: UIConstants.interCardSpacing) {
                                         ForEach(continueWatchingItems()) { item in
-                                            ContinueWatchingCard(
-                                                title: item.title,
-                                                episodeText: item.episodeText,
-                                                progress: item.progressFraction,
-                                                timeRemainingText: item.timeRemainingText,
-                                                imageURL: item.imageURL,
-                                                episodeBadge: item.episodeBadge,
-                                                media: item.media
-                                            )
-                                            .frame(height: UIConstants.continueCardHeight)
+                                            Button {
+                                                resumeContinueWatching(item)
+                                            } label: {
+                                                ContinueWatchingCard(
+                                                    title: item.title,
+                                                    episodeText: item.episodeText,
+                                                    progress: item.progressFraction,
+                                                    timeRemainingText: item.timeRemainingText,
+                                                    imageURL: item.imageURL,
+                                                    episodeBadge: item.episodeBadge,
+                                                    media: item.media
+                                                )
+                                                .frame(height: UIConstants.continueCardHeight)
+                                            }
+                                            .buttonStyle(.plain)
                                         }
                                     }
                                     .padding(.horizontal, UIConstants.tinyPadding)
@@ -134,6 +147,38 @@ struct LibraryView: View {
             LibrarySettingsSheet(manager: librarySettings)
                 .presentationDetents([.medium, .large])
         }
+        .fullScreenCover(isPresented: $showContinuePlayer) {
+            if let episode = selectedContinueEpisode,
+               let media = selectedContinueMedia,
+               !continueSources.isEmpty {
+                PlayerView(
+                    episode: episode,
+                    sources: continueSources,
+                    mediaId: media.id,
+                    malId: media.idMal,
+                    mediaTitle: media.title.best
+                )
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if continueLoading {
+                GlassCard {
+                    Text("Loading stream...")
+                        .foregroundColor(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
+            } else if let continueError {
+                GlassCard {
+                    Text(continueError)
+                        .foregroundColor(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
+            }
+        }
         .task {
             AppLog.debug(.ui, "library view load")
             if let token = appState.authState.token,
@@ -142,6 +187,7 @@ struct LibraryView: View {
                 applyLibrarySections(cached)
                 await prefetchAvailability(sections: cached)
                 await prefetchLibraryImages(sections: cached)
+                await prefetchContinueWatchingThumbnails(items: continueWatchingItems())
             }
             await loadLibrary()
         }
@@ -149,6 +195,12 @@ struct LibraryView: View {
             if newToken == nil {
                 sections = []
                 availabilityById = [:]
+                continueThumbs = [:]
+                continueEpisodes = [:]
+                selectedContinueEpisode = nil
+                selectedContinueMedia = nil
+                continueSources = []
+                showContinuePlayer = false
                 return
             }
             Task {
@@ -157,6 +209,7 @@ struct LibraryView: View {
         }
         .onChange(of: sections) { _, _ in
             Task { await prefetchLibraryImages(sections: sections) }
+            Task { await prefetchContinueWatchingThumbnails(items: continueWatchingItems()) }
         }
         .onChange(of: appState.settings.cardImageSource) { _, _ in
             Task { await prefetchLibraryImages(sections: sections) }
@@ -229,15 +282,18 @@ struct LibraryView: View {
             let progress = min(max(position / duration, 0), 1)
             let remaining = max(duration - position, 0)
             let episodeNumber = PlaybackHistoryStore.shared.lastEpisodeNumber(for: entry.media.id) ?? (entry.progress + 1)
+            let thumb = continueThumbs[entry.media.id]
             return ContinueItem(
                 id: entry.media.id,
                 title: entry.media.title.best,
                 episodeText: "Episode \(episodeNumber)",
                 progressFraction: progress,
                 timeRemainingText: formatRemaining(remaining),
-                imageURL: entry.media.bannerURL ?? entry.media.coverURL,
+                imageURL: thumb ?? entry.media.bannerURL ?? entry.media.coverURL,
                 episodeBadge: "EP \(episodeNumber)",
-                media: entry.media
+                media: entry.media,
+                episodeNumber: episodeNumber,
+                lastEpisodeId: lastEpisodeId
             )
         }
     }
@@ -325,6 +381,88 @@ struct LibraryView: View {
         }
 
         await ImageCache.shared.prefetch(urls: urls)
+    }
+
+    private func prefetchContinueWatchingThumbnails(items: [ContinueItem], limit: Int = 8) async {
+        guard !items.isEmpty else { return }
+        let slice = items.prefix(limit)
+        for item in slice {
+            guard continueThumbs[item.id] == nil, let media = item.media else { continue }
+            do {
+                let episodes = if let cached = continueEpisodes[item.id] {
+                    cached
+                } else {
+                    let result = try await appState.services.episodeService.loadEpisodes(media: media)
+                    continueEpisodes[item.id] = result.episodes
+                    result.episodes
+                }
+                let metaCached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: episodes)
+                let meta = metaCached ?? await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: episodes)
+                if let thumb = meta[item.episodeNumber]?.thumbnailURL {
+                    await MainActor.run {
+                        continueThumbs[item.id] = thumb
+                    }
+                }
+            } catch {
+                AppLog.error(.network, "continue thumbnails failed mediaId=\(item.id) \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func resumeContinueWatching(_ item: ContinueItem) {
+        guard let media = item.media else { return }
+        Task {
+            continueLoading = true
+            continueError = nil
+            do {
+                let episodes = if let cached = continueEpisodes[item.id] {
+                    cached
+                } else {
+                    let result = try await appState.services.episodeService.loadEpisodes(media: media)
+                    continueEpisodes[item.id] = result.episodes
+                    result.episodes
+                }
+                let target = episodes.first(where: { $0.id == item.lastEpisodeId })
+                    ?? episodes.first(where: { $0.number == item.episodeNumber })
+                    ?? episodes.last
+                guard let episode = target else {
+                    continueError = "Unable to resume episode."
+                    continueLoading = false
+                    return
+                }
+                if let local = DownloadManager.shared.downloadedItem(title: media.title.best, episode: episode.number),
+                   let localURL = DownloadManager.shared.playableURL(for: local) {
+                    let format = localURL.pathExtension.lowercased()
+                    let source = SoraSource(
+                        id: "local|\(local.id)",
+                        url: localURL,
+                        quality: "Local",
+                        subOrDub: "Sub",
+                        format: format.isEmpty ? "mp4" : format,
+                        headers: [:]
+                    )
+                    selectedContinueEpisode = episode
+                    selectedContinueMedia = media
+                    continueSources = [source]
+                    showContinuePlayer = true
+                    continueLoading = false
+                    return
+                }
+                let sources = try await appState.services.episodeService.loadSources(for: episode)
+                if sources.isEmpty {
+                    continueError = "No streams available."
+                } else {
+                    selectedContinueEpisode = episode
+                    selectedContinueMedia = media
+                    continueSources = sources
+                    showContinuePlayer = true
+                }
+            } catch {
+                continueError = "Failed to load stream."
+                AppLog.error(.network, "continue watch load failed mediaId=\(item.id) \(error.localizedDescription)")
+            }
+            continueLoading = false
+        }
     }
 
     private func formatRemaining(_ seconds: TimeInterval) -> String {
@@ -476,6 +614,8 @@ private struct ContinueItem: Identifiable {
     let imageURL: URL?
     let episodeBadge: String?
     let media: AniListMedia?
+    let episodeNumber: Int
+    let lastEpisodeId: String
 }
 
 private struct LibrarySettingsSheet: View {
