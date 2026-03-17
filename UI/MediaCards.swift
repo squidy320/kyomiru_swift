@@ -13,6 +13,26 @@ struct MediaPosterCard: View {
     @State private var imdbPosterURL: URL?
     @State private var tmdbLookupComplete = false
 
+    init(
+        title: String,
+        subtitle: String?,
+        imageURL: URL?,
+        media: AniListMedia?,
+        score: Int?,
+        statusBadge: String?,
+        cornerBadge: String?,
+        size: CGSize? = nil
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.imageURL = imageURL
+        self.media = media
+        self.score = score
+        self.statusBadge = statusBadge
+        self.cornerBadge = cornerBadge
+        self.size = size
+    }
+
     var body: some View {
         let useTMDB = appState.settings.cardImageSource == .tmdb
         let cardWidth = size?.width ?? UIConstants.posterCardWidth
