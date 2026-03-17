@@ -1119,26 +1119,54 @@ actor MediaConversionManager {
         try? FileManager.default.removeItem(at: outputURL)
 
         let duration = await probeDurationSeconds(path: inputPath)
-        let command = "-y -i \(quoted(path: inputPath)) -c copy -bsf:a aac_adtstoasc \(quoted(path: outputPath))"
+        let baseArgs = "-y -i \(quoted(path: inputPath)) -map 0 -c copy"
+        let commandWithBsf = "\(baseArgs) -bsf:a aac_adtstoasc \(quoted(path: outputPath))"
+        let commandNoBsf = "\(baseArgs) \(quoted(path: outputPath))"
+
         AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration)")
 
-        return try await withCheckedThrowingContinuation { continuation in
+        let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
+        if ReturnCode.isSuccess(first.code) {
+            if inputURL.pathExtension.lowercased() == "ts" {
+                try? FileManager.default.removeItem(at: inputURL)
+            }
+            AppLog.debug(.downloads, "ffmpeg remux success output=\(outputPath)")
+            return outputURL
+        }
+        if ReturnCode.isCancel(first.code) {
+            AppLog.error(.downloads, "ffmpeg remux cancelled input=\(inputPath)")
+            throw ConversionError.cancelled
+        }
+
+        AppLog.error(.downloads, "ffmpeg remux failed with aac_adtstoasc, retrying without bsf input=\(inputPath)")
+        let second = await runFFmpeg(commandNoBsf, duration: duration, progress: progress)
+        if ReturnCode.isSuccess(second.code) {
+            if inputURL.pathExtension.lowercased() == "ts" {
+                try? FileManager.default.removeItem(at: inputURL)
+            }
+            AppLog.debug(.downloads, "ffmpeg remux success (no bsf) output=\(outputPath)")
+            return outputURL
+        }
+        if ReturnCode.isCancel(second.code) {
+            AppLog.error(.downloads, "ffmpeg remux cancelled (no bsf) input=\(inputPath)")
+            throw ConversionError.cancelled
+        }
+
+        let message = second.logs ?? first.logs ?? "ffmpeg conversion failed"
+        AppLog.error(.downloads, "ffmpeg remux failed input=\(inputPath) error=\(message)")
+        throw ConversionError.exportFailed(message)
+    }
+
+    private func runFFmpeg(
+        _ command: String,
+        duration: Double,
+        progress: (@Sendable (Double) -> Void)?
+    ) async -> (code: ReturnCode?, logs: String?) {
+        await withCheckedContinuation { continuation in
             FFmpegKit.executeAsync(command, withCompleteCallback: { session in
                 let returnCode = session?.getReturnCode()
-                if ReturnCode.isSuccess(returnCode) {
-                    AppLog.debug(.downloads, "ffmpeg remux success output=\(outputPath)")
-                    if inputURL.pathExtension.lowercased() == "ts" {
-                        try? FileManager.default.removeItem(at: inputURL)
-                    }
-                    continuation.resume(returning: outputURL)
-                } else if ReturnCode.isCancel(returnCode) {
-                    AppLog.error(.downloads, "ffmpeg remux cancelled input=\(inputPath)")
-                    continuation.resume(throwing: ConversionError.cancelled)
-                } else {
-                    let message = session?.getAllLogsAsString() ?? "ffmpeg conversion failed"
-                    AppLog.error(.downloads, "ffmpeg remux failed input=\(inputPath) error=\(message)")
-                    continuation.resume(throwing: ConversionError.exportFailed(message))
-                }
+                let logs = session?.getAllLogsAsString()
+                continuation.resume(returning: (returnCode, logs))
             }, withLogCallback: nil, withStatisticsCallback: { stats in
                 guard let stats, duration > 0 else { return }
                 let timeMs = Double(stats.getTime())
