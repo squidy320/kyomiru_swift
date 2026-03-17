@@ -389,15 +389,20 @@ struct LibraryView: View {
         for item in slice {
             guard continueThumbs[item.id] == nil, let media = item.media else { continue }
             do {
-                let episodes = if let cached = continueEpisodes[item.id] {
-                    cached
+                let episodes: [SoraEpisode]
+                if let cached = continueEpisodes[item.id] {
+                    episodes = cached
                 } else {
                     let result = try await appState.services.episodeService.loadEpisodes(media: media)
                     continueEpisodes[item.id] = result.episodes
-                    result.episodes
+                    episodes = result.episodes
                 }
-                let metaCached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: episodes)
-                let meta = metaCached ?? await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: episodes)
+                let meta: [Int: EpisodeMetadata]
+                if let metaCached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: episodes) {
+                    meta = metaCached
+                } else {
+                    meta = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: episodes)
+                }
                 if let thumb = meta[item.episodeNumber]?.thumbnailURL {
                     await MainActor.run {
                         continueThumbs[item.id] = thumb
@@ -415,12 +420,13 @@ struct LibraryView: View {
             continueLoading = true
             continueError = nil
             do {
-                let episodes = if let cached = continueEpisodes[item.id] {
-                    cached
+                let episodes: [SoraEpisode]
+                if let cached = continueEpisodes[item.id] {
+                    episodes = cached
                 } else {
                     let result = try await appState.services.episodeService.loadEpisodes(media: media)
                     continueEpisodes[item.id] = result.episodes
-                    result.episodes
+                    episodes = result.episodes
                 }
                 let target = episodes.first(where: { $0.id == item.lastEpisodeId })
                     ?? episodes.first(where: { $0.number == item.episodeNumber })
