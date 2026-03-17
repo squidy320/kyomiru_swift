@@ -1145,7 +1145,7 @@ actor MediaConversionManager {
         let command = "-y -i \(quoted(path: inputPath)) -c copy -bsf:a aac_adtstoasc \(quoted(path: outputPath))"
 
         return try await withCheckedThrowingContinuation { continuation in
-            FFmpegKit.executeAsync(command, withExecuteCallback: { session in
+            FFmpegKit.executeAsync(command, withCompleteCallback: { session in
                 let returnCode = session?.getReturnCode()
                 if ReturnCode.isSuccess(returnCode) {
                     if inputURL.pathExtension.lowercased() == "ts" {
