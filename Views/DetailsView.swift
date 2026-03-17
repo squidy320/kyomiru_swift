@@ -35,33 +35,37 @@ struct DetailsView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                    detailHeroHeader
-
+            if isPad {
+                ipadEpisodeLayout
+            } else {
+                ScrollView {
                     VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                        actionRow
+                        detailHeroHeader
 
-                        if isLoading {
-                            GlassCard {
-                                Text("Loading episodes...")
-                                    .foregroundColor(Theme.textSecondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                            actionRow
+
+                            if isLoading {
+                                GlassCard {
+                                    Text("Loading episodes...")
+                                        .foregroundColor(Theme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else if let errorMessage {
+                                GlassCard {
+                                    Text(errorMessage)
+                                        .foregroundColor(Theme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else {
+                                episodeList
+                                RelationsCarouselView(sections: relatedSections)
                             }
-                        } else if let errorMessage {
-                            GlassCard {
-                                Text(errorMessage)
-                                    .foregroundColor(Theme.textSecondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        } else {
-                            episodeList
-                            RelationsCarouselView(sections: relatedSections)
                         }
+                        .padding(.horizontal, UIConstants.standardPadding)
+                        .padding(.top, UIConstants.smallPadding)
+                        .padding(.bottom, UIConstants.bottomBarHeight)
                     }
-                    .padding(.horizontal, UIConstants.standardPadding)
-                    .padding(.top, UIConstants.smallPadding)
-                    .padding(.bottom, UIConstants.bottomBarHeight)
                 }
             }
         }
@@ -173,6 +177,172 @@ struct DetailsView: View {
                 }
                 .padding(UIConstants.overlayPadding)
             }
+        }
+    }
+
+    private var ipadEpisodeLayout: some View {
+        ZStack(alignment: .bottomLeading) {
+            detailHeroBackdropFull
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                    Spacer(minLength: UIScreen.main.bounds.height * 0.35)
+
+                    ipadMetaBlock
+
+                    actionRow
+
+                    episodeTabs
+
+                    if isLoading {
+                        GlassCard {
+                            Text("Loading episodes...")
+                                .foregroundColor(Theme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    } else if let errorMessage {
+                        GlassCard {
+                            Text(errorMessage)
+                                .foregroundColor(Theme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    } else {
+                        ipadEpisodeCarousel
+                        RelationsCarouselView(sections: relatedSections)
+                    }
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, UIConstants.bottomBarHeight)
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private var ipadMetaBlock: some View {
+        VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
+            if let logo = tmdbHeroLogoURL {
+                AsyncImage(url: logo) { image in
+                    image.resizable().scaledToFit()
+                } placeholder: {
+                    Color.clear
+                }
+                .frame(maxWidth: 320)
+            }
+
+            Text(media.title.best)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundColor(.white)
+                .lineLimit(2)
+
+            HStack(spacing: UIConstants.tinyPadding) {
+                if let eps = media.episodes, eps > 0 {
+                    Text("\(eps) EPS")
+                }
+                if let studio = media.studios.first {
+                    Text(studio)
+                }
+                if let score = media.averageScore {
+                    Text("\(score)%")
+                }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(Theme.textSecondary)
+        }
+    }
+
+    private var ipadEpisodeCarousel: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: UIConstants.interCardSpacing) {
+                ForEach(episodes, id: \.id) { episode in
+                    let meta = episodeMetadata[episode.number]
+                    let title = streamingTitle(for: episode) ?? meta?.title ?? "Episode \(episode.number)"
+                    let thumb = streamingThumbnail(for: episode) ?? meta?.thumbnailURL ?? episodeThumbnailURL(for: episode)
+                    Button {
+                        selectEpisode(episode)
+                    } label: {
+                        EpisodeThumbCard(
+                            title: title,
+                            subtitle: "Episode \(episode.number)",
+                            imageURL: thumb,
+                            isWatched: isEpisodeWatched(episode.number),
+                            isDownloaded: isEpisodeDownloaded(episode.number)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button("Mark Watched") {
+                            Task { await appState.markEpisodeWatched(mediaId: media.id, episodeNumber: episode.number) }
+                        }
+                        Button("Mark Unwatched") {
+                            Task { await appState.markEpisodeUnwatched(mediaId: media.id, episodeNumber: episode.number) }
+                        }
+                        Button("Download") {
+                            openSourcePicker(for: episode)
+                        }
+                        Button("Play from Start") {
+                            playerStartAt = 0
+                            selectEpisode(episode)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, UIConstants.tinyPadding)
+            .padding(.vertical, UIConstants.heroTopPadding)
+        }
+        .scrollClipDisabled()
+    }
+
+    private var detailHeroBackdropFull: some View {
+        let height = UIScreen.main.bounds.height
+        let topInset = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
+            .first ?? 0
+        return GeometryReader { proxy in
+            let width = proxy.size.width
+            let insetTop = proxy.safeAreaInsets.top
+            let topFeatherHeight = max(24.0, insetTop * 0.6)
+            let fallbackBackdrop = media.bannerURL ?? media.coverURL
+            ZStack {
+                Group {
+                    if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
+                        AsyncImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
+                        Theme.surface
+                    }
+                }
+                .frame(width: width, height: height + insetTop)
+                .clipped()
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [Color.clear, Color.black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: topFeatherHeight)
+                        Color.black
+                    }
+                )
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(width: width, height: height + insetTop)
+            }
+            .frame(width: width, height: height + insetTop)
+            .clipped()
+        }
+        .frame(height: height)
+        .offset(y: -topInset)
+        .task(id: media.id) {
+            tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+            tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
         }
     }
 
@@ -874,6 +1044,55 @@ private struct EpisodeRow: View {
                 tmdbLookupComplete = false
             }
         }
+    }
+}
+
+private struct EpisodeThumbCard: View {
+    let title: String
+    let subtitle: String
+    let imageURL: URL?
+    let isWatched: Bool
+    let isDownloaded: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 260, height: 140)
+                if let imageURL {
+                    CachedImage(url: imageURL) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Color.white.opacity(0.08)
+                    }
+                    .frame(width: 260, height: 140)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous))
+                }
+                if isDownloaded {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(8)
+                        .background(
+                            Circle().fill(Color.black.opacity(0.4))
+                        )
+                        .padding(6)
+                }
+            }
+
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.white.opacity(isWatched ? 0.5 : 1.0))
+                .lineLimit(2)
+
+            Text(subtitle)
+                .font(.system(size: 11))
+                .foregroundColor(Theme.textSecondary)
+                .lineLimit(1)
+        }
+        .frame(width: 260, alignment: .leading)
     }
 }
 
