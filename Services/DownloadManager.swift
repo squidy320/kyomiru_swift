@@ -464,6 +464,7 @@ struct DownloadItem: Identifiable, Equatable {
     let title: String
     let episode: Int
     let url: URL
+    let headers: [String: String]?
     var progress: Double
     var localFile: URL?
     var status: String
@@ -520,6 +521,7 @@ final class DownloadManager: NSObject, ObservableObject {
             title: title,
             episode: episode,
             url: url,
+            headers: nil,
             progress: 0,
             localFile: nil,
             status: "Queued",
@@ -548,6 +550,7 @@ final class DownloadManager: NSObject, ObservableObject {
             title: title,
             episode: episode,
             url: url,
+            headers: headers,
             progress: 0,
             localFile: nil,
             status: "Queued",
@@ -628,17 +631,47 @@ final class DownloadManager: NSObject, ObservableObject {
             guard let item = items.first(where: { $0.id == id }) else { return }
             AppLog.debug(.downloads, "hls download start id=\(id)")
             updateProgress(id: id, progress: 0)
+            let headerPayload = item.headers ?? headers
+            let directMp4 = localFileURL(for: item.title, episode: item.episode)
+            if fm.fileExists(atPath: directMp4.path) {
+                AppLog.debug(.downloads, "hls direct mp4 exists id=\(id) path=\(directMp4.path)")
+                updateStatus(id: id, status: "Completed", localFile: directMp4)
+                markWatched(mediaTitle: item.title, episode: item.episode)
+                return
+            }
+
+            AppLog.debug(.downloads, "hls direct remux start id=\(id)")
+            updateStatus(id: id, status: "Remuxing", localFile: nil)
+            do {
+                let output = try await MediaConversionManager.shared.convertHlsToMp4(
+                    playlistURL: url,
+                    headers: headerPayload,
+                    outputURL: directMp4
+                ) { [weak self] value in
+                    Task { @MainActor in
+                        self?.updateProgress(id: id, progress: value)
+                    }
+                }
+                updateProgress(id: id, progress: 1)
+                updateStatus(id: id, status: "Completed", localFile: output)
+                AppLog.debug(.downloads, "hls direct remux complete id=\(id) output=\(output.path)")
+                markWatched(mediaTitle: item.title, episode: item.episode)
+                return
+            } catch {
+                AppLog.error(.downloads, "hls direct remux failed id=\(id) error=\(error.localizedDescription) fallback=merge")
+            }
+
             let output = localMergedHLSFileURL(for: item.title, episode: item.episode)
             let localFile = try await offlineManager.downloadAndMerge(
                 playlistURL: url,
-                headers: headers,
+                headers: headerPayload,
                 outputURL: output,
                 outputFolder: nil,
                 progress: { [weak self] value in
-                Task { @MainActor in
-                    self?.updateProgress(id: id, progress: value)
-                }
-            },
+                    Task { @MainActor in
+                        self?.updateProgress(id: id, progress: value)
+                    }
+                },
                 preferLocalHLS: false
             )
             updateStatus(id: id, status: "Remuxing", localFile: localFile)
@@ -1087,6 +1120,7 @@ private struct PersistedDownload: Codable {
     let localFile: String?
     let status: String
     let isHls: Bool
+    let headers: [String: String]?
 
     init(from item: DownloadItem) {
         id = item.id
@@ -1097,6 +1131,7 @@ private struct PersistedDownload: Codable {
         localFile = item.localFile?.absoluteString
         status = item.status
         isHls = item.isHls
+        headers = item.headers
     }
 
     func asItem() -> DownloadItem {
@@ -1105,6 +1140,7 @@ private struct PersistedDownload: Codable {
             title: title,
             episode: episode,
             url: URL(string: url)!,
+            headers: headers,
             progress: progress,
             localFile: localFile.flatMap(URL.init(string:)),
             status: status,
@@ -1165,6 +1201,80 @@ actor MediaConversionManager {
         return try await convertToMp4WithFFmpeg(inputURL: inputURL, outputURL: outputURL, progress: progress)
     }
 
+    func convertHlsToMp4(
+        playlistURL: URL,
+        headers: [String: String]?,
+        outputURL: URL,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> URL {
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            return outputURL
+        }
+
+        let playlistPath = playlistURL.absoluteString
+        let outputPath = outputURL.path
+        try? FileManager.default.removeItem(at: outputURL)
+
+        let headerString = buildHeaderString(headers)
+        let headerArg = headerString.isEmpty ? "" : "-headers \(quoted(value: headerString))"
+        let duration = await probeDurationSeconds(path: playlistPath)
+        let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt -err_detect ignore_err -avoid_negative_ts make_zero \(headerArg) -i \(quoted(value: playlistPath)) -map 0"
+        let commandWithBsf = "\(baseArgs) -c copy -bsf:a aac_adtstoasc -movflags +faststart \(quoted(path: outputPath))"
+        let commandNoBsf = "\(baseArgs) -c copy -movflags +faststart \(quoted(path: outputPath))"
+        let commandAudioReencode = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+
+        AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count)")
+
+        let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
+        if ReturnCode.isSuccess(first.code) {
+            AppLog.debug(.downloads, "ffmpeg hls success output=\(outputPath)")
+            return outputURL
+        }
+        if ReturnCode.isCancel(first.code) {
+            AppLog.error(.downloads, "ffmpeg hls cancelled input=\(playlistPath)")
+            throw ConversionError.cancelled
+        }
+
+        AppLog.error(.downloads, "ffmpeg hls failed with aac_adtstoasc, retrying without bsf input=\(playlistPath)")
+        let second = await runFFmpeg(commandNoBsf, duration: duration, progress: progress)
+        if ReturnCode.isSuccess(second.code) {
+            AppLog.debug(.downloads, "ffmpeg hls success (no bsf) output=\(outputPath)")
+            return outputURL
+        }
+        if ReturnCode.isCancel(second.code) {
+            AppLog.error(.downloads, "ffmpeg hls cancelled (no bsf) input=\(playlistPath)")
+            throw ConversionError.cancelled
+        }
+
+        AppLog.error(.downloads, "ffmpeg hls failed copy, retrying with audio reencode input=\(playlistPath)")
+        let third = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
+        if ReturnCode.isSuccess(third.code) {
+            AppLog.debug(.downloads, "ffmpeg hls success (audio reencode) output=\(outputPath)")
+            return outputURL
+        }
+        if ReturnCode.isCancel(third.code) {
+            AppLog.error(.downloads, "ffmpeg hls cancelled (audio reencode) input=\(playlistPath)")
+            throw ConversionError.cancelled
+        }
+
+        AppLog.error(.downloads, "ffmpeg hls failed audio reencode, retrying full transcode input=\(playlistPath)")
+        let fourth = await runFFmpeg(commandFullTranscode, duration: duration, progress: progress)
+        if ReturnCode.isSuccess(fourth.code) {
+            AppLog.debug(.downloads, "ffmpeg hls success (full transcode) output=\(outputPath)")
+            return outputURL
+        }
+        if ReturnCode.isCancel(fourth.code) {
+            AppLog.error(.downloads, "ffmpeg hls cancelled (full transcode) input=\(playlistPath)")
+            throw ConversionError.cancelled
+        }
+
+        let message = fourth.logs ?? third.logs ?? second.logs ?? first.logs ?? "ffmpeg hls conversion failed"
+        AppLog.error(.downloads, "ffmpeg hls failed input=\(playlistPath) error=\(message)")
+        try? FileManager.default.removeItem(at: outputURL)
+        throw ConversionError.exportFailed(message)
+    }
+
     private func convertToMp4WithFFmpeg(
         inputURL: URL,
         outputURL: URL,
@@ -1175,10 +1285,11 @@ actor MediaConversionManager {
         try? FileManager.default.removeItem(at: outputURL)
 
         let duration = await probeDurationSeconds(path: inputPath)
-        let baseArgs = "-y -fflags +genpts -avoid_negative_ts make_zero -i \(quoted(path: inputPath)) -map 0"
+        let baseArgs = "-y -fflags +genpts+discardcorrupt -err_detect ignore_err -avoid_negative_ts make_zero -i \(quoted(path: inputPath)) -map 0"
         let commandWithBsf = "\(baseArgs) -c copy -bsf:a aac_adtstoasc \(quoted(path: outputPath))"
         let commandNoBsf = "\(baseArgs) -c copy \(quoted(path: outputPath))"
         let commandAudioReencode = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
 
         AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration)")
 
@@ -1223,7 +1334,21 @@ actor MediaConversionManager {
             throw ConversionError.cancelled
         }
 
-        let message = third.logs ?? second.logs ?? first.logs ?? "ffmpeg conversion failed"
+        AppLog.error(.downloads, "ffmpeg remux failed audio reencode, retrying full transcode input=\(inputPath)")
+        let fourth = await runFFmpeg(commandFullTranscode, duration: duration, progress: progress)
+        if ReturnCode.isSuccess(fourth.code) {
+            if inputURL.pathExtension.lowercased() == "ts" {
+                try? FileManager.default.removeItem(at: inputURL)
+            }
+            AppLog.debug(.downloads, "ffmpeg remux success (full transcode) output=\(outputPath)")
+            return outputURL
+        }
+        if ReturnCode.isCancel(fourth.code) {
+            AppLog.error(.downloads, "ffmpeg remux cancelled (full transcode) input=\(inputPath)")
+            throw ConversionError.cancelled
+        }
+
+        let message = fourth.logs ?? third.logs ?? second.logs ?? first.logs ?? "ffmpeg conversion failed"
         AppLog.error(.downloads, "ffmpeg remux failed input=\(inputPath) error=\(message)")
         throw ConversionError.exportFailed(message)
     }
@@ -1283,6 +1408,16 @@ actor MediaConversionManager {
     private func quoted(path: String) -> String {
         let escaped = path.replacingOccurrences(of: "\"", with: "\\\"")
         return "\"" + escaped + "\""
+    }
+
+    private func quoted(value: String) -> String {
+        let escaped = value.replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"" + escaped + "\""
+    }
+
+    private func buildHeaderString(_ headers: [String: String]?) -> String {
+        guard let headers, !headers.isEmpty else { return "" }
+        return headers.map { "\($0): \($1)" }.joined(separator: "\r\n") + "\r\n"
     }
 }
 
