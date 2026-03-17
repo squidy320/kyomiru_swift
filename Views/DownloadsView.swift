@@ -3,8 +3,13 @@ import UIKit
 
 struct DownloadsView: View {
     @StateObject private var manager = DownloadManager.shared
-    @State private var selectedItem: DownloadItem?
-    @State private var showPlayer = false
+    @EnvironmentObject private var appState: AppState
+    @State private var selectedTab: DownloadsTab = .downloads
+    @State private var filterText: String = ""
+    @State private var filterMode: DownloadFilter = .all
+    @State private var sortMode: DownloadSort = .aToZ
+    @State private var isEditing = false
+    @State private var selectedTitles: Set<String> = []
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     private var tabBarInset: CGFloat {
@@ -14,99 +19,82 @@ struct DownloadsView: View {
     var body: some View {
         ZStack {
             Theme.baseBackground.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if UIDevice.current.userInterfaceIdiom != .pad {
-                        Text("Downloads")
-                            .font(.system(size: 28, weight: .heavy))
-                            .foregroundColor(.white)
-                    }
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                        if UIDevice.current.userInterfaceIdiom != .pad {
+                            Text("Downloads")
+                                .font(.system(size: 28, weight: .heavy))
+                                .foregroundColor(.white)
+                        }
 
-                    let completed = manager.items.filter { $0.status == "Completed" }
-                    let active = manager.items.filter { $0.status != "Completed" }
-                    if !active.isEmpty {
-                        queueSummary(active)
-                        ForEach(active) { item in
-                            queueRow(item)
+                        Picker("Downloads Tab", selection: $selectedTab) {
+                            Text("Downloads").tag(DownloadsTab.downloads)
+                            Text("Queue").tag(DownloadsTab.queue)
                         }
-                    }
-                    if completed.isEmpty {
-                        GlassCard {
-                            Text("No downloads yet.")
-                                .foregroundColor(Theme.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    } else {
-                        ForEach(groupedDownloads(completed), id: \.title) { group in
-                            VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                                Text(group.title)
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(.white)
-                                ForEach(group.items) { item in
-                                    EpisodeRowView(
-                                        episodeNumber: item.episode,
-                                        title: "Episode \(item.episode)",
-                                        ratingText: nil,
-                                        description: nil,
-                                        thumbnailURL: nil,
-                                        isPlayable: true,
-                                        isWatched: false,
-                                        isDownloaded: true,
-                                        isNew: false,
-                                        onTap: {
-                                            AppLog.debug(.ui, "offline play tapped id=\(item.id)")
-                                            selectedItem = item
-                                            showPlayer = true
-                                        }
-                                    )
-                                    .contextMenu {
-                                        Button("Delete") {
-                                            AppLog.debug(.downloads, "download delete tapped id=\(item.id)")
-                                            DownloadManager.shared.delete(itemId: item.id)
-                                        }
-                                    }
-                                }
+                        .pickerStyle(.segmented)
+
+                        if selectedTab == .queue {
+                            DownloadsQueueView(items: manager.items.filter { $0.status != "Completed" })
+                        } else {
+                            downloadsSummary
+                            SearchField(placeholder: "Search downloads...", text: $filterText)
+                            Picker("Filter", selection: $filterMode) {
+                                Text("All").tag(DownloadFilter.all)
+                                Text("Watched").tag(DownloadFilter.watched)
+                                Text("Unwatched").tag(DownloadFilter.unwatched)
                             }
+                            .pickerStyle(.segmented)
+                            Picker("Sort", selection: $sortMode) {
+                                Text("A-Z").tag(DownloadSort.aToZ)
+                                Text("Episodes").tag(DownloadSort.episodes)
+                                Text("Size").tag(DownloadSort.size)
+                            }
+                            .pickerStyle(.segmented)
+                            editBar
+                            DownloadsGridView(
+                                groups: filteredGroups(),
+                                mediaLookup: mediaItem(forTitle:),
+                                sizeLookup: totalSize(for:),
+                                watchedLookup: isGroupWatched(title:items:),
+                                isEditing: isEditing,
+                                selection: $selectedTitles,
+                                isPad: isPad
+                            )
                         }
                     }
+                    .padding(.horizontal, UIConstants.standardPadding)
+                    .padding(.top, UIConstants.smallPadding)
+                    .padding(.bottom, UIConstants.bottomBarHeight)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
+                .navigationTitle(isPad ? "Downloads" : "")
+                .navigationBarTitleDisplayMode(.inline)
             }
-            .navigationTitle(isPad ? "Downloads" : "")
-            .navigationBarTitleDisplayMode(.inline)
         }
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: tabBarInset)
-        }
-        .fullScreenCover(isPresented: $showPlayer) {
-            if let item = selectedItem, let fileURL = manager.playableURL(for: item) {
-                Group {
-                    let _ = AppLog.debug(.downloads, "offline play resolved url=\(fileURL.path)")
-                    let format = fileURL.pathExtension.lowercased()
-                    let source = SoraSource(
-                        id: "local|\(item.id)",
-                        url: fileURL,
-                        quality: "Local",
-                        subOrDub: "Sub",
-                        format: format.isEmpty ? "mp4" : format,
-                        headers: [:]
-                    )
-                    let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
-                    PlayerView(episode: episode, sources: [source], mediaId: 0, malId: nil, mediaTitle: item.title)
-                }
-            }
-        }
-        .onChange(of: showPlayer) { _, _ in
-            if showPlayer, let item = selectedItem {
-                AppLog.debug(.ui, "offline player present id=\(item.id)")
-            }
         }
         .onAppear {
             AppLog.debug(.ui, "downloads view appear")
         }
     }
+}
+
+private enum DownloadsTab: String {
+    case downloads
+    case queue
+}
+
+private enum DownloadFilter: String {
+    case all
+    case watched
+    case unwatched
+}
+
+private enum DownloadSort: String {
+    case aToZ
+    case episodes
+    case size
 }
 
 private struct DownloadGroup: Identifiable {
@@ -116,8 +104,166 @@ private struct DownloadGroup: Identifiable {
 }
 
 private extension DownloadsView {
+    func groupedDownloads(_ items: [DownloadItem]) -> [DownloadGroup] {
+        let grouped = Dictionary(grouping: items, by: { $0.title })
+        let sortedKeys = grouped.keys.sorted { $0.lowercased() < $1.lowercased() }
+        return sortedKeys.map { key in
+            let episodes = grouped[key, default: []].sorted { $0.episode < $1.episode }
+            return DownloadGroup(title: key, items: episodes)
+        }
+    }
+
+    func mediaItem(forTitle title: String) -> MediaItem? {
+        let lookup = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return appState.services.libraryStore.items.first { $0.title.lowercased() == lookup }
+    }
+
+    func filteredGroups() -> [DownloadGroup] {
+        let completed = manager.items.filter { $0.status == "Completed" }
+        var groups = groupedDownloads(completed)
+        let trimmed = filterText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !trimmed.isEmpty {
+            groups = groups.filter { $0.title.lowercased().contains(trimmed) }
+        }
+        switch filterMode {
+        case .all:
+            break
+        case .watched:
+            groups = groups.filter { isGroupWatched(title: $0.title, items: $0.items) }
+        case .unwatched:
+            groups = groups.filter { !isGroupWatched(title: $0.title, items: $0.items) }
+        }
+        switch sortMode {
+        case .aToZ:
+            return groups.sorted { $0.title.lowercased() < $1.title.lowercased() }
+        case .episodes:
+            return groups.sorted { $0.items.count > $1.items.count }
+        case .size:
+            return groups.sorted { totalSize(for: $0.items) > totalSize(for: $1.items) }
+        }
+    }
+
+    func isGroupWatched(title: String, items: [DownloadItem]) -> Bool {
+        let maxEpisode = items.map(\.episode).max() ?? 0
+        if maxEpisode == 0 { return false }
+        if let mediaItem = mediaItem(forTitle: title) {
+            return mediaItem.currentEpisode >= maxEpisode
+        }
+        if let mediaId = mediaItem(forTitle: title)?.externalId,
+           let last = PlaybackHistoryStore.shared.lastEpisodeNumber(for: mediaId) {
+            return last >= maxEpisode
+        }
+        return false
+    }
+
+    func totalSize(for items: [DownloadItem]) -> Int64 {
+        let fm = FileManager.default
+        var total: Int64 = 0
+        for item in items {
+            if let url = item.localFile ?? DownloadManager.shared.playableURL(for: item) {
+                if let attrs = try? fm.attributesOfItem(atPath: url.path),
+                   let size = attrs[.size] as? NSNumber {
+                    total += size.int64Value
+                    continue
+                }
+            }
+            if let bytes = item.totalBytes {
+                total += bytes
+            }
+        }
+        return total
+    }
+
+    func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB, .useKB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    var downloadsSummary: some View {
+        let completed = manager.items.filter { $0.status == "Completed" }
+        let totalBytes = totalSize(for: completed)
+        return GlassCard {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Downloaded")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                HStack(spacing: 8) {
+                    Text("\(groupedDownloads(completed).count) titles")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                    if totalBytes > 0 {
+                        Text("• \(formatBytes(totalBytes))")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    var editBar: some View {
+        HStack {
+            Button(isEditing ? "Done" : "Select") {
+                isEditing.toggle()
+                if !isEditing {
+                    selectedTitles.removeAll()
+                }
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Color.white.opacity(0.08)))
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            if isEditing && !selectedTitles.isEmpty {
+                Button("Delete Selected") {
+                    let completed = manager.items.filter { $0.status == "Completed" }
+                    let groups = groupedDownloads(completed)
+                    for group in groups where selectedTitles.contains(group.title) {
+                        for item in group.items {
+                            DownloadManager.shared.delete(itemId: item.id)
+                        }
+                    }
+                    selectedTitles.removeAll()
+                    isEditing = false
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(Color.red.opacity(0.8)))
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+private struct DownloadsQueueView: View {
+    let items: [DownloadItem]
+
+    var body: some View {
+        if items.isEmpty {
+            GlassCard {
+                Text("No active downloads.")
+                    .foregroundColor(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            queueSummary(items)
+            ForEach(items) { item in
+                queueRow(item)
+            }
+        }
+    }
+
     @ViewBuilder
-    func queueSummary(_ items: [DownloadItem]) -> some View {
+    private func queueSummary(_ items: [DownloadItem]) -> some View {
         let totalBytes = items.compactMap { $0.totalBytes }.reduce(0, +)
         GlassCard {
             VStack(alignment: .leading, spacing: 6) {
@@ -140,7 +286,7 @@ private extension DownloadsView {
     }
 
     @ViewBuilder
-    func queueRow(_ item: DownloadItem) -> some View {
+    private func queueRow(_ item: DownloadItem) -> some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -148,7 +294,7 @@ private extension DownloadsView {
                         .foregroundColor(.white)
                         .font(.system(size: 14, weight: .semibold))
                     Spacer()
-                    Text(item.status)
+                    Text(displayStatus(for: item))
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(Theme.textSecondary)
                 }
@@ -174,27 +320,321 @@ private extension DownloadsView {
         }
     }
 
-    func groupedDownloads(_ items: [DownloadItem]) -> [DownloadGroup] {
-        let grouped = Dictionary(grouping: items, by: { $0.title })
-        let sortedKeys = grouped.keys.sorted { $0.lowercased() < $1.lowercased() }
-        return sortedKeys.map { key in
-            let episodes = grouped[key, default: []].sorted { $0.episode < $1.episode }
-            return DownloadGroup(title: key, items: episodes)
+    private func displayStatus(for item: DownloadItem) -> String {
+        if item.status.lowercased().contains("fail") {
+            return "Failed"
         }
+        return "Downloading"
     }
 
-    func formatBytes(_ bytes: Int64) -> String {
+    private func formatBytes(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useGB, .useMB, .useKB]
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
     }
 
-    func formatSpeed(_ bytesPerSecond: Double) -> String {
+    private func formatSpeed(_ bytesPerSecond: Double) -> String {
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useGB, .useMB, .useKB]
         formatter.countStyle = .file
         let text = formatter.string(fromByteCount: Int64(bytesPerSecond))
         return "\(text)/s"
+    }
+}
+
+private struct DownloadsGridView: View {
+    let groups: [DownloadGroup]
+    let mediaLookup: (String) -> MediaItem?
+    let sizeLookup: ([DownloadItem]) -> Int64
+    let watchedLookup: (String, [DownloadItem]) -> Bool
+    let isEditing: Bool
+    @Binding var selection: Set<String>
+    let isPad: Bool
+
+    private var gridColumns: [GridItem] {
+        let minWidth: CGFloat = isPad ? 200 : 150
+        return [GridItem(.adaptive(minimum: minWidth), spacing: UIConstants.interCardSpacing)]
+    }
+
+    var body: some View {
+        if groups.isEmpty {
+            GlassCard {
+                Text("No downloads yet.")
+                    .foregroundColor(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            LazyVGrid(columns: gridColumns, spacing: UIConstants.interCardSpacing) {
+                ForEach(groups) { group in
+                    let mediaItem = mediaLookup(group.title)
+                    let totalBytes = sizeLookup(group.items)
+                    let sizeText = totalBytes > 0 ? " • \(formatBytes(totalBytes))" : ""
+                    let watched = watchedLookup(group.title, group.items)
+                    Group {
+                        if isEditing {
+                            Button {
+                                toggleSelection(group.title)
+                            } label: {
+                                MediaPosterCard(
+                                    title: group.title,
+                                    subtitle: "\(group.items.count) Episodes\(sizeText)",
+                                    imageURL: mediaItem?.posterImageURL,
+                                    media: nil,
+                                    score: nil,
+                                    statusBadge: watched ? "Watched" : mediaItem?.status.badgeTitle,
+                                    cornerBadge: nil
+                                )
+                                .overlay(alignment: .topTrailing) {
+                                    Image(systemName: selection.contains(group.title) ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundColor(selection.contains(group.title) ? Theme.accent : Theme.textSecondary)
+                                        .padding(8)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            NavigationLink {
+                                DownloadsDetailView(
+                                    title: group.title,
+                                    items: group.items,
+                                    mediaItem: mediaItem
+                                )
+                            } label: {
+                                MediaPosterCard(
+                                    title: group.title,
+                                    subtitle: "\(group.items.count) Episodes\(sizeText)",
+                                    imageURL: mediaItem?.posterImageURL,
+                                    media: nil,
+                                    score: nil,
+                                    statusBadge: watched ? "Watched" : mediaItem?.status.badgeTitle,
+                                    cornerBadge: nil
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button("Delete All Downloads") {
+                                    for item in group.items {
+                                        DownloadManager.shared.delete(itemId: item.id)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB, .useKB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    private func toggleSelection(_ title: String) {
+        if selection.contains(title) {
+            selection.remove(title)
+        } else {
+            selection.insert(title)
+        }
+    }
+}
+
+private struct DownloadsDetailView: View {
+    let title: String
+    let items: [DownloadItem]
+    let mediaItem: MediaItem?
+    @EnvironmentObject private var appState: AppState
+    @State private var selectedItem: DownloadItem?
+    @State private var showPlayer = false
+    @State private var episodeMetadata: [Int: EpisodeMetadata] = [:]
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if isPad {
+                ipadEpisodeCarousel
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                        ForEach(sortedItems) { item in
+                            let meta = episodeMetadata[item.episode]
+                            EpisodeRowView(
+                                episodeNumber: item.episode,
+                                title: meta?.title ?? "Episode \(item.episode)",
+                                ratingText: nil,
+                                description: nil,
+                                thumbnailURL: meta?.thumbnailURL,
+                                isPlayable: true,
+                                isWatched: isEpisodeWatched(item.episode),
+                                isDownloaded: true,
+                                isNew: false,
+                                onTap: {
+                                    selectedItem = item
+                                    showPlayer = true
+                                }
+                            )
+                            .contextMenu {
+                                Button("Delete") {
+                                    DownloadManager.shared.delete(itemId: item.id)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, UIConstants.standardPadding)
+                    .padding(.top, UIConstants.smallPadding)
+                    .padding(.bottom, UIConstants.bottomBarHeight)
+                }
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: $showPlayer) {
+            if let item = selectedItem,
+               let fileURL = DownloadManager.shared.playableURL(for: item) {
+                let format = fileURL.pathExtension.lowercased()
+                let source = SoraSource(
+                    id: "local|\(item.id)",
+                    url: fileURL,
+                    quality: "Local",
+                    subOrDub: "Sub",
+                    format: format.isEmpty ? "mp4" : format,
+                    headers: [:]
+                )
+                let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
+                PlayerView(episode: episode, sources: [source], mediaId: mediaId, malId: nil, mediaTitle: title)
+            }
+        }
+        .task {
+            loadCachedMetadata()
+        }
+    }
+
+    private var mediaId: Int { mediaItem?.externalId ?? 0 }
+
+    private var sortedItems: [DownloadItem] {
+        items.sorted { $0.episode < $1.episode }
+    }
+
+    private var ipadEpisodeCarousel: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: UIConstants.interCardSpacing) {
+                ForEach(sortedItems) { item in
+                    let meta = episodeMetadata[item.episode]
+                    let title = meta?.title ?? "Episode \(item.episode)"
+                    let subtitle = "Episode \(item.episode)"
+                    Button {
+                        selectedItem = item
+                        showPlayer = true
+                    } label: {
+                        DownloadEpisodeThumbCard(
+                            title: title,
+                            subtitle: subtitle,
+                            imageURL: meta?.thumbnailURL,
+                            isWatched: isEpisodeWatched(item.episode),
+                            isDownloaded: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button("Delete") {
+                            DownloadManager.shared.delete(itemId: item.id)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, UIConstants.tinyPadding)
+            .padding(.vertical, UIConstants.heroTopPadding)
+        }
+        .scrollClipDisabled()
+    }
+
+    private func loadCachedMetadata() {
+        guard let mediaItem else { return }
+        let media = AniListMedia(
+            id: mediaItem.externalId ?? 0,
+            idMal: nil,
+            title: AniListTitle(romaji: mediaItem.title, english: mediaItem.title, native: nil),
+            coverURL: mediaItem.posterImageURL,
+            bannerURL: mediaItem.heroImageURL,
+            averageScore: mediaItem.ratingScore,
+            episodes: mediaItem.totalEpisodes,
+            seasonYear: nil,
+            startDate: nil,
+            format: nil,
+            status: nil,
+            isAdult: false,
+            genres: mediaItem.genres,
+            studios: []
+        )
+        let episodes = sortedItems.map { SoraEpisode(id: $0.id, number: $0.episode, playURL: nil) }
+        if let cached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: episodes) {
+            episodeMetadata = cached
+        }
+    }
+
+    private func isEpisodeWatched(_ episode: Int) -> Bool {
+        if let progress = mediaItem?.currentEpisode, progress > 0 {
+            return episode <= progress
+        }
+        if let last = PlaybackHistoryStore.shared.lastEpisodeNumber(for: mediaId) {
+            return episode <= last
+        }
+        return false
+    }
+}
+
+private struct DownloadEpisodeThumbCard: View {
+    let title: String
+    let subtitle: String
+    let imageURL: URL?
+    let isWatched: Bool
+    let isDownloaded: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 260, height: 140)
+                if let imageURL {
+                    CachedImage(
+                        url: imageURL,
+                        targetSize: CGSize(width: 260, height: 140)
+                    ) { image in
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        Color.white.opacity(0.08)
+                    }
+                    .frame(width: 260, height: 140)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous))
+                }
+                if isDownloaded {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(8)
+                        .background(
+                            Circle().fill(Color.black.opacity(0.4))
+                        )
+                        .padding(6)
+                }
+            }
+
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.white.opacity(isWatched ? 0.5 : 1.0))
+                .lineLimit(2)
+
+            Text(subtitle)
+                .font(.system(size: 11))
+                .foregroundColor(Theme.textSecondary)
+                .lineLimit(1)
+        }
+        .frame(width: 260, alignment: .leading)
     }
 }
