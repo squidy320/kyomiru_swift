@@ -4,6 +4,7 @@ import UIKit
 struct DiscoveryView: View {
     @State private var query = ""
     @EnvironmentObject private var appState: AppState
+    @AppStorage("library.sort") private var librarySortRaw: String = LibrarySortOption.lastUpdated.rawValue
     @State private var sections: [AniListDiscoverySection] = []
     @State private var isLoading = false
     @State private var isSearching = false
@@ -97,7 +98,7 @@ struct DiscoveryView: View {
         .task {
             AppLog.debug(.ui, "discovery view load")
             if sections.isEmpty,
-               let cached = appState.services.aniListClient.cachedDiscoverySectionsSnapshot() {
+               let cached = appState.services.aniListClient.cachedDiscoverySectionsSnapshot(sort: discoverySort()) {
                 sections = cached
             }
             await loadImdbTrending()
@@ -117,6 +118,9 @@ struct DiscoveryView: View {
         }
         .onChange(of: appState.settings.cardImageSource) { _, _ in
             Task { await prefetchDiscoveryImages() }
+        }
+        .onChange(of: librarySortRaw) { _, _ in
+            Task { await loadDiscovery() }
         }
     }
     private var heroCarousel: AnyView {
@@ -376,7 +380,7 @@ private extension DiscoveryView {
         AppLog.debug(.network, "discovery load start")
         isLoading = true
         do {
-            sections = try await appState.services.aniListClient.discoverySections()
+            sections = try await appState.services.aniListClient.discoverySections(sort: discoverySort())
         } catch {
             sections = []
             AppLog.error(.network, "discovery load failed \(error.localizedDescription)")
@@ -384,6 +388,18 @@ private extension DiscoveryView {
         isLoading = false
         AppLog.debug(.network, "discovery load complete sections=\(sections.count)")
         await prefetchDiscoveryImages()
+    }
+
+    func discoverySort() -> String {
+        let option = LibrarySortOption(rawValue: librarySortRaw) ?? .lastUpdated
+        switch option {
+        case .lastUpdated:
+            return "TRENDING_DESC"
+        case .score:
+            return "SCORE_DESC"
+        case .alphabetical:
+            return "TITLE_ROMAJI"
+        }
     }
 
     func statusBadge(for media: AniListMedia) -> String? {
