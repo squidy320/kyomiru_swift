@@ -1143,19 +1143,23 @@ actor MediaConversionManager {
 
         let duration = await probeDurationSeconds(path: inputPath)
         let command = "-y -i \(quoted(path: inputPath)) -c copy -bsf:a aac_adtstoasc \(quoted(path: outputPath))"
+        AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration)")
 
         return try await withCheckedThrowingContinuation { continuation in
             FFmpegKit.executeAsync(command, withCompleteCallback: { session in
                 let returnCode = session?.getReturnCode()
                 if ReturnCode.isSuccess(returnCode) {
+                    AppLog.debug(.downloads, "ffmpeg remux success output=\(outputPath)")
                     if inputURL.pathExtension.lowercased() == "ts" {
                         try? FileManager.default.removeItem(at: inputURL)
                     }
                     continuation.resume(returning: outputURL)
                 } else if ReturnCode.isCancel(returnCode) {
+                    AppLog.error(.downloads, "ffmpeg remux cancelled input=\(inputPath)")
                     continuation.resume(throwing: ConversionError.cancelled)
                 } else {
                     let message = session?.getAllLogsAsString() ?? "ffmpeg conversion failed"
+                    AppLog.error(.downloads, "ffmpeg remux failed input=\(inputPath) error=\(message)")
                     continuation.resume(throwing: ConversionError.exportFailed(message))
                 }
             }, withLogCallback: nil, withStatisticsCallback: { stats in
