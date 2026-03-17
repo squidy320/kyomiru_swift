@@ -20,12 +20,16 @@ final class AniSkipService {
         guard let url = URL(string: "https://api.aniskip.com/v2/skip-times/\(malId)/\(episode)?types=op,ed,recap,preview") else {
             return []
         }
+        AppLog.debug(.player, "aniskip: request start malId=\(malId) ep=\(episode) url=\(url.absoluteString)")
         do {
             let (data, response) = try await session.data(from: url)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                AppLog.error(.player, "aniskip: request failed malId=\(malId) ep=\(episode) status=\(code)")
                 return []
             }
             let decoded = try JSONDecoder().decode(AniSkipResponse.self, from: data)
+            AppLog.debug(.player, "aniskip: request success malId=\(malId) ep=\(episode) count=\(decoded.results.count)")
             return decoded.results.map {
                 AniSkipSegment(
                     type: $0.skipType,
@@ -34,6 +38,7 @@ final class AniSkipService {
                 )
             }
         } catch {
+            AppLog.error(.player, "aniskip: request error malId=\(malId) ep=\(episode) \(error.localizedDescription)")
             return []
         }
     }

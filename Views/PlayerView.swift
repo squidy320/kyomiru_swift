@@ -215,7 +215,10 @@ private struct AVPlayerScreen: View {
         }
         Task {
             let segments = await appState.services.aniSkipService.fetchSkipSegments(malId: malId, episode: episode.number)
-            guard !segments.isEmpty else { return }
+            guard !segments.isEmpty else {
+                AppLog.debug(.player, "aniskip: no segments malId=\(malId) ep=\(episode.number)")
+                return
+            }
             await MainActor.run {
                 skipSegments = segments
                 AppLog.debug(.player, "aniskip: fetched malId=\(malId) ep=\(episode.number) count=\(segments.count)")
