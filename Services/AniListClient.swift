@@ -91,630 +91,148 @@ final class AniListClient {
         return items
     }
 
-    func discoverySections(sort: String) async throws -> [AniListDiscoverySection] {
-        if let cached = cachedDiscoverySections, cached.expires > Date(), cached.sort == sort {
-            AppLog.debug(.cache, "discovery sections cache hit")
-            return cached.items
-        }
-        if let cached = cachedDiscoverySectionsFromDisk(sort: sort) {
-            AppLog.debug(.cache, "discovery sections disk cache hit")
-            cachedDiscoverySections = (sort, cached, Date().addingTimeInterval(60 * 10))
-            return cached
-        }
-        AppLog.debug(.network, "discovery sections request start")
-        let query = """
-        query Discovery($sort: [MediaSort]) {
-          trending: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          topRated: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          hotNow: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          action: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Action"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          adventure: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Adventure"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          comedy: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Comedy"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          drama: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Drama"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          ecchi: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Ecchi"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          fantasy: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Fantasy"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          horror: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Horror"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          mahouShoujo: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Mahou Shoujo"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          mecha: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Mecha"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          music: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Music"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          mystery: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Mystery"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          psychological: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Psychological"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          romance: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Romance"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          sciFi: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Sci-Fi"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          sliceOfLife: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Slice of Life"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          sports: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Sports"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          supernatural: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Supernatural"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          thriller: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, genre_in: ["Thriller"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          shounen: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, tag_in: ["Shounen"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          shoujo: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, tag_in: ["Shoujo"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          seinen: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, tag_in: ["Seinen"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          josei: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, tag_in: ["Josei"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-          isekai: Page(page: 1, perPage: 12) {
-            media(type: ANIME, sort: $sort, tag_in: ["Isekai"], isAdult: false) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              startDate { year month day }
-              format
-              status
-              isAdult
-              genres
-              studios(isMain: true) { nodes { name } }
-            }
-          }
-        }
-        """
-        let data = try await graphql(query: query, variables: ["sort": [sort]])
-        let sections: [AniListDiscoverySection] = [
-            AniListDiscoverySection(
-                id: "trending",
-                title: "Trending",
-                items: decodeMediaList(data: data, keyPath: ["data", "trending", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "topRated",
-                title: "Top Rated",
-                items: decodeMediaList(data: data, keyPath: ["data", "topRated", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "hotNow",
-                title: "Hot Now",
-                items: decodeMediaList(data: data, keyPath: ["data", "hotNow", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "action",
-                title: "Top Action",
-                items: decodeMediaList(data: data, keyPath: ["data", "action", "media"])
-            )
-            ,
-            AniListDiscoverySection(
-                id: "adventure",
-                title: "Top Adventure",
-                items: decodeMediaList(data: data, keyPath: ["data", "adventure", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "comedy",
-                title: "Top Comedy",
-                items: decodeMediaList(data: data, keyPath: ["data", "comedy", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "drama",
-                title: "Top Drama",
-                items: decodeMediaList(data: data, keyPath: ["data", "drama", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "ecchi",
-                title: "Top Ecchi",
-                items: decodeMediaList(data: data, keyPath: ["data", "ecchi", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "fantasy",
-                title: "Top Fantasy",
-                items: decodeMediaList(data: data, keyPath: ["data", "fantasy", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "horror",
-                title: "Top Horror",
-                items: decodeMediaList(data: data, keyPath: ["data", "horror", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "mahouShoujo",
-                title: "Top Mahou Shoujo",
-                items: decodeMediaList(data: data, keyPath: ["data", "mahouShoujo", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "mecha",
-                title: "Top Mecha",
-                items: decodeMediaList(data: data, keyPath: ["data", "mecha", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "music",
-                title: "Top Music",
-                items: decodeMediaList(data: data, keyPath: ["data", "music", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "mystery",
-                title: "Top Mystery",
-                items: decodeMediaList(data: data, keyPath: ["data", "mystery", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "psychological",
-                title: "Top Psychological",
-                items: decodeMediaList(data: data, keyPath: ["data", "psychological", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "romance",
-                title: "Top Romance",
-                items: decodeMediaList(data: data, keyPath: ["data", "romance", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "sciFi",
-                title: "Top Sci-Fi",
-                items: decodeMediaList(data: data, keyPath: ["data", "sciFi", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "sliceOfLife",
-                title: "Top Slice of Life",
-                items: decodeMediaList(data: data, keyPath: ["data", "sliceOfLife", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "sports",
-                title: "Top Sports",
-                items: decodeMediaList(data: data, keyPath: ["data", "sports", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "supernatural",
-                title: "Top Supernatural",
-                items: decodeMediaList(data: data, keyPath: ["data", "supernatural", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "thriller",
-                title: "Top Thriller",
-                items: decodeMediaList(data: data, keyPath: ["data", "thriller", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "shounen",
-                title: "Top Shounen",
-                items: decodeMediaList(data: data, keyPath: ["data", "shounen", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "shoujo",
-                title: "Top Shoujo",
-                items: decodeMediaList(data: data, keyPath: ["data", "shoujo", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "seinen",
-                title: "Top Seinen",
-                items: decodeMediaList(data: data, keyPath: ["data", "seinen", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "josei",
-                title: "Top Josei",
-                items: decodeMediaList(data: data, keyPath: ["data", "josei", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "isekai",
-                title: "Top Isekai",
-                items: decodeMediaList(data: data, keyPath: ["data", "isekai", "media"])
-            )
-        ]
-        let cacheKey = discoverySectionsCacheKey(for: sort)
-        cacheStore.writeJSON(data, forKey: cacheKey)
-        cachedDiscoverySections = (sort, sections, Date().addingTimeInterval(60 * 10))
-        AppLog.debug(.network, "discovery sections request success count=\(sections.count)")
-        return sections
+func discoverySections(sort: String) async throws -> [AniListDiscoverySection] {
+    if let cached = cachedDiscoverySections, cached.expires > Date(), cached.sort == sort {
+        AppLog.debug(.cache, "discovery sections cache hit")
+        return cached.items
     }
+    if let cached = cachedDiscoverySectionsFromDisk(sort: sort) {
+        AppLog.debug(.cache, "discovery sections disk cache hit")
+        cachedDiscoverySections = (sort, cached, Date().addingTimeInterval(60 * 10))
+        return cached
+    }
+    AppLog.debug(.network, "discovery sections request start")
 
-    func librarySections(token: String, forceRefresh: Bool = false) async throws -> [AniListLibrarySection] {
+    let mediaFields = """
+          id
+          idMal
+          title { romaji english native }
+          coverImage { extraLarge large }
+          bannerImage
+          averageScore
+          episodes
+          seasonYear
+          startDate { year month day }
+          format
+          status
+          isAdult
+          genres
+          studios(isMain: true) { nodes { name } }
+    """
+    let baseQuery = """
+    query DiscoveryBase($sort: [MediaSort]) {
+      trending: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, isAdult: false) { \(mediaFields) } }
+      topRated: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, isAdult: false) { \(mediaFields) } }
+      hotNow: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, isAdult: false) { \(mediaFields) } }
+    }
+    """
+    let genreQueryA = """
+    query DiscoveryGenresA($sort: [MediaSort]) {
+      action: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Action"], isAdult: false) { \(mediaFields) } }
+      adventure: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Adventure"], isAdult: false) { \(mediaFields) } }
+      comedy: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Comedy"], isAdult: false) { \(mediaFields) } }
+      drama: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Drama"], isAdult: false) { \(mediaFields) } }
+      fantasy: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Fantasy"], isAdult: false) { \(mediaFields) } }
+      romance: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Romance"], isAdult: false) { \(mediaFields) } }
+      sciFi: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Sci-Fi"], isAdult: false) { \(mediaFields) } }
+      sliceOfLife: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Slice of Life"], isAdult: false) { \(mediaFields) } }
+    }
+    """
+    let genreQueryB = """
+    query DiscoveryGenresB($sort: [MediaSort]) {
+      horror: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Horror"], isAdult: false) { \(mediaFields) } }
+      mystery: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Mystery"], isAdult: false) { \(mediaFields) } }
+      psychological: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Psychological"], isAdult: false) { \(mediaFields) } }
+      supernatural: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Supernatural"], isAdult: false) { \(mediaFields) } }
+      thriller: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Thriller"], isAdult: false) { \(mediaFields) } }
+      sports: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Sports"], isAdult: false) { \(mediaFields) } }
+      music: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Music"], isAdult: false) { \(mediaFields) } }
+      mecha: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Mecha"], isAdult: false) { \(mediaFields) } }
+      mahouShoujo: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Mahou Shoujo"], isAdult: false) { \(mediaFields) } }
+      ecchi: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, genre_in: ["Ecchi"], isAdult: false) { \(mediaFields) } }
+    }
+    """
+    let tagQuery = """
+    query DiscoveryTags($sort: [MediaSort]) {
+      shounen: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, tag_in: ["Shounen"], isAdult: false) { \(mediaFields) } }
+      shoujo: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, tag_in: ["Shoujo"], isAdult: false) { \(mediaFields) } }
+      seinen: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, tag_in: ["Seinen"], isAdult: false) { \(mediaFields) } }
+      josei: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, tag_in: ["Josei"], isAdult: false) { \(mediaFields) } }
+      isekai: Page(page: 1, perPage: 12) { media(type: ANIME, sort: $sort, tag_in: ["Isekai"], isAdult: false) { \(mediaFields) } }
+    }
+    """
+
+    let baseSections = [
+        ("trending", "Trending"),
+        ("topRated", "Top Rated"),
+        ("hotNow", "Hot Now")
+    ]
+    let genreSectionsA = [
+        ("action", "Top Action"),
+        ("adventure", "Top Adventure"),
+        ("comedy", "Top Comedy"),
+        ("drama", "Top Drama"),
+        ("fantasy", "Top Fantasy"),
+        ("romance", "Top Romance"),
+        ("sciFi", "Top Sci-Fi"),
+        ("sliceOfLife", "Top Slice of Life")
+    ]
+    let genreSectionsB = [
+        ("horror", "Top Horror"),
+        ("mystery", "Top Mystery"),
+        ("psychological", "Top Psychological"),
+        ("supernatural", "Top Supernatural"),
+        ("thriller", "Top Thriller"),
+        ("sports", "Top Sports"),
+        ("music", "Top Music"),
+        ("mecha", "Top Mecha"),
+        ("mahouShoujo", "Top Mahou Shoujo"),
+        ("ecchi", "Top Ecchi")
+    ]
+    let tagSections = [
+        ("shounen", "Top Shounen"),
+        ("shoujo", "Top Shoujo"),
+        ("seinen", "Top Seinen"),
+        ("josei", "Top Josei"),
+        ("isekai", "Top Isekai")
+    ]
+
+    var sections: [AniListDiscoverySection] = []
+    sections += try await loadDiscoveryBatch(
+        sort: sort,
+        batch: "base",
+        query: baseQuery,
+        variables: ["sort": [sort]],
+        sectionDefs: baseSections
+    )
+    sections += try await loadDiscoveryBatch(
+        sort: sort,
+        batch: "genresA",
+        query: genreQueryA,
+        variables: ["sort": [sort]],
+        sectionDefs: genreSectionsA
+    )
+    sections += try await loadDiscoveryBatch(
+        sort: sort,
+        batch: "genresB",
+        query: genreQueryB,
+        variables: ["sort": [sort]],
+        sectionDefs: genreSectionsB
+    )
+    sections += try await loadDiscoveryBatch(
+        sort: sort,
+        batch: "tags",
+        query: tagQuery,
+        variables: ["sort": [sort]],
+        sectionDefs: tagSections
+    )
+
+    cachedDiscoverySections = (sort, sections, Date().addingTimeInterval(60 * 10))
+    AppLog.debug(.network, "discovery sections request success count=\(sections.count)")
+    return sections
+}
+
+func librarySections(token: String, forceRefresh: Bool = false) async throws -> [AniListLibrarySection] {
         if !forceRefresh {
             if let cached = cachedLibrarySections, cached.expires > Date() {
                 AppLog.debug(.cache, "library cache hit")
@@ -821,160 +339,106 @@ final class AniListClient {
         return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
     }
 
-    private func cachedDiscoverySectionsFromDisk(sort: String) -> [AniListDiscoverySection]? {
-        let cacheKey = discoverySectionsCacheKey(for: sort)
-        guard let data = cacheStore.readJSON(forKey: cacheKey) else { return nil }
-        return [
-            AniListDiscoverySection(
-                id: "trending",
-                title: "Trending",
-                items: decodeMediaList(data: data, keyPath: ["data", "trending", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "topRated",
-                title: "Top Rated",
-                items: decodeMediaList(data: data, keyPath: ["data", "topRated", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "hotNow",
-                title: "Hot Now",
-                items: decodeMediaList(data: data, keyPath: ["data", "hotNow", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "action",
-                title: "Top Action",
-                items: decodeMediaList(data: data, keyPath: ["data", "action", "media"])
-            )
-            ,
-            AniListDiscoverySection(
-                id: "adventure",
-                title: "Top Adventure",
-                items: decodeMediaList(data: data, keyPath: ["data", "adventure", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "comedy",
-                title: "Top Comedy",
-                items: decodeMediaList(data: data, keyPath: ["data", "comedy", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "drama",
-                title: "Top Drama",
-                items: decodeMediaList(data: data, keyPath: ["data", "drama", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "ecchi",
-                title: "Top Ecchi",
-                items: decodeMediaList(data: data, keyPath: ["data", "ecchi", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "fantasy",
-                title: "Top Fantasy",
-                items: decodeMediaList(data: data, keyPath: ["data", "fantasy", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "horror",
-                title: "Top Horror",
-                items: decodeMediaList(data: data, keyPath: ["data", "horror", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "mahouShoujo",
-                title: "Top Mahou Shoujo",
-                items: decodeMediaList(data: data, keyPath: ["data", "mahouShoujo", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "mecha",
-                title: "Top Mecha",
-                items: decodeMediaList(data: data, keyPath: ["data", "mecha", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "music",
-                title: "Top Music",
-                items: decodeMediaList(data: data, keyPath: ["data", "music", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "mystery",
-                title: "Top Mystery",
-                items: decodeMediaList(data: data, keyPath: ["data", "mystery", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "psychological",
-                title: "Top Psychological",
-                items: decodeMediaList(data: data, keyPath: ["data", "psychological", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "romance",
-                title: "Top Romance",
-                items: decodeMediaList(data: data, keyPath: ["data", "romance", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "sciFi",
-                title: "Top Sci-Fi",
-                items: decodeMediaList(data: data, keyPath: ["data", "sciFi", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "sliceOfLife",
-                title: "Top Slice of Life",
-                items: decodeMediaList(data: data, keyPath: ["data", "sliceOfLife", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "sports",
-                title: "Top Sports",
-                items: decodeMediaList(data: data, keyPath: ["data", "sports", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "supernatural",
-                title: "Top Supernatural",
-                items: decodeMediaList(data: data, keyPath: ["data", "supernatural", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "thriller",
-                title: "Top Thriller",
-                items: decodeMediaList(data: data, keyPath: ["data", "thriller", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "shounen",
-                title: "Top Shounen",
-                items: decodeMediaList(data: data, keyPath: ["data", "shounen", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "shoujo",
-                title: "Top Shoujo",
-                items: decodeMediaList(data: data, keyPath: ["data", "shoujo", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "seinen",
-                title: "Top Seinen",
-                items: decodeMediaList(data: data, keyPath: ["data", "seinen", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "josei",
-                title: "Top Josei",
-                items: decodeMediaList(data: data, keyPath: ["data", "josei", "media"])
-            ),
-            AniListDiscoverySection(
-                id: "isekai",
-                title: "Top Isekai",
-                items: decodeMediaList(data: data, keyPath: ["data", "isekai", "media"])
-            )
+private func cachedDiscoverySectionsFromDisk(sort: String) -> [AniListDiscoverySection]? {
+    let batches = ["base", "genresA", "genresB", "tags"]
+    var sections: [AniListDiscoverySection] = []
+    for batch in batches {
+        let cacheKey = discoverySectionsCacheKey(batch: batch, sort: sort)
+        guard let data = cacheStore.readJSON(forKey: cacheKey) else { continue }
+        sections += decodeDiscoveryBatch(data: data, batch: batch)
+    }
+    return sections.isEmpty ? nil : sections
+}
+
+private func discoverySectionsCacheKey(batch: String, sort: String) -> String {
+    let suffix: String
+    switch sort {
+    case "TRENDING_DESC":
+        suffix = "trending"
+    case "SCORE_DESC":
+        suffix = "score"
+    case "TITLE_ROMAJI":
+        suffix = "title"
+    default:
+        suffix = sort.lowercased()
+    }
+    return "discovery:sections:\(batch):\(suffix)"
+}
+
+private func loadDiscoveryBatch(
+    sort: String,
+    batch: String,
+    query: String,
+    variables: [String: Any],
+    sectionDefs: [(id: String, title: String)]
+) async throws -> [AniListDiscoverySection] {
+    let cacheKey = discoverySectionsCacheKey(batch: batch, sort: sort)
+    if let data = cacheStore.readJSON(forKey: cacheKey) {
+        return decodeDiscoveryBatch(data: data, batch: batch)
+    }
+    let data = try await graphql(query: query, variables: variables)
+    cacheStore.writeJSON(data, forKey: cacheKey)
+    return sectionDefs.map { def in
+        AniListDiscoverySection(
+            id: def.id,
+            title: def.title,
+            items: decodeMediaList(data: data, keyPath: ["data", def.id, "media"])
+        )
+    }
+}
+
+private func decodeDiscoveryBatch(data: Data, batch: String) -> [AniListDiscoverySection] {
+    let sectionDefs: [(id: String, title: String)]
+    switch batch {
+    case "base":
+        sectionDefs = [
+            ("trending", "Trending"),
+            ("topRated", "Top Rated"),
+            ("hotNow", "Hot Now")
+        ]
+    case "genresA":
+        sectionDefs = [
+            ("action", "Top Action"),
+            ("adventure", "Top Adventure"),
+            ("comedy", "Top Comedy"),
+            ("drama", "Top Drama"),
+            ("fantasy", "Top Fantasy"),
+            ("romance", "Top Romance"),
+            ("sciFi", "Top Sci-Fi"),
+            ("sliceOfLife", "Top Slice of Life")
+        ]
+    case "genresB":
+        sectionDefs = [
+            ("horror", "Top Horror"),
+            ("mystery", "Top Mystery"),
+            ("psychological", "Top Psychological"),
+            ("supernatural", "Top Supernatural"),
+            ("thriller", "Top Thriller"),
+            ("sports", "Top Sports"),
+            ("music", "Top Music"),
+            ("mecha", "Top Mecha"),
+            ("mahouShoujo", "Top Mahou Shoujo"),
+            ("ecchi", "Top Ecchi")
+        ]
+    default:
+        sectionDefs = [
+            ("shounen", "Top Shounen"),
+            ("shoujo", "Top Shoujo"),
+            ("seinen", "Top Seinen"),
+            ("josei", "Top Josei"),
+            ("isekai", "Top Isekai")
         ]
     }
-
-    private func discoverySectionsCacheKey(for sort: String) -> String {
-        let suffix: String
-        switch sort {
-        case "TRENDING_DESC":
-            suffix = "trending"
-        case "SCORE_DESC":
-            suffix = "score"
-        case "TITLE_ROMAJI":
-            suffix = "title"
-        default:
-            suffix = sort.lowercased()
-        }
-        return "discovery:sections:\(suffix)"
+    return sectionDefs.map { def in
+        AniListDiscoverySection(
+            id: def.id,
+            title: def.title,
+            items: decodeMediaList(data: data, keyPath: ["data", def.id, "media"])
+        )
     }
+}
 
-    private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySection]? {
+private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySection]? {
         let key = "library:\(token.prefix(8))"
         guard let data = cacheStore.readJSON(forKey: key) else { return nil }
         return decodeLibrarySections(data: data)
