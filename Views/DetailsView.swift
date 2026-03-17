@@ -129,8 +129,10 @@ struct DetailsView: View {
         }
         .sheet(isPresented: $showListManager) {
             ListManagerView(item: detailItem, viewModel: listManagerModel) { updated in
-                appState.services.libraryStore.upsert(updated)
-                isBookmarked = updated.status != MediaStatus.planning
+                Task {
+                    await appState.syncListUpdate(updated, refresh: true)
+                    isBookmarked = updated.status != MediaStatus.planning
+                }
             }
             .presentationDetents([PresentationDetent.medium])
             .onAppear {

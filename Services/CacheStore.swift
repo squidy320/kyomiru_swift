@@ -31,6 +31,12 @@ final class CacheStore {
         AppLog.debug(.cache, "cache write key=\(key)")
     }
 
+    func remove(key: String) {
+        let url = fileURL(forKey: key)
+        try? fm.removeItem(at: url)
+        AppLog.debug(.cache, "cache remove key=\(key)")
+    }
+
     private func fileURL(forKey key: String) -> URL {
         let safe = key.replacingOccurrences(of: "/", with: "_")
         return dirURL.appendingPathComponent(safe).appendingPathExtension("json")

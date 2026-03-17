@@ -45,6 +45,7 @@ private struct AVPlayerScreen: View {
     @State private var errorMessage: String?
     @State private var skipSegments: [AniSkipSegment] = []
     @State private var activeSkip: AniSkipSegment?
+    @State private var didMarkWatched: Bool = false
 
     var body: some View {
         ZStack {
@@ -152,6 +153,7 @@ private struct AVPlayerScreen: View {
         statusObserver?.invalidate()
         statusObserver = nil
         activeSkip = nil
+        didMarkWatched = false
         player.pause()
         player.replaceCurrentItem(with: nil)
         self.player = nil
@@ -181,6 +183,11 @@ private struct AVPlayerScreen: View {
             updateActiveSkip(at: seconds)
             let duration = player.currentItem?.duration.seconds ?? 0
             if duration.isFinite && duration > 0 {
+                let fraction = seconds / duration
+                if !didMarkWatched, fraction >= 0.85 {
+                    didMarkWatched = true
+                    Task { await appState.markEpisodeWatched(mediaId: mediaId, episodeNumber: episode.number) }
+                }
                 Task { @MainActor in
                     appState.services.playbackEngine.updateProgress(
                         for: String(mediaId),

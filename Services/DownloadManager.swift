@@ -641,7 +641,7 @@ final class DownloadManager: NSObject, ObservableObject {
             if fm.fileExists(atPath: directMp4.path) {
                 AppLog.debug(.downloads, "hls direct mp4 exists id=\(id) path=\(directMp4.path)")
                 updateStatus(id: id, status: "Completed", localFile: directMp4)
-                markWatched(mediaTitle: item.title, episode: item.episode)
+                // download completion no longer marks watched
                 return
             }
 
@@ -660,7 +660,7 @@ final class DownloadManager: NSObject, ObservableObject {
                 updateProgress(id: id, progress: 1)
                 updateStatus(id: id, status: "Completed", localFile: output)
                 AppLog.debug(.downloads, "hls direct remux complete id=\(id) output=\(output.path)")
-                markWatched(mediaTitle: item.title, episode: item.episode)
+                // download completion no longer marks watched
                 return
             } catch {
                 AppLog.error(.downloads, "hls direct remux failed id=\(id) error=\(error.localizedDescription) fallback=merge")
@@ -689,7 +689,7 @@ final class DownloadManager: NSObject, ObservableObject {
                 try? fm.removeItem(at: segmentFolder)
                 AppLog.debug(.downloads, "hls cleanup removed segment folder=\(segmentFolder.path)")
             }
-            markWatched(mediaTitle: item.title, episode: item.episode)
+            // download completion no longer marks watched
         } catch {
             updateStatus(id: id, status: "Failed")
             AppLog.error(.downloads, "hls download failed id=\(id) error=\(error.localizedDescription)")
@@ -764,7 +764,7 @@ final class DownloadManager: NSObject, ObservableObject {
             }
             updateStatus(id: id, status: "Completed", localFile: target)
             AppLog.debug(.downloads, "download complete id=\(id)")
-            markWatched(mediaTitle: item.title, episode: item.episode)
+            // download completion no longer marks watched
         } catch {
             updateStatus(id: id, status: "Failed")
             AppLog.error(.downloads, "download failed id=\(id) error=\(error.localizedDescription)")
@@ -818,14 +818,7 @@ final class DownloadManager: NSObject, ObservableObject {
         })
     }
 
-    func markWatched(mediaTitle: String, episode: Int) {
-        AppLog.debug(.downloads, "mark watched title=\(mediaTitle) ep=\(episode)")
-        NotificationCenter.default.post(
-            name: .downloadCompleted,
-            object: nil,
-            userInfo: ["title": mediaTitle, "episode": episode]
-        )
-    }
+    // markWatched removed: downloads no longer auto-sync watched state
 
     private func loadIndex() {
         let url = indexURL()

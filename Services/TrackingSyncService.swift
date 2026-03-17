@@ -6,18 +6,7 @@ final class TrackingSyncService {
 
     func start(auth: AuthState, client: AniListClient) {
         AppLog.debug(.network, "tracking sync start")
-        NotificationCenter.default.addObserver(
-            forName: .downloadCompleted,
-            object: nil,
-            queue: .main
-        ) { notif in
-            guard let title = notif.userInfo?["title"] as? String,
-                  let episode = notif.userInfo?["episode"] as? Int else { return }
-            AppLog.debug(.network, "tracking sync event title=\(title) ep=\(episode)")
-            Task {
-                await self.updateProgress(auth: auth, client: client, title: title, episode: episode)
-            }
-        }
+        // download-based tracking removed; playback handles sync at 85%
     }
 
     private func updateProgress(auth: AuthState, client: AniListClient, title: String, episode: Int) async {
@@ -37,6 +26,6 @@ final class TrackingSyncService {
 }
 
 extension Notification.Name {
-    static let downloadCompleted = Notification.Name("kyomiru.download.completed")
+    // downloadCompleted removed; playback-based sync replaces it
 }
 

@@ -241,7 +241,7 @@ struct LibraryView: View {
         isLoading = true
         errorMessage = nil
         do {
-            let items = try await appState.services.aniListClient.librarySections(token: token)
+            let items = try await appState.services.aniListClient.librarySections(token: token, forceRefresh: true)
             applyLibrarySections(items)
             await prefetchAvailability(sections: items)
         } catch {

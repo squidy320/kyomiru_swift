@@ -183,15 +183,19 @@ final class AniListClient {
         return sections
     }
 
-    func librarySections(token: String) async throws -> [AniListLibrarySection] {
-        if let cached = cachedLibrarySections, cached.expires > Date() {
-            AppLog.debug(.cache, "library cache hit")
-            return cached.items
-        }
-        if let cached = cachedLibrarySectionsFromDisk(token: token) {
-            AppLog.debug(.cache, "library disk cache hit")
-            cachedLibrarySections = (cached, Date().addingTimeInterval(60 * 5))
-            return cached
+    func librarySections(token: String, forceRefresh: Bool = false) async throws -> [AniListLibrarySection] {
+        if !forceRefresh {
+            if let cached = cachedLibrarySections, cached.expires > Date() {
+                AppLog.debug(.cache, "library cache hit")
+                return cached.items
+            }
+            if let cached = cachedLibrarySectionsFromDisk(token: token) {
+                AppLog.debug(.cache, "library disk cache hit")
+                cachedLibrarySections = (cached, Date().addingTimeInterval(60 * 5))
+                return cached
+            }
+        } else {
+            AppLog.debug(.cache, "library cache bypass")
         }
         AppLog.debug(.network, "library request start")
         let viewer = try await viewer(token: token)
@@ -274,6 +278,13 @@ final class AniListClient {
         cachedLibrarySectionsFromDisk(token: token)
     }
 
+    func clearLibraryCache(token: String) {
+        cachedLibrarySections = nil
+        let key = "library:\(token.prefix(8))"
+        cacheStore.remove(key: key)
+        AppLog.debug(.cache, "library cache cleared key=\(key)")
+    }
+
     private func cachedTrendingFromDisk() -> [AniListMedia]? {
         guard let data = cacheStore.readJSON(forKey: "discovery:trending") else { return nil }
         return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
@@ -323,6 +334,44 @@ final class AniListClient {
             return false
         }
         AppLog.debug(.network, "save tracking success mediaId=\(mediaId)")
+        return true
+    }
+
+    func saveMediaListEntry(
+        token: String,
+        mediaId: Int,
+        status: String?,
+        progress: Int?
+    ) async throws -> Bool {
+        AppLog.debug(.network, "save list start mediaId=\(mediaId) status=\(status ?? "nil") progress=\(progress.map(String.init) ?? "nil")")
+        let q = """
+        mutation SaveEntry($mediaId: Int, $status: MediaListStatus, $progress: Int) {
+          SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress) {
+            id
+            status
+            progress
+          }
+        }
+        """
+        var vars: [String: Any] = ["mediaId": mediaId]
+        if let status {
+            vars["status"] = status
+        } else {
+            vars["status"] = NSNull()
+        }
+        if let progress {
+            vars["progress"] = progress
+        } else {
+            vars["progress"] = NSNull()
+        }
+        let data = try await graphql(query: q, variables: vars, token: token)
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dataMap = root["data"] as? [String: Any],
+              let _ = dataMap["SaveMediaListEntry"] as? [String: Any] else {
+            AppLog.error(.network, "save list failed mediaId=\(mediaId)")
+            return false
+        }
+        AppLog.debug(.network, "save list success mediaId=\(mediaId)")
         return true
     }
 
