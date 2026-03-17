@@ -417,10 +417,10 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         ]
 
         if let genre = genreMap[sectionId] {
-            return (sortValue, ", genre_in: [\"\(genre)\"]")
+            return (sortValue, ", genre_in: [\"" + genre + "\"]")
         }
         if let tag = tagMap[sectionId] {
-            return (sortValue, ", tag_in: [\"\(tag)\"]")
+            return (sortValue, ", tag_in: [\"" + tag + "\"]")
         }
         return (sortValue, "")
     }
