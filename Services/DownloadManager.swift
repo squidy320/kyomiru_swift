@@ -619,20 +619,19 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func remuxIfNeeded(id: String, localFile: URL) async {
-        if MPVSupport.isAvailable {
-            updateStatus(id: id, status: "Completed", localFile: localFile)
-            return
-        }
         if !preferMp4Conversion {
+            AppLog.debug(.downloads, "remux skipped id=\(id) reason=preferMp4Conversion=false")
             updateStatus(id: id, status: "Completed", localFile: localFile)
             return
         }
         guard localFile.pathExtension.lowercased() == "ts" else {
+            AppLog.debug(.downloads, "remux skipped id=\(id) reason=not-ts ext=\(localFile.pathExtension)")
             updateStatus(id: id, status: "Completed", localFile: localFile)
             return
         }
         let mp4URL = localFile.deletingPathExtension().appendingPathExtension("mp4")
         if fm.fileExists(atPath: mp4URL.path) {
+            AppLog.debug(.downloads, "remux skipped id=\(id) reason=mp4-exists path=\(mp4URL.path)")
             updateStatus(id: id, status: "Completed", localFile: mp4URL)
             return
         }
