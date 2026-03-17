@@ -474,7 +474,6 @@ struct DownloadItem: Identifiable, Equatable {
 final class DownloadManager: NSObject, ObservableObject {
     static let shared = DownloadManager()
     @Published private(set) var items: [DownloadItem] = []
-    @Published var preferMp4Conversion: Bool = true
     private var aniSkipCache: [String: [AniSkipSegment]] = [:]
     private let aniSkipIndexKey = "aniskip_cache.json"
 
@@ -642,13 +641,6 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func resumePendingRemuxes() {
-        if MPVSupport.isAvailable {
-            for item in items {
-                guard let local = item.localFile, fm.fileExists(atPath: local.path) else { continue }
-                updateStatus(id: item.id, status: "Completed", localFile: local)
-            }
-            return
-        }
         let pending = items.filter { item in
             guard let local = item.localFile else { return false }
             if !fm.fileExists(atPath: local.path) { return false }
@@ -667,10 +659,6 @@ final class DownloadManager: NSObject, ObservableObject {
     func retryRemux(itemId: String) {
         guard let item = items.first(where: { $0.id == itemId }),
               let local = item.localFile else { return }
-        if MPVSupport.isAvailable {
-            updateStatus(id: itemId, status: "Completed", localFile: local)
-            return
-        }
         updateStatus(id: itemId, status: "Remuxing", localFile: local)
         Task { @MainActor in
             await remuxIfNeeded(id: itemId, localFile: local)

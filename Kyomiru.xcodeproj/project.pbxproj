@@ -20,8 +20,6 @@
 		A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */; };
 		B1C2D3E4F5061728394A5B6D /* NetworkRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* NetworkRetry.swift */; };
 		314C57A12C82496CA605168E /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 161229ED682D48179B328B0A /* DownloadManager.swift */; };
-		1C8D9E8A5B544EAA8D7083E1 /* MPVSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D7C4F7B1B4C8EA2B3D4E5 /* MPVSupport.swift */; };
-		8E7C6B5A4D3C2B1A0F9E8D7C /* MPVPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C6B5A4D3C2B1A0F9E8D7C6B /* MPVPlayer.swift */; };
 		B6D7E8F9A0B1C2D3E4F50617 /* PlaybackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5C9E3B1D4F24C1BAA112233 /* PlaybackService.swift */; };
 		E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */; };
         01A2B3C4D5E6F708192A3B4C /* OfflineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */; };
@@ -70,7 +68,6 @@
         2CFF3ECD27116963C051730A /* JSController-NetworkFetch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A0F16D55021ED2DE2E8DE8 /* JSController-NetworkFetch.swift */; };
         4788F2D20516CCB44531164A /* JavaScriptCore+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334866F7F2A74AB9510C2588 /* JavaScriptCore+Extensions.swift */; };
 		5FB9970930229D05437710EC /* LunaCompat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D3DAE2316A4076C61FFB793 /* LunaCompat.swift */; };
-		C2A1B2C3D4E5F60718293A4B /* MPVKit-GPL in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C3D4E5F60718293A4B /* MPVKit-GPL */; };
 		BB11BB22CC33DD44EE55FF11 /* ffmpegkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF03 /* ffmpegkit.xcframework */; };
 		BB11BB22CC33DD44EE55FF12 /* libavcodec.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF04 /* libavcodec.xcframework */; };
 		BB11BB22CC33DD44EE55FF13 /* libavdevice.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF05 /* libavdevice.xcframework */; };
@@ -104,8 +101,6 @@
 		8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheStore.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5D /* NetworkRetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRetry.swift; sourceTree = "<group>"; };
 		161229ED682D48179B328B0A /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
-		8B2D7C4F7B1B4C8EA2B3D4E5 /* MPVSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPVSupport.swift; sourceTree = "<group>"; };
-		7C6B5A4D3C2B1A0F9E8D7C6B /* MPVPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPVPlayer.swift; sourceTree = "<group>"; };
 		A5C9E3B1D4F24C1BAA112233 /* PlaybackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackService.swift; sourceTree = "<group>"; };
 		F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackEngine.swift; sourceTree = "<group>"; };
         0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineManager.swift; sourceTree = "<group>"; };
@@ -172,7 +167,6 @@
 			files = (
 				5C97AFFC7DD823D160FB8E18 /* WebKit.framework in Frameworks */,
 				1F1794364860EAEFCE63C284 /* JavaScriptCore.framework in Frameworks */,
-				C2A1B2C3D4E5F60718293A4B /* MPVKit-GPL in Frameworks */,
 				BB11BB22CC33DD44EE55FF11 /* ffmpegkit.xcframework in Frameworks */,
 				BB11BB22CC33DD44EE55FF12 /* libavcodec.xcframework in Frameworks */,
 				BB11BB22CC33DD44EE55FF13 /* libavdevice.xcframework in Frameworks */,
@@ -270,8 +264,6 @@
                 8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */,
 				A1B2C3D4E5F60718293A4B5D /* NetworkRetry.swift */,
 				161229ED682D48179B328B0A /* DownloadManager.swift */,
-				8B2D7C4F7B1B4C8EA2B3D4E5 /* MPVSupport.swift */,
-				7C6B5A4D3C2B1A0F9E8D7C6B /* MPVPlayer.swift */,
 				A5C9E3B1D4F24C1BAA112233 /* PlaybackService.swift */,
                 F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */,
                 0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */,
@@ -381,7 +373,6 @@
             );
             name = Kyomiru;
 			packageProductDependencies = (
-				C1A1B2C3D4E5F60718293A4B /* MPVKit-GPL */,
 			);
             productName = Kyomiru;
             productReference = 72071117F02B492EA7D8D08E /* Kyomiru.app */;
@@ -398,7 +389,6 @@
             hasScannedForEncodings = 0;
             mainGroup = A1F6688393CD43E789FC9C3D;
 			packageReferences = (
-				C0A1B2C3D4E5F60718293A4B /* MPVKit (Local) */,
 			);
             productRefGroup = A1F6688393CD43E789FC9C3D;
             projectDirPath = "";
@@ -444,8 +434,6 @@
 				A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */,
 				B1C2D3E4F5061728394A5B6D /* NetworkRetry.swift in Sources */,
 				314C57A12C82496CA605168E /* DownloadManager.swift in Sources */,
-				1C8D9E8A5B544EAA8D7083E1 /* MPVSupport.swift in Sources */,
-				8E7C6B5A4D3C2B1A0F9E8D7C /* MPVPlayer.swift in Sources */,
 				B6D7E8F9A0B1C2D3E4F50617 /* PlaybackService.swift in Sources */,
                 E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */,
                 01A2B3C4D5E6F708192A3B4C /* OfflineManager.swift in Sources */,
@@ -496,18 +484,9 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		C1A1B2C3D4E5F60718293A4B /* MPVKit-GPL */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = "MPVKit-GPL";
-			package = C0A1B2C3D4E5F60718293A4B /* MPVKit (Local) */;
-		};
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		C0A1B2C3D4E5F60718293A4B /* MPVKit (Local) */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Vendor/MPVKit;
-		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCBuildConfiguration section */

@@ -109,20 +109,6 @@ struct SettingsView: View {
                             }
 
                             GlassCard {
-                                HStack {
-                                    Text("Player Engine")
-                                        .foregroundColor(.white)
-                                    Spacer()
-                                    Picker("", selection: $appState.settings.playerEngine) {
-                                        ForEach(PlayerEngine.allCases) { engine in
-                                            Text(engine.title).tag(engine)
-                                        }
-                                    }
-                                    .labelsHidden()
-                                }
-                            }
-
-                            GlassCard {
                                 NavigationLink {
                                     LogsView()
                                 } label: {
@@ -187,9 +173,6 @@ struct SettingsView: View {
         .onAppear {
             AppLog.debug(.ui, "settings view appear")
             Task { await refreshCacheSize() }
-        }
-        .onChange(of: appState.settings.playerEngine) { _, value in
-            appState.services.downloadManager.preferMp4Conversion = (value == .avplayer)
         }
     }
 

@@ -20,7 +20,6 @@ final class AppState: ObservableObject {
         let services = AppServices()
         self.services = services
         self.authState = AuthState(services: services)
-        services.downloadManager.preferMp4Conversion = settings.playerEngine == .avplayer
     }
 
     @MainActor
