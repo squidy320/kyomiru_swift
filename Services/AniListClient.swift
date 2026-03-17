@@ -119,16 +119,21 @@ func discoverySections(sort: String) async throws -> [AniListDiscoverySection] {
           genres
           studios(isMain: true) { nodes { name } }
     """
+    let (seasonValue, seasonYear) = currentSeasonAndYear()
     let baseQuery = """
         query DiscoveryBase {
           trending: Page(page: 1, perPage: 12) { media(type: ANIME, sort: TRENDING_DESC, isAdult: false) { \(mediaFields) } }
-          hotNow: Page(page: 1, perPage: 12) { media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) { \(mediaFields) } }
+          hotNow: Page(page: 1, perPage: 12) { media(type: ANIME, sort: POPULARITY_DESC, isAdult: false, season: \(seasonValue), seasonYear: \(seasonYear)) { \(mediaFields) } }
+          upcoming: Page(page: 1, perPage: 12) { media(type: ANIME, sort: START_DATE, isAdult: false, status: NOT_YET_RELEASED) { \(mediaFields) } }
+          allTime: Page(page: 1, perPage: 12) { media(type: ANIME, sort: SCORE_DESC, isAdult: false) { \(mediaFields) } }
         }
         """
 
     let baseSections = [
         ("trending", "Trending"),
-        ("hotNow", "Hot Now")
+        ("hotNow", "Popular This Season"),
+        ("upcoming", "Upcoming"),
+        ("allTime", "All Time")
     ]
 
     var sections: [AniListDiscoverySection] = []
@@ -336,10 +341,12 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
             switch sectionId {
             case "trending":
                 return "TRENDING_DESC"
-            case "topRated":
-                return "SCORE_DESC"
             case "hotNow":
                 return "POPULARITY_DESC"
+            case "upcoming":
+                return "START_DATE"
+            case "allTime":
+                return "SCORE_DESC"
             default:
                 return nil
             }
@@ -375,6 +382,13 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
             "isekai": "Isekai"
         ]
 
+        if sectionId == "hotNow" {
+            let (seasonValue, seasonYear) = currentSeasonAndYear()
+            return (sortValue, ", season: \(seasonValue), seasonYear: \(seasonYear)")
+        }
+        if sectionId == "upcoming" {
+            return (sortValue, ", status: NOT_YET_RELEASED")
+        }
         if let genre = genreMap[sectionId] {
             return (sortValue, ", genre_in: [\"" + genre + "\"]")
         }
@@ -414,6 +428,28 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         case .Summer: return "SUMMER"
         case .Fall: return "FALL"
         }
+    }
+
+    private func currentSeasonAndYear() -> (season: String, year: Int) {
+        let calendar = Calendar.current
+        let now = Date()
+        let month = calendar.component(.month, from: now)
+        var year = calendar.component(.year, from: now)
+        let season: String
+        switch month {
+        case 12:
+            season = "WINTER"
+            year += 1
+        case 1...2:
+            season = "WINTER"
+        case 3...5:
+            season = "SPRING"
+        case 6...8:
+            season = "SUMMER"
+        default:
+            season = "FALL"
+        }
+        return (season, year)
     }
 
 private func cachedDiscoverySectionsFromDisk(sort: String) -> [AniListDiscoverySection]? {

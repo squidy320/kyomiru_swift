@@ -21,7 +21,9 @@ struct DiscoveryView: View {
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     private var coreSections: [AniListDiscoverySection] {
-        sections.filter { $0.id == "trending" || $0.id == "hotNow" }
+        let order = ["trending", "hotNow", "upcoming", "allTime"]
+        let lookup = Dictionary(uniqueKeysWithValues: sections.map { ($0.id, $0) })
+        return order.compactMap { lookup[$0] }
     }
 
     var body: some View {
