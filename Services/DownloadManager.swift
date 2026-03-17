@@ -1202,7 +1202,7 @@ actor MediaConversionManager {
 
     private func quoted(path: String) -> String {
         let escaped = path.replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
+        return "\"" + escaped + "\""
     }
 }
 
