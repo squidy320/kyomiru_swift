@@ -13,6 +13,22 @@ struct PlayerView: View {
     let startAt: Double? = nil
     @EnvironmentObject private var appState: AppState
 
+    init(
+        episode: SoraEpisode,
+        sources: [SoraSource],
+        mediaId: Int,
+        malId: Int?,
+        mediaTitle: String?,
+        startAt: Double? = nil
+    ) {
+        self.episode = episode
+        self.sources = sources
+        self.mediaId = mediaId
+        self.malId = malId
+        self.mediaTitle = mediaTitle
+        self.startAt = startAt
+    }
+
     var body: some View {
         Group {
 #if os(iOS)
