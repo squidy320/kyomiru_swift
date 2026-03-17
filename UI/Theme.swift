@@ -115,7 +115,7 @@ actor ImageCache {
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    func image(for url: URL, targetSize: CGSize, scale: CGFloat = UIScreen.main.scale) async -> UIImage? {
+    func image(for url: URL, targetSize: CGSize, scale: CGFloat) async -> UIImage? {
         guard let data = await data(for: url) else { return nil }
         return downsample(data: data, targetSize: targetSize, scale: scale)
     }
@@ -146,6 +146,18 @@ struct CachedImage<Content: View, Placeholder: View>: View {
 
     @State private var uiImage: UIImage?
 
+    init(
+        url: URL?,
+        targetSize: CGSize? = nil,
+        @ViewBuilder content: @escaping (Image) -> Content,
+        @ViewBuilder placeholder: @escaping () -> Placeholder
+    ) {
+        self.url = url
+        self.targetSize = targetSize
+        self.content = content
+        self.placeholder = placeholder
+    }
+
     var body: some View {
         Group {
             if let uiImage {
@@ -164,10 +176,12 @@ struct CachedImage<Content: View, Placeholder: View>: View {
             await MainActor.run { uiImage = nil }
             return
         }
-        if let targetSize,
-           let image = await ImageCache.shared.image(for: url, targetSize: targetSize) {
-            await MainActor.run { uiImage = image }
-            return
+        if let targetSize {
+            let scale = await MainActor.run { UIScreen.main.scale }
+            if let image = await ImageCache.shared.image(for: url, targetSize: targetSize, scale: scale) {
+                await MainActor.run { uiImage = image }
+                return
+            }
         }
         if let data = await ImageCache.shared.data(for: url),
            let image = UIImage(data: data) {
