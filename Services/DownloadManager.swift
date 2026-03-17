@@ -1218,7 +1218,7 @@ actor MediaConversionManager {
         let headerString = buildHeaderString(headers)
         let headerArg = headerString.isEmpty ? "" : "-headers \(quoted(value: headerString))"
         let duration = await probeDurationSeconds(path: playlistPath)
-        let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt -err_detect ignore_err -avoid_negative_ts make_zero \(headerArg) -i \(quoted(value: playlistPath)) -map 0"
+        let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt -err_detect ignore_err -avoid_negative_ts make_zero -dn -sn \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v? -map 0:a?"
         let commandWithBsf = "\(baseArgs) -c copy -bsf:a aac_adtstoasc -movflags +faststart \(quoted(path: outputPath))"
         let commandNoBsf = "\(baseArgs) -c copy -movflags +faststart \(quoted(path: outputPath))"
         let commandAudioReencode = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
@@ -1285,7 +1285,7 @@ actor MediaConversionManager {
         try? FileManager.default.removeItem(at: outputURL)
 
         let duration = await probeDurationSeconds(path: inputPath)
-        let baseArgs = "-y -fflags +genpts+discardcorrupt -err_detect ignore_err -avoid_negative_ts make_zero -i \(quoted(path: inputPath)) -map 0"
+        let baseArgs = "-y -fflags +genpts+discardcorrupt -err_detect ignore_err -avoid_negative_ts make_zero -dn -sn -i \(quoted(path: inputPath)) -map 0:v? -map 0:a?"
         let commandWithBsf = "\(baseArgs) -c copy -bsf:a aac_adtstoasc \(quoted(path: outputPath))"
         let commandNoBsf = "\(baseArgs) -c copy \(quoted(path: outputPath))"
         let commandAudioReencode = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
