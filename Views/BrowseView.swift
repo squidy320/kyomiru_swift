@@ -41,17 +41,18 @@ struct BrowseView: View {
                                             NavigationLink {
                                                 DetailsView(media: media)
                                             } label: {
-                                                MediaPosterCard(
-                                                    title: media.title.best,
-                                                    subtitle: nil,
-                                                    imageURL: media.coverURL,
-                                                    media: media,
-                                                    score: media.averageScore,
-                                                    statusBadge: statusBadge(for: media),
-                                                    cornerBadge: nil,
-                                                    size: cardSize,
-                                                    overlayOpacity: 0.6
-                                                )
+                                        MediaPosterCard(
+                                            title: media.title.best,
+                                            subtitle: nil,
+                                            imageURL: media.coverURL,
+                                            media: media,
+                                            score: media.averageScore,
+                                            statusBadge: statusBadge(for: media),
+                                            cornerBadge: nil,
+                                            size: cardSize,
+                                            overlayOpacity: 0.6,
+                                            allowFallbackWhileLoading: true
+                                        )
                                             }
                                             .buttonStyle(.plain)
                                             .onAppear {
@@ -177,6 +178,7 @@ struct BrowseView: View {
         let topInset = UIApplication.shared.connectedScenes
             .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
             .first ?? 0
+        let fallbackURL = items.first?.bannerURL ?? items.first?.coverURL
         return GeometryReader { proxy in
             let width = proxy.size.width
             let insetTop = proxy.safeAreaInsets.top
@@ -185,6 +187,12 @@ struct BrowseView: View {
                 Group {
                     if let heroTrending, let url = heroTrending.backdropURL {
                         CachedImage(url: url) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else if let fallbackURL {
+                        CachedImage(url: fallbackURL) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {
                             Theme.surface
@@ -300,7 +308,7 @@ struct BrowseView: View {
         if heroTrending == nil {
             let items = await appState.services.trendingService.fetchTrending()
             await MainActor.run {
-                heroTrending = items.randomElement()
+                heroTrending = items.first(where: { $0.backdropURL != nil }) ?? items.randomElement()
             }
         }
     }

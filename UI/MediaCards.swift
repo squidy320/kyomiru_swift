@@ -10,6 +10,7 @@ struct MediaPosterCard: View {
     let cornerBadge: String?
     let size: CGSize?
     let overlayOpacity: Double
+    let allowFallbackWhileLoading: Bool
     @EnvironmentObject private var appState: AppState
     @State private var imdbPosterURL: URL?
     @State private var tmdbLookupComplete = false
@@ -23,7 +24,8 @@ struct MediaPosterCard: View {
         statusBadge: String?,
         cornerBadge: String?,
         size: CGSize? = nil,
-        overlayOpacity: Double = 0.85
+        overlayOpacity: Double = 0.85,
+        allowFallbackWhileLoading: Bool = false
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -34,6 +36,7 @@ struct MediaPosterCard: View {
         self.cornerBadge = cornerBadge
         self.size = size
         self.overlayOpacity = overlayOpacity
+        self.allowFallbackWhileLoading = allowFallbackWhileLoading
     }
 
     var body: some View {
@@ -42,7 +45,10 @@ struct MediaPosterCard: View {
         let cardHeight = size?.height ?? UIConstants.posterCardHeight
         let resolvedURL: URL? = {
             if useTMDB {
-                return tmdbLookupComplete ? (imdbPosterURL ?? imageURL) : imdbPosterURL
+                if tmdbLookupComplete {
+                    return imdbPosterURL ?? imageURL
+                }
+                return allowFallbackWhileLoading ? (imdbPosterURL ?? imageURL) : imdbPosterURL
             }
             return imageURL
         }()
