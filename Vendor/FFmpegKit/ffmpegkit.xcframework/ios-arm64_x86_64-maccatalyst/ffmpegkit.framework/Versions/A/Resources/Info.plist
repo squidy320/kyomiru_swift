@@ -1,32 +1,3 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>CFBundleDevelopmentRegion</key>
-	<string>en</string>
-	<key>CFBundleExecutable</key>
-	<string>ffmpegkit</string>
-	<key>CFBundleIdentifier</key>
-	<string>com.arthenica.ffmpegkit.FFmpegKit</string>
-	<key>CFBundleInfoDictionaryVersion</key>
-	<string>6.0</string>
-	<key>CFBundleName</key>
-	<string>ffmpegkit</string>
-	<key>CFBundlePackageType</key>
-	<string>FMWK</string>
-	<key>CFBundleShortVersionString</key>
-	<string>6.0</string>
-	<key>CFBundleVersion</key>
-	<string>6.0</string>
-	<key>CFBundleSignature</key>
-	<string>????</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>12.1</string>
-	<key>CFBundleSupportedPlatforms</key>
-	<array>
-		<string>iPhoneOS</string>
-	</array>
-	<key>NSPrincipalClass</key>
-	<string></string>
-</dict>
-</plist>
+version https://git-lfs.github.com/spec/v1
+oid sha256:2e165d1b0eb0650733f41253d26e5148e2d7a646371a3ad3723f3d78d984e113
+size 917

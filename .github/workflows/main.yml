@@ -81,7 +81,14 @@ jobs:
           git commit -m "Update FFmpegKit (VideoToolbox) [skip ci]" || exit 0
           git config lfs.url "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git/info/lfs"
           git lfs push origin HEAD
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+          for attempt in 1 2 3; do
+            git pull --rebase origin main || true
+            git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main && break
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep 2
+          done
 
   build-release:
     runs-on: macos-latest
