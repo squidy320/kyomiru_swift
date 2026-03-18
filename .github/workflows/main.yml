@@ -39,7 +39,14 @@ jobs:
           cd /tmp/ffmpeg-kit
           ./ios.sh --xcframework \
             --enable-ios-videotoolbox \
-            --enable-ios-audiotoolbox
+            --enable-ios-audiotoolbox \
+            --disable-armv7 \
+            --disable-armv7s \
+            --disable-i386 \
+            --disable-x86-64 \
+            --disable-arm64e \
+            --disable-arm64-mac-catalyst \
+            --disable-x86-64-mac-catalyst
           XC_PATH=$(find /tmp/ffmpeg-kit -path "*bundle-apple-xcframework-ios*" -name "ffmpegkit.xcframework" -print -quit)
           if [ -z "${XC_PATH}" ]; then
             XC_PATH=$(find /tmp/ffmpeg-kit -name "ffmpegkit.xcframework" -print -quit)
