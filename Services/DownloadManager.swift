@@ -597,7 +597,19 @@ final class DownloadManager: NSObject, ObservableObject {
                 if fm.fileExists(atPath: tempURL.path) {
                     try fm.removeItem(at: tempURL)
                 }
-                try fm.copyItem(at: candidate.url, to: tempURL)
+                try await ensureLocalFile(candidate.url)
+                let coordinator = NSFileCoordinator()
+                var coordError: NSError?
+                coordinator.coordinate(readingItemAt: candidate.url, options: .withoutChanges, error: &coordError) { url in
+                    do {
+                        try fm.copyItem(at: url, to: tempURL)
+                    } catch {
+                        coordError = error as NSError
+                    }
+                }
+                if let coordError {
+                    throw coordError
+                }
             } catch {
                 failed.append("\(candidate.fileName) (copy failed)")
                 continue
@@ -637,6 +649,22 @@ final class DownloadManager: NSObject, ObservableObject {
             saveIndex()
         }
         return (imported, skipped, failed)
+    }
+
+    private func ensureLocalFile(_ url: URL) async throws {
+        let values = try url.resourceValues(forKeys: [.isUbiquitousItemKey, .isDownloadedKey])
+        guard values.isUbiquitousItem == true else { return }
+        if values.isDownloaded == true { return }
+        try FileManager.default.startDownloadingUbiquitousItem(at: url)
+        let deadline = Date().addingTimeInterval(120)
+        while Date() < deadline {
+            let refreshed = try? url.resourceValues(forKeys: [.isDownloadedKey])
+            if refreshed?.isDownloaded == true {
+                return
+            }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+        throw MediaConversionManager.ConversionError.exportFailed("file download timeout")
     }
 
     func enqueue(title: String, episode: Int, url: URL, media: MediaItem? = nil) {
