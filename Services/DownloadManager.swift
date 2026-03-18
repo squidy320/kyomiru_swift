@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import CommonCrypto
 import ffmpegkit
+import UIKit
 
 struct AniSkipSegment: Codable, Equatable, Hashable {
     let type: String
@@ -540,6 +541,12 @@ final class DownloadManager: NSObject, ObservableObject {
 
     @MainActor
     func importEpisodes(media: MediaItem, candidates: [EpisodeImportCandidate]) async -> (imported: Int, skipped: Int, failed: [String]) {
+        let bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "kyomiru.import") {
+            UIApplication.shared.endBackgroundTask(bgTaskId)
+        }
+        defer {
+            UIApplication.shared.endBackgroundTask(bgTaskId)
+        }
         let sorted = candidates.compactMap { candidate -> EpisodeImportCandidate? in
             guard let _ = candidate.episodeNumber else { return nil }
             return candidate
