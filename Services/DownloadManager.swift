@@ -1539,11 +1539,14 @@ actor MediaConversionManager {
             let allowHwDecode = isLocalHls && ensureFFmpegBuildconfLogged()
             let hwDecodeArgs = allowHwDecode ? "-hwaccel videotoolbox -hwaccel_output_format videotoolbox" : ""
             let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v? -map 0:a?"
+            let safeCopyArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) \(headerArg) -i \(quoted(value: playlistPath)) -map 0 -ignore_unknown"
+            let limitedBitrate = await limitedTranscodeBitrate(inputURL: playlistURL)
             let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
             let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+            let commandSafeCopy = "\(safeCopyArgs) -c copy -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
             let commandAudioReencode = commandNoBsf
-            let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v 2500k -maxrate 2500k -bufsize 5000k -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
-            let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+            let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+            let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
 
             AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count) audio=aac")
 
@@ -1556,6 +1559,7 @@ actor MediaConversionManager {
                 AppLog.error(.downloads, "ffmpeg hls cancelled input=\(playlistPath)")
                 throw ConversionError.cancelled
             }
+            logCopyFailure(label: "hls copy+bsf", result: first)
 
             AppLog.error(.downloads, "ffmpeg hls failed with aac_adtstoasc, retrying without bsf input=\(playlistPath)")
             let second = await runFFmpeg(commandNoBsf, duration: duration, progress: progress)
@@ -1567,6 +1571,19 @@ actor MediaConversionManager {
                 AppLog.error(.downloads, "ffmpeg hls cancelled (no bsf) input=\(playlistPath)")
                 throw ConversionError.cancelled
             }
+            logCopyFailure(label: "hls copy", result: second)
+
+            AppLog.error(.downloads, "ffmpeg hls copy failed, trying safe copy input=\(playlistPath)")
+            let safeCopy = await runFFmpeg(commandSafeCopy, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(safeCopy.code) {
+                AppLog.debug(.downloads, "ffmpeg hls success (safe copy) output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(safeCopy.code) {
+                AppLog.error(.downloads, "ffmpeg hls cancelled (safe copy) input=\(playlistPath)")
+                throw ConversionError.cancelled
+            }
+            logCopyFailure(label: "hls safe copy", result: safeCopy)
 
             AppLog.error(.downloads, "ffmpeg hls failed copy, retrying with audio reencode input=\(playlistPath)")
             let third = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
@@ -1628,12 +1645,14 @@ actor MediaConversionManager {
         let allowHwDecode = inputURL.isFileURL && ensureFFmpegBuildconfLogged()
         let hwDecodeArgs = allowHwDecode ? "-hwaccel videotoolbox -hwaccel_output_format videotoolbox" : ""
         let baseArgs = "-y -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) -i \(quoted(path: inputPath)) -map 0:v? -map 0:a?"
-        let targetBitrate = await estimatedHardwareBitrate(inputURL: inputURL)
+        let safeCopyArgs = "-y -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) -i \(quoted(path: inputPath)) -map 0 -ignore_unknown"
+        let limitedBitrate = await limitedTranscodeBitrate(inputURL: inputURL)
         let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
         let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandSafeCopy = "\(safeCopyArgs) -c copy -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
         let commandAudioReencode = commandNoBsf
-        let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v \(targetBitrate) -maxrate \(targetBitrate) -bufsize \(targetBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
-        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
 
         AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration) audio=aac")
 
@@ -1650,24 +1669,8 @@ actor MediaConversionManager {
             throw ConversionError.cancelled
         }
 
-        if preferHardwareTranscode {
-            AppLog.debug(.downloads, "ffmpeg remux copy failed, trying vt transcode input=\(inputPath)")
-            let hw = await runFFmpeg(commandFullTranscodeVT, duration: duration, progress: progress)
-            if ReturnCode.isSuccess(hw.code) {
-                if inputURL.pathExtension.lowercased() == "ts" {
-                    try? FileManager.default.removeItem(at: inputURL)
-                }
-                AppLog.debug(.downloads, "ffmpeg remux success (vt transcode) output=\(outputPath)")
-                return outputURL
-            }
-            if ReturnCode.isCancel(hw.code) {
-                AppLog.error(.downloads, "ffmpeg remux cancelled (vt transcode) input=\(inputPath)")
-                throw ConversionError.cancelled
-            }
-            AppLog.error(.downloads, "ffmpeg remux vt transcode failed, retrying without bsf input=\(inputPath)")
-        } else {
-            AppLog.error(.downloads, "ffmpeg remux failed with aac_adtstoasc, retrying without bsf input=\(inputPath)")
-        }
+        logCopyFailure(label: "copy+bsf", result: first)
+        AppLog.error(.downloads, "ffmpeg remux failed with aac_adtstoasc, retrying without bsf input=\(inputPath)")
         let second = await runFFmpeg(commandNoBsf, duration: duration, progress: progress)
         if ReturnCode.isSuccess(second.code) {
             if inputURL.pathExtension.lowercased() == "ts" {
@@ -1680,6 +1683,22 @@ actor MediaConversionManager {
             AppLog.error(.downloads, "ffmpeg remux cancelled (no bsf) input=\(inputPath)")
             throw ConversionError.cancelled
         }
+        logCopyFailure(label: "copy", result: second)
+
+        AppLog.error(.downloads, "ffmpeg remux copy failed, trying safe copy input=\(inputPath)")
+        let safeCopy = await runFFmpeg(commandSafeCopy, duration: duration, progress: progress)
+        if ReturnCode.isSuccess(safeCopy.code) {
+            if inputURL.pathExtension.lowercased() == "ts" {
+                try? FileManager.default.removeItem(at: inputURL)
+            }
+            AppLog.debug(.downloads, "ffmpeg remux success (safe copy) output=\(outputPath)")
+            return outputURL
+        }
+        if ReturnCode.isCancel(safeCopy.code) {
+            AppLog.error(.downloads, "ffmpeg remux cancelled (safe copy) input=\(inputPath)")
+            throw ConversionError.cancelled
+        }
+        logCopyFailure(label: "safe copy", result: safeCopy)
 
         AppLog.error(.downloads, "ffmpeg remux failed copy, retrying with audio reencode input=\(inputPath)")
         let third = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
@@ -1916,6 +1935,50 @@ actor MediaConversionManager {
             return Int(min(estimate, sourceTarget))
         }
         return Int(estimate)
+    }
+
+    private func limitedTranscodeBitrate(inputURL: URL) async -> Int {
+        let sourceRate = await probeVideoBitrate(path: inputURL.path)
+        let estimated = await estimatedHardwareBitrate(inputURL: inputURL)
+        let asset = AVURLAsset(url: inputURL, options: [
+            AVURLAssetPreferPreciseDurationAndTimingKey: false
+        ])
+        let height = (try? await asset.loadTracks(withMediaType: .video).first?.load(.naturalSize).height) ?? 0
+        let cap = height >= 900 ? 2_500_000 : 2_000_000
+        let base = sourceRate > 0 ? sourceRate : estimated
+        return min(max(800_000, base), cap)
+    }
+
+    private func probeVideoBitrate(path: String) async -> Int {
+        await withCheckedContinuation { continuation in
+            FFprobeKit.getMediaInformationAsync(path) { session in
+                guard let info = session?.getMediaInformation() else {
+                    continuation.resume(returning: 0)
+                    return
+                }
+                let streams = info.getStreams() as? [StreamInformation] ?? []
+                if let video = streams.first(where: { $0.getType() == "video" }) {
+                    if let rateStr = video.getBitrate(), let rate = Int(rateStr), rate > 0 {
+                        continuation.resume(returning: rate)
+                        return
+                    }
+                }
+                continuation.resume(returning: 0)
+            }
+        }
+    }
+
+    private func logCopyFailure(label: String, result: (code: ReturnCode?, logs: String?)) {
+        let codeDesc = result.code.map { String(describing: $0) } ?? "nil"
+        let tail = tailLogLines(result.logs, count: 20)
+        AppLog.error(.downloads, "ffmpeg copy failed label=\(label) code=\(codeDesc) tail=\(tail)")
+    }
+
+    private func tailLogLines(_ logs: String?, count: Int) -> String {
+        guard let logs, !logs.isEmpty else { return "no logs" }
+        let lines = logs.split(separator: "\n", omittingEmptySubsequences: false)
+        let tail = lines.suffix(count).joined(separator: "\n")
+        return String(tail)
     }
 
     private func runFFmpeg(
