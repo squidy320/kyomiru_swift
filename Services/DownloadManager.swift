@@ -592,12 +592,21 @@ final class DownloadManager: NSObject, ObservableObject {
             }
 
             do {
-                if ext == "mp4" {
-                    if fm.fileExists(atPath: outputURL.path) {
-                        try fm.removeItem(at: outputURL)
+                if ["mp4", "m4v", "mov"].contains(ext) {
+                    let asset = AVAsset(url: tempURL)
+                    let hasVideo = !asset.tracks(withMediaType: .video).isEmpty
+                    if asset.isPlayable && hasVideo {
+                        if fm.fileExists(atPath: outputURL.path) {
+                            try fm.removeItem(at: outputURL)
+                        }
+                        try fm.copyItem(at: tempURL, to: outputURL)
+                        try? fm.removeItem(at: tempURL)
+                    } else {
+                        _ = try await MediaConversionManager.shared.remuxToMp4(
+                            inputURL: tempURL,
+                            outputURL: outputURL
+                        )
                     }
-                    try fm.copyItem(at: tempURL, to: outputURL)
-                    try? fm.removeItem(at: tempURL)
                 } else {
                     _ = try await MediaConversionManager.shared.remuxToMp4(
                         inputURL: tempURL,
