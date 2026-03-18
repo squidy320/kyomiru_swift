@@ -374,6 +374,9 @@ struct DetailsView: View {
         .task(id: media.id) {
             tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
             tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
+            let fallback = media.bannerURL ?? media.coverURL
+            let urls = [tmdbHeroBackdropURL, fallback].compactMap { $0 }
+            await ImageCache.shared.prefetch(urls: urls)
         }
     }
 
@@ -467,13 +470,16 @@ struct DetailsView: View {
         .task(id: media.id) {
             tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
             tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
+            let fallback = media.bannerURL ?? media.coverURL
+            let urls = [tmdbHeroBackdropURL, fallback].compactMap { $0 }
+            await ImageCache.shared.prefetch(urls: urls)
         }
     }
 
     private var actionRow: some View {
         HStack(spacing: UIConstants.interCardSpacing) {
             Button {
-                playFirstEpisode()
+                playResumeEpisode()
             } label: {
                 HStack(spacing: UIConstants.smallPadding) {
                     Image(systemName: "play.fill")
@@ -507,54 +513,39 @@ struct DetailsView: View {
             Button {
                 openMatchPicker()
             } label: {
-                HStack(spacing: UIConstants.tinyPadding) {
-                    Image(systemName: "link")
-                    Text("Manual Match")
-                }
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(.horizontal, UIConstants.interCardSpacing)
-                .padding(.vertical, UIConstants.buttonVerticalPadding)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                )
+                Image(systemName: "link")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: UIConstants.circleButtonSize, height: UIConstants.circleButtonSize)
+                    .background(
+                        Circle().fill(Color.white.opacity(0.08))
+                    )
             }
             .buttonStyle(.plain)
 
             Button {
                 downloadAllEpisodes()
             } label: {
-                HStack(spacing: UIConstants.tinyPadding) {
-                    Image(systemName: "arrow.down")
-                    Text(appState.services.offlineManager.isDownloading(detailItem) ? "Downloading" : "Download All")
-                }
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(.horizontal, UIConstants.interCardSpacing)
-                .padding(.vertical, UIConstants.buttonVerticalPadding)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                )
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: UIConstants.circleButtonSize, height: UIConstants.circleButtonSize)
+                    .background(
+                        Circle().fill(Color.white.opacity(0.08))
+                    )
             }
             .buttonStyle(.plain)
 
             Button {
                 showImportPicker = true
             } label: {
-                HStack(spacing: UIConstants.tinyPadding) {
-                    Image(systemName: "square.and.arrow.down")
-                    Text("Import")
-                }
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(.horizontal, UIConstants.interCardSpacing)
-                .padding(.vertical, UIConstants.buttonVerticalPadding)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                )
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: UIConstants.circleButtonSize, height: UIConstants.circleButtonSize)
+                    .background(
+                        Circle().fill(Color.white.opacity(0.08))
+                    )
             }
             .buttonStyle(.plain)
         }
@@ -824,6 +815,18 @@ struct DetailsView: View {
     private func playFirstEpisode() {
         guard let first = episodes.first else { return }
         selectEpisode(first)
+    }
+
+    private func playResumeEpisode() {
+        if let lastNumber = PlaybackHistoryStore.shared.lastEpisodeNumber(for: media.id),
+           let episode = episodes.first(where: { $0.number == lastNumber }),
+           let position = PlaybackHistoryStore.shared.position(for: episode.id),
+           position > 0 {
+            playerStartAt = nil
+            selectEpisode(episode)
+            return
+        }
+        playFirstEpisode()
     }
 
     private func episodeCards() -> [EpisodeCardModel] {

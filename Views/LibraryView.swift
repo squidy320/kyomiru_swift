@@ -300,6 +300,7 @@ struct LibraryView: View {
                   duration.isFinite, position.isFinite,
                   position > 0, position < duration else { return nil }
             let progress = min(max(position / duration, 0), 1)
+            if progress >= 0.85 { return nil }
             let remaining = max(duration - position, 0)
             let episodeNumber = PlaybackHistoryStore.shared.lastEpisodeNumber(for: entry.media.id) ?? (entry.progress + 1)
             let thumb = continueThumbs[entry.media.id]

@@ -81,22 +81,6 @@ private struct AVPlayerScreen: View {
                     .foregroundColor(.white)
             }
 
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(10)
-                    .background(
-                        Circle().fill(Color.black.opacity(0.55))
-                    )
-            }
-            .padding(.leading, 16)
-            .padding(.top, 16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .buttonStyle(.plain)
-
             if let activeSkip {
                 Button {
                     seekToSkipEnd(activeSkip)
@@ -252,6 +236,7 @@ private struct AVPlayerScreen: View {
                 if !didMarkWatched, fraction >= 0.85 {
                     didMarkWatched = true
                     Task { await appState.markEpisodeWatched(mediaId: mediaId, episodeNumber: episode.number) }
+                    PlaybackHistoryStore.shared.clearMedia(mediaId: mediaId)
                 }
                 Task { @MainActor in
                     appState.services.playbackEngine.updateProgress(
@@ -264,8 +249,10 @@ private struct AVPlayerScreen: View {
                         currentTime: seconds,
                         duration: duration
                     )
-                    PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
-                    PlaybackHistoryStore.shared.saveDuration(duration, for: episode.id)
+                    if !didMarkWatched {
+                        PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
+                        PlaybackHistoryStore.shared.saveDuration(duration, for: episode.id)
+                    }
                 }
             }
         }
