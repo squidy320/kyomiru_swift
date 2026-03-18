@@ -599,16 +599,20 @@ final class DownloadManager: NSObject, ObservableObject {
                 }
                 try await ensureLocalFile(candidate.url)
                 let coordinator = NSFileCoordinator()
-                var coordError: NSError?
-                coordinator.coordinate(readingItemAt: candidate.url, options: .withoutChanges, error: &coordError) { url in
+                var coordinatorError: NSError?
+                var copyError: Error?
+                coordinator.coordinate(readingItemAt: candidate.url, options: .withoutChanges, error: &coordinatorError) { url in
                     do {
                         try fm.copyItem(at: url, to: tempURL)
                     } catch {
-                        coordError = error as NSError
+                        copyError = error
                     }
                 }
-                if let coordError {
-                    throw coordError
+                if let coordinatorError {
+                    throw coordinatorError
+                }
+                if let copyError {
+                    throw copyError
                 }
             } catch {
                 failed.append("\(candidate.fileName) (copy failed)")
