@@ -1432,6 +1432,8 @@ extension DownloadManager: @preconcurrency URLSessionDownloadDelegate {
 actor MediaConversionManager {
     static let shared = MediaConversionManager()
     private let conversionSemaphore = AsyncSemaphore(value: 2)
+    private static var ffmpegBuildconfChecked = false
+    private static var ffmpegHasVideoToolbox = false
 
     enum ConversionError: LocalizedError {
         case exportFailed(String)
@@ -1475,6 +1477,23 @@ actor MediaConversionManager {
         }
     }
 
+    private func ensureFFmpegBuildconfLogged() -> Bool {
+        if Self.ffmpegBuildconfChecked {
+            return Self.ffmpegHasVideoToolbox
+        }
+        Self.ffmpegBuildconfChecked = true
+        let session = FFmpegKit.execute("-buildconf")
+        let logs = session?.getAllLogsAsString() ?? ""
+        let hasVT = logs.localizedCaseInsensitiveContains("--enable-videotoolbox")
+        Self.ffmpegHasVideoToolbox = hasVT
+        let version = FFmpegKitConfig.getFFmpegVersion() ?? "unknown"
+        AppLog.debug(.downloads, "ffmpeg buildconf videotoolbox=\(hasVT ? "YES" : "NO") version=\(version)")
+        if !hasVT {
+            AppLog.error(.downloads, "ffmpeg buildconf missing videotoolbox; falling back to software decode/encode")
+        }
+        return hasVT
+    }
+
     func remuxToMp4(
         inputURL: URL,
         outputURL: URL,
@@ -1516,7 +1535,10 @@ actor MediaConversionManager {
             let headerString = buildHeaderString(headers)
             let headerArg = headerString.isEmpty ? "" : "-headers \(quoted(value: headerString))"
             let duration = await probeDurationSeconds(path: playlistPath)
-            let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v? -map 0:a?"
+            let isLocalHls = playlistURL.isFileURL && (headers == nil || headerString.isEmpty)
+            let allowHwDecode = isLocalHls && ensureFFmpegBuildconfLogged()
+            let hwDecodeArgs = allowHwDecode ? "-hwaccel videotoolbox -hwaccel_output_format videotoolbox" : ""
+            let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v? -map 0:a?"
             let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
             let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
             let commandAudioReencode = commandNoBsf
@@ -1603,7 +1625,9 @@ actor MediaConversionManager {
         try? FileManager.default.removeItem(at: outputURL)
 
         let duration = await probeDurationSeconds(path: inputPath)
-        let baseArgs = "-y -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn -i \(quoted(path: inputPath)) -map 0:v? -map 0:a?"
+        let allowHwDecode = inputURL.isFileURL && ensureFFmpegBuildconfLogged()
+        let hwDecodeArgs = allowHwDecode ? "-hwaccel videotoolbox -hwaccel_output_format videotoolbox" : ""
+        let baseArgs = "-y -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) -i \(quoted(path: inputPath)) -map 0:v? -map 0:a?"
         let targetBitrate = await estimatedHardwareBitrate(inputURL: inputURL)
         let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
         let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
@@ -1901,7 +1925,9 @@ actor MediaConversionManager {
     ) async -> (code: ReturnCode?, logs: String?) {
         await withCheckedContinuation { continuation in
             let usesVideoToolbox = command.localizedCaseInsensitiveContains("videotoolbox")
-            AppLog.debug(.downloads, "ffmpeg exec start uses_vt=\(usesVideoToolbox ? 1 : 0) duration=\(duration) cmd=\(command)")
+            let usesHwDecode = command.localizedCaseInsensitiveContains("-hwaccel videotoolbox")
+            let usesHwEncode = command.localizedCaseInsensitiveContains("h264_videotoolbox") || command.localizedCaseInsensitiveContains("hevc_videotoolbox")
+            AppLog.debug(.downloads, "ffmpeg exec start uses_vt=\(usesVideoToolbox ? 1 : 0) uses_hwdecode=\(usesHwDecode ? 1 : 0) uses_hwencode=\(usesHwEncode ? 1 : 0) duration=\(duration) cmd=\(command)")
             FFmpegKit.executeAsync(command, withCompleteCallback: { session in
                 let returnCode = session?.getReturnCode()
                 let logs = session?.getAllLogsAsString()
