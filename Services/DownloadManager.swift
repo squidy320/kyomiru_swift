@@ -1640,6 +1640,12 @@ actor MediaConversionManager {
         let inputPath = inputURL.path
         let outputPath = outputURL.path
         try? FileManager.default.removeItem(at: outputURL)
+        let tempOutput = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mp4")
+        try? FileManager.default.removeItem(at: tempOutput)
+
+        await waitForStableFile(inputURL)
 
         let duration = await probeDurationSeconds(path: inputPath)
         let allowHwDecode = inputURL.isFileURL && ensureFFmpegBuildconfLogged()
@@ -1647,20 +1653,39 @@ actor MediaConversionManager {
         let baseArgs = "-y -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) -i \(quoted(path: inputPath)) -map 0:v? -map 0:a?"
         let safeCopyArgs = "-y -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) -i \(quoted(path: inputPath)) -map 0 -ignore_unknown"
         let limitedBitrate = await limitedTranscodeBitrate(inputURL: inputURL)
-        let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
-        let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
-        let commandSafeCopy = "\(safeCopyArgs) -c copy -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandInstantMux = "-y -i \(quoted(path: inputPath)) -c copy -map 0 -movflags +faststart \(quoted(path: tempOutput.path))"
+        let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
+        let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
+        let commandSafeCopy = "\(safeCopyArgs) -c copy -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
         let commandAudioReencode = commandNoBsf
-        let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
-        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -realtime true -preset veryfast -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
+        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
 
         AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration) audio=aac")
+
+        let instant = await runFFmpeg(commandInstantMux, duration: duration, progress: progress)
+        if ReturnCode.isSuccess(instant.code) {
+            if inputURL.pathExtension.lowercased() == "ts" {
+                try? FileManager.default.removeItem(at: inputURL)
+            }
+            try? FileManager.default.removeItem(at: outputURL)
+            try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
+            AppLog.debug(.downloads, "ffmpeg remux success (instant mux) output=\(outputPath)")
+            return outputURL
+        }
+        if ReturnCode.isCancel(instant.code) {
+            AppLog.error(.downloads, "ffmpeg remux cancelled (instant mux) input=\(inputPath)")
+            throw ConversionError.cancelled
+        }
+        logCopyFailure(label: "instant mux", result: instant)
 
         let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
         if ReturnCode.isSuccess(first.code) {
             if inputURL.pathExtension.lowercased() == "ts" {
                 try? FileManager.default.removeItem(at: inputURL)
             }
+            try? FileManager.default.removeItem(at: outputURL)
+            try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
             AppLog.debug(.downloads, "ffmpeg remux success output=\(outputPath)")
             return outputURL
         }
@@ -1676,6 +1701,8 @@ actor MediaConversionManager {
             if inputURL.pathExtension.lowercased() == "ts" {
                 try? FileManager.default.removeItem(at: inputURL)
             }
+            try? FileManager.default.removeItem(at: outputURL)
+            try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
             AppLog.debug(.downloads, "ffmpeg remux success (no bsf) output=\(outputPath)")
             return outputURL
         }
@@ -1691,6 +1718,8 @@ actor MediaConversionManager {
             if inputURL.pathExtension.lowercased() == "ts" {
                 try? FileManager.default.removeItem(at: inputURL)
             }
+            try? FileManager.default.removeItem(at: outputURL)
+            try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
             AppLog.debug(.downloads, "ffmpeg remux success (safe copy) output=\(outputPath)")
             return outputURL
         }
@@ -1700,12 +1729,18 @@ actor MediaConversionManager {
         }
         logCopyFailure(label: "safe copy", result: safeCopy)
 
-        AppLog.error(.downloads, "ffmpeg remux failed copy, retrying with audio reencode input=\(inputPath)")
+        if isAudioIncompatible(safeCopy.logs) || isAudioIncompatible(second.logs) || isAudioIncompatible(first.logs) || isAudioIncompatible(instant.logs) {
+            AppLog.error(.downloads, "ffmpeg remux detected incompatible audio, retrying with audio transcode input=\(inputPath)")
+        } else {
+            AppLog.error(.downloads, "ffmpeg remux failed copy, retrying with audio reencode input=\(inputPath)")
+        }
         let third = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
         if ReturnCode.isSuccess(third.code) {
             if inputURL.pathExtension.lowercased() == "ts" {
                 try? FileManager.default.removeItem(at: inputURL)
             }
+            try? FileManager.default.removeItem(at: outputURL)
+            try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
             AppLog.debug(.downloads, "ffmpeg remux success (audio reencode) output=\(outputPath)")
             return outputURL
         }
@@ -1720,6 +1755,8 @@ actor MediaConversionManager {
             if inputURL.pathExtension.lowercased() == "ts" {
                 try? FileManager.default.removeItem(at: inputURL)
             }
+            try? FileManager.default.removeItem(at: outputURL)
+            try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
             AppLog.debug(.downloads, "ffmpeg remux success (vt transcode) output=\(outputPath)")
             return outputURL
         }
@@ -1734,6 +1771,8 @@ actor MediaConversionManager {
             if inputURL.pathExtension.lowercased() == "ts" {
                 try? FileManager.default.removeItem(at: inputURL)
             }
+            try? FileManager.default.removeItem(at: outputURL)
+            try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
             AppLog.debug(.downloads, "ffmpeg remux success (libx264) output=\(outputPath)")
             return outputURL
         }
@@ -1979,6 +2018,33 @@ actor MediaConversionManager {
         let lines = logs.split(separator: "\n", omittingEmptySubsequences: false)
         let tail = lines.suffix(count).joined(separator: "\n")
         return String(tail)
+    }
+
+    private func isAudioIncompatible(_ logs: String?) -> Bool {
+        guard let logs else { return false }
+        return logs.localizedCaseInsensitiveContains("incompatible with output codec") ||
+            logs.localizedCaseInsensitiveContains("aac_latm") ||
+            logs.localizedCaseInsensitiveContains("eac3") ||
+            logs.localizedCaseInsensitiveContains("invalid data found when processing input")
+    }
+
+    private func waitForStableFile(_ url: URL) async {
+        let path = url.path
+        var lastSize: UInt64 = 0
+        var stableCount = 0
+        for _ in 0..<6 {
+            let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? UInt64) ?? 0
+            if size > 0 && size == lastSize {
+                stableCount += 1
+                if stableCount >= 2 {
+                    return
+                }
+            } else {
+                stableCount = 0
+                lastSize = size
+            }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
     }
 
     private func runFFmpeg(
