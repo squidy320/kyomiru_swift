@@ -10,6 +10,7 @@ struct DownloadsView: View {
     @State private var sortMode: DownloadSort = .aToZ
     @State private var isEditing = false
     @State private var selectedTitles: Set<String> = []
+    @State private var inFlightMetadata: Set<String> = []
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     private var tabBarInset: CGFloat {
@@ -59,7 +60,10 @@ struct DownloadsView: View {
                                 watchedLookup: isGroupWatched(title:items:),
                                 isEditing: isEditing,
                                 selection: $selectedTitles,
-                                isPad: isPad
+                                isPad: isPad,
+                                onAppear: { group in
+                                    Task { await fetchMetadataIfNeeded(for: group) }
+                                }
                             )
                         }
                     }
@@ -209,6 +213,39 @@ private extension DownloadsView {
             if let media = mediaItem(forTitle: group.title) {
                 manager.updateMediaInfo(title: group.title, media: media)
             }
+        }
+    }
+
+    func fetchMetadataIfNeeded(for group: DownloadGroup) async {
+        let key = normalizeTitle(group.title)
+        if inFlightMetadata.contains(key) { return }
+        if let first = group.items.first,
+           first.mediaId != nil,
+           (first.posterURL != nil || first.bannerURL != nil) {
+            return
+        }
+        inFlightMetadata.insert(key)
+        defer { inFlightMetadata.remove(key) }
+
+        do {
+            let aniListMedia: AniListMedia?
+            if let mediaId = group.items.first?.mediaId, mediaId > 0 {
+                aniListMedia = try await appState.services.aniListClient.mediaDetails(id: mediaId)
+            } else {
+                aniListMedia = try await appState.services.aniListClient.searchAnimeByTitle(group.title)
+            }
+            guard let aniListMedia else { return }
+            let tmdb = await appState.services.metadataService.fetchTMDBMetadata(for: aniListMedia)
+            let mediaItem = MediaItem(
+                externalId: aniListMedia.id,
+                title: aniListMedia.title.best,
+                posterImageURL: tmdb?.posterURL ?? aniListMedia.coverURL,
+                heroImageURL: tmdb?.backdropURL ?? aniListMedia.bannerURL ?? aniListMedia.coverURL,
+                totalEpisodes: aniListMedia.episodes
+            )
+            manager.updateMediaInfo(title: group.title, media: mediaItem)
+        } catch {
+            return
         }
     }
 
@@ -382,6 +419,7 @@ private struct DownloadsGridView: View {
     let isEditing: Bool
     @Binding var selection: Set<String>
     let isPad: Bool
+    let onAppear: (DownloadGroup) -> Void
 
     private var gridColumns: [GridItem] {
         let minWidth: CGFloat = isPad ? 200 : 150
@@ -452,6 +490,9 @@ private struct DownloadsGridView: View {
                                 }
                             }
                         }
+                    }
+                    .onAppear {
+                        onAppear(group)
                     }
                 }
             }
@@ -566,6 +607,7 @@ private struct DownloadsDetailView: View {
         }
         .task {
             loadCachedMetadata()
+            Task { await fetchEpisodeMetadata() }
         }
     }
 
@@ -701,6 +743,35 @@ private struct DownloadsDetailView: View {
         }
         if let cached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: episodes) {
             episodeMetadata = cached
+        }
+    }
+
+    private func fetchEpisodeMetadata() async {
+        guard mediaId > 0 else { return }
+        let media = AniListMedia(
+            id: mediaId,
+            idMal: nil,
+            title: AniListTitle(romaji: mediaItem?.title ?? title, english: mediaItem?.title ?? title, native: nil),
+            coverURL: posterURL,
+            bannerURL: bannerURL,
+            averageScore: mediaItem?.ratingScore,
+            episodes: totalEpisodes,
+            seasonYear: nil,
+            startDate: nil,
+            format: nil,
+            status: nil,
+            isAdult: false,
+            genres: mediaItem?.genres ?? [],
+            studios: []
+        )
+        let fallbackURL = URL(fileURLWithPath: NSTemporaryDirectory())
+        let episodes = sortedItems.map { item in
+            let url = DownloadManager.shared.playableURL(for: item) ?? fallbackURL
+            return SoraEpisode(id: item.id, number: item.episode, playURL: url)
+        }
+        let fetched = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: episodes)
+        if !fetched.isEmpty {
+            episodeMetadata = fetched
         }
     }
 

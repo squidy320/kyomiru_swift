@@ -241,6 +241,35 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         return titleResults.first
     }
 
+    func mediaDetails(id: Int) async throws -> AniListMedia? {
+        let query = """
+        query MediaDetails($id: Int) {
+          Media(id: $id, type: ANIME) {
+            id
+            idMal
+            title { romaji english native }
+            coverImage { extraLarge large }
+            bannerImage
+            averageScore
+            episodes
+            seasonYear
+            startDate { year month day }
+            format
+            status
+            isAdult
+            genres
+            studios(isMain: true) { nodes { name } }
+          }
+        }
+        """
+        let data = try await graphql(query: query, variables: ["id": id])
+        if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let mediaMap = traverse(root, keyPath: ["data", "Media"]) as? [String: Any] {
+            return decodeMedia(mediaMap)
+        }
+        return nil
+    }
+
     func discoverySectionItems(
         sectionId: String,
         sort: String,
