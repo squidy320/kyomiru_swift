@@ -11,16 +11,13 @@ struct EpisodeImportPicker: UIViewControllerRepresentable {
     }
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let extraTypes = [
-            UTType(filenameExtension: "m4v"),
-            UTType(filenameExtension: "ts"),
-            UTType(filenameExtension: "m3u8")
-        ].compactMap { $0 }
-        let types: [UTType] = [
-            .movie,
-            .mpeg4Movie,
-            .quickTimeMovie
-        ] + extraTypes
+        let types = [
+            "mov",
+            "mp4",
+            "m4v",
+            "ts",
+            "m3u8"
+        ].compactMap { UTType(filenameExtension: $0) }
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
         picker.delegate = context.coordinator
         picker.allowsMultipleSelection = true
