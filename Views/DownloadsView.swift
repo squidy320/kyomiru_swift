@@ -114,8 +114,11 @@ private extension DownloadsView {
     }
 
     func mediaItem(forTitle title: String) -> MediaItem? {
-        let lookup = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return appState.services.libraryStore.items.first { $0.title.lowercased() == lookup }
+        let lookup = normalizeTitle(title)
+        return appState.services.libraryStore.items.first {
+            let candidate = normalizeTitle($0.title)
+            return candidate == lookup || candidate.contains(lookup) || lookup.contains(candidate)
+        }
     }
 
     func filteredGroups() -> [DownloadGroup] {
@@ -179,6 +182,10 @@ private extension DownloadsView {
         formatter.allowedUnits = [.useGB, .useMB, .useKB]
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
+    }
+
+    func normalizeTitle(_ title: String) -> String {
+        title.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 
     var downloadsSummary: some View {
@@ -449,6 +456,8 @@ private struct DownloadsDetailView: View {
     @EnvironmentObject private var appState: AppState
     @State private var selectedItem: DownloadItem?
     @State private var showPlayer = false
+    @State private var playURL: URL?
+    @State private var playbackError: String?
     @State private var episodeMetadata: [Int: EpisodeMetadata] = [:]
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
@@ -473,8 +482,7 @@ private struct DownloadsDetailView: View {
                                 isDownloaded: true,
                                 isNew: false,
                                 onTap: {
-                                    selectedItem = item
-                                    showPlayer = true
+                                    play(item)
                                 }
                             )
                             .contextMenu {
@@ -493,8 +501,7 @@ private struct DownloadsDetailView: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(isPresented: $showPlayer) {
-            if let item = selectedItem,
-               let fileURL = DownloadManager.shared.playableURL(for: item) {
+            if let item = selectedItem, let fileURL = playURL {
                 let format = fileURL.pathExtension.lowercased()
                 let source = SoraSource(
                     id: "local|\(item.id)",
@@ -506,7 +513,30 @@ private struct DownloadsDetailView: View {
                 )
                 let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
                 PlayerView(episode: episode, sources: [source], mediaId: mediaId, malId: nil, mediaTitle: title)
+            } else {
+                VStack(spacing: 12) {
+                    Text("Unable to play this download.")
+                        .foregroundColor(.white)
+                    Button("Close") {
+                        showPlayer = false
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black.ignoresSafeArea())
             }
+        }
+        .alert("Playback Error", isPresented: Binding(
+            get: { playbackError != nil },
+            set: { _ in playbackError = nil }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(playbackError ?? "Unknown error")
         }
         .task {
             loadCachedMetadata()
@@ -527,8 +557,7 @@ private struct DownloadsDetailView: View {
                     let title = meta?.title ?? "Episode \(item.episode)"
                     let subtitle = "Episode \(item.episode)"
                     Button {
-                        selectedItem = item
-                        showPlayer = true
+                        play(item)
                     } label: {
                         DownloadEpisodeThumbCard(
                             title: title,
@@ -553,9 +582,9 @@ private struct DownloadsDetailView: View {
     }
 
     private func loadCachedMetadata() {
-        guard let mediaItem else { return }
+        guard let mediaItem, let externalId = mediaItem.externalId, externalId > 0 else { return }
         let media = AniListMedia(
-            id: mediaItem.externalId ?? 0,
+            id: externalId,
             idMal: nil,
             title: AniListTitle(romaji: mediaItem.title, english: mediaItem.title, native: nil),
             coverURL: mediaItem.posterImageURL,
@@ -588,6 +617,16 @@ private struct DownloadsDetailView: View {
             return episode <= last
         }
         return false
+    }
+
+    private func play(_ item: DownloadItem) {
+        guard let fileURL = DownloadManager.shared.playableURL(for: item) ?? item.localFile else {
+            playbackError = "Missing local file for this episode."
+            return
+        }
+        selectedItem = item
+        playURL = fileURL
+        showPlayer = true
     }
 }
 
