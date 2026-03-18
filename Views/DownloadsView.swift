@@ -484,6 +484,10 @@ private struct DownloadsDetailView: View {
     @State private var playURL: URL?
     @State private var playbackError: String?
     @State private var episodeMetadata: [Int: EpisodeMetadata] = [:]
+    @State private var showImportPicker = false
+    @State private var showImportReview = false
+    @State private var importCandidates: [EpisodeImportCandidate] = []
+    @State private var importMessage: String?
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -525,6 +529,13 @@ private struct DownloadsDetailView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Import") {
+                    showImportPicker = true
+                }
+            }
+        }
         .fullScreenCover(isPresented: $showPlayer) {
             if let item = selectedItem, let fileURL = playURL {
                 let format = fileURL.pathExtension.lowercased()
@@ -563,6 +574,28 @@ private struct DownloadsDetailView: View {
         } message: {
             Text(playbackError ?? "Unknown error")
         }
+        .sheet(isPresented: $showImportPicker) {
+            EpisodeImportPicker { urls in
+                handleImportSelection(urls)
+            } onCancel: {
+                showImportPicker = false
+            }
+        }
+        .sheet(isPresented: $showImportReview) {
+            EpisodeImportReviewSheet(candidates: $importCandidates) { candidates in
+                performImport(candidates: candidates)
+            } onCancel: {
+                showImportReview = false
+            }
+        }
+        .alert("Import", isPresented: Binding(
+            get: { importMessage != nil },
+            set: { _ in importMessage = nil }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(importMessage ?? "")
+        }
         .task {
             loadCachedMetadata()
         }
@@ -583,6 +616,19 @@ private struct DownloadsDetailView: View {
 
     private var totalEpisodes: Int? {
         mediaItem?.totalEpisodes ?? items.first?.totalEpisodes
+    }
+
+    private var importMedia: MediaItem {
+        if let mediaItem {
+            return mediaItem
+        }
+        return MediaItem(
+            externalId: items.first?.mediaId,
+            title: title,
+            posterImageURL: posterURL,
+            heroImageURL: bannerURL,
+            totalEpisodes: totalEpisodes
+        )
     }
 
     private var sortedItems: [DownloadItem] {
@@ -646,6 +692,33 @@ private struct DownloadsDetailView: View {
         }
         if let cached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: episodes) {
             episodeMetadata = cached
+        }
+    }
+
+    private func handleImportSelection(_ urls: [URL]) {
+        showImportPicker = false
+        let candidates = DownloadManager.shared.buildImportCandidates(urls: urls)
+        if candidates.isEmpty {
+            importMessage = "No supported video files were selected."
+            return
+        }
+        importCandidates = candidates
+        if candidates.allSatisfy({ $0.episodeNumber != nil }) {
+            performImport(candidates: candidates)
+        } else {
+            showImportReview = true
+        }
+    }
+
+    private func performImport(candidates: [EpisodeImportCandidate]) {
+        showImportReview = false
+        Task { @MainActor in
+            let result = await DownloadManager.shared.importEpisodes(media: importMedia, candidates: candidates)
+            if !result.failed.isEmpty {
+                importMessage = "Imported \(result.imported), skipped \(result.skipped), failed \(result.failed.count)."
+            } else {
+                importMessage = "Imported \(result.imported), skipped \(result.skipped)."
+            }
         }
     }
 

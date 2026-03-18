@@ -527,6 +527,97 @@ final class DownloadManager: NSObject, ObservableObject {
         saveAniSkipCache()
     }
 
+    func buildImportCandidates(urls: [URL]) -> [EpisodeImportCandidate] {
+        urls.map { url in
+            let name = url.deletingPathExtension().lastPathComponent
+            return EpisodeImportCandidate(
+                url: url,
+                fileName: name,
+                episodeNumber: parseEpisodeNumber(from: name)
+            )
+        }
+    }
+
+    @MainActor
+    func importEpisodes(media: MediaItem, candidates: [EpisodeImportCandidate]) async -> (imported: Int, skipped: Int, failed: [String]) {
+        let sorted = candidates.compactMap { candidate -> EpisodeImportCandidate? in
+            guard let _ = candidate.episodeNumber else { return nil }
+            return candidate
+        }.sorted { ($0.episodeNumber ?? 0) < ($1.episodeNumber ?? 0) }
+
+        var imported = 0
+        var skipped = 0
+        var failed: [String] = []
+
+        for candidate in sorted {
+            guard let episodeNumber = candidate.episodeNumber else { continue }
+            let outputURL = localFileURL(for: media.title, episode: episodeNumber)
+            if let _ = downloadedItem(title: media.title, episode: episodeNumber) {
+                skipped += 1
+                continue
+            }
+            if fm.fileExists(atPath: outputURL.path) {
+                registerImportedEpisode(media: media, episode: episodeNumber, fileURL: outputURL)
+                imported += 1
+                continue
+            }
+
+            let ext = candidate.url.pathExtension.lowercased()
+            let supported = ["mp4", "m4v", "mov", "ts", "m3u8"]
+            if !supported.contains(ext) {
+                failed.append("\(candidate.fileName) (unsupported)")
+                continue
+            }
+
+            var accessGranted = false
+            if candidate.url.startAccessingSecurityScopedResource() {
+                accessGranted = true
+            }
+            defer {
+                if accessGranted { candidate.url.stopAccessingSecurityScopedResource() }
+            }
+
+            let tempURL = fm.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(ext.isEmpty ? "mp4" : ext)
+
+            do {
+                if fm.fileExists(atPath: tempURL.path) {
+                    try fm.removeItem(at: tempURL)
+                }
+                try fm.copyItem(at: candidate.url, to: tempURL)
+            } catch {
+                failed.append("\(candidate.fileName) (copy failed)")
+                continue
+            }
+
+            do {
+                if ext == "mp4" {
+                    if fm.fileExists(atPath: outputURL.path) {
+                        try fm.removeItem(at: outputURL)
+                    }
+                    try fm.copyItem(at: tempURL, to: outputURL)
+                    try? fm.removeItem(at: tempURL)
+                } else {
+                    _ = try await MediaConversionManager.shared.remuxToMp4(
+                        inputURL: tempURL,
+                        outputURL: outputURL
+                    )
+                }
+                registerImportedEpisode(media: media, episode: episodeNumber, fileURL: outputURL)
+                imported += 1
+            } catch {
+                failed.append("\(candidate.fileName) (convert failed)")
+                try? fm.removeItem(at: tempURL)
+            }
+        }
+
+        if imported > 0 {
+            saveIndex()
+        }
+        return (imported, skipped, failed)
+    }
+
     func enqueue(title: String, episode: Int, url: URL, media: MediaItem? = nil) {
         let id = "\(title)|\(episode)|\(url.absoluteString)"
         if items.contains(where: { $0.id == id }) {
@@ -1107,6 +1198,55 @@ final class DownloadManager: NSObject, ObservableObject {
         return filtered
     }
 
+    private func parseEpisodeNumber(from fileName: String) -> Int? {
+        let patterns = [
+            "S\\d+E(\\d+)",
+            "\\bEP\\s*(\\d{1,3})\\b",
+            "\\bE(\\d{1,3})\\b",
+            "\\bEpisode\\s*(\\d{1,3})\\b",
+            "\\b-\\s*(\\d{1,3})\\b"
+        ]
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
+                let range = NSRange(fileName.startIndex..., in: fileName)
+                if let match = regex.firstMatch(in: fileName, options: [], range: range),
+                   match.numberOfRanges > 1,
+                   let numRange = Range(match.range(at: 1), in: fileName),
+                   let value = Int(fileName[numRange]) {
+                    return value
+                }
+            }
+        }
+        return nil
+    }
+
+    private func registerImportedEpisode(media: MediaItem, episode: Int, fileURL: URL) {
+        let id = "\(media.title)|\(episode)|\(fileURL.absoluteString)"
+        let size = (try? fm.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber)?.int64Value
+        let item = DownloadItem(
+            id: id,
+            title: media.title,
+            episode: episode,
+            url: fileURL,
+            headers: nil,
+            progress: 1.0,
+            localFile: fileURL,
+            status: "Completed",
+            isHls: false,
+            downloadedBytes: size,
+            totalBytes: size,
+            speedBytesPerSec: nil,
+            mediaId: media.externalId,
+            malId: nil,
+            posterURL: media.posterImageURL,
+            bannerURL: media.heroImageURL,
+            totalEpisodes: media.totalEpisodes
+        )
+        if !items.contains(where: { $0.id == item.id }) {
+            items.append(item)
+        }
+    }
+
     private func findSegmentFolder(for item: DownloadItem, localFile: URL) -> URL? {
         let titleFolder = localFile.deletingLastPathComponent()
         let sibling = localFile.deletingPathExtension()
@@ -1260,6 +1400,14 @@ actor MediaConversionManager {
             return outputURL
         }
 
+        return try await convertToMp4WithFFmpeg(inputURL: inputURL, outputURL: outputURL, progress: progress)
+    }
+
+    func remuxToMp4(
+        inputURL: URL,
+        outputURL: URL,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> URL {
         return try await convertToMp4WithFFmpeg(inputURL: inputURL, outputURL: outputURL, progress: progress)
     }
 

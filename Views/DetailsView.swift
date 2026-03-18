@@ -30,6 +30,10 @@ struct DetailsView: View {
     @State private var streamingEpisodes: [AniListStreamingEpisode] = []
     @State private var tmdbHeroBackdropURL: URL?
     @State private var tmdbHeroLogoURL: URL?
+    @State private var showImportPicker = false
+    @State private var showImportReview = false
+    @State private var importCandidates: [EpisodeImportCandidate] = []
+    @State private var importMessage: String?
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -121,6 +125,20 @@ struct DetailsView: View {
                 }
             )
         }
+        .sheet(isPresented: $showImportPicker) {
+            EpisodeImportPicker { urls in
+                handleImportSelection(urls)
+            } onCancel: {
+                showImportPicker = false
+            }
+        }
+        .sheet(isPresented: $showImportReview) {
+            EpisodeImportReviewSheet(candidates: $importCandidates) { candidates in
+                performImport(candidates: candidates)
+            } onCancel: {
+                showImportReview = false
+            }
+        }
         .sheet(isPresented: $showMatchSheet) {
             MatchPickerSheet(
                 media: media,
@@ -152,6 +170,14 @@ struct DetailsView: View {
             .onAppear {
                 listManagerModel = makeListManagerModel()
             }
+        }
+        .alert("Import", isPresented: Binding(
+            get: { importMessage != nil },
+            set: { _ in importMessage = nil }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(importMessage ?? "")
         }
         .toolbar {
             if !isPad {
@@ -502,6 +528,24 @@ struct DetailsView: View {
                 HStack(spacing: UIConstants.tinyPadding) {
                     Image(systemName: "arrow.down")
                     Text(appState.services.offlineManager.isDownloading(detailItem) ? "Downloading" : "Download All")
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, UIConstants.interCardSpacing)
+                .padding(.vertical, UIConstants.buttonVerticalPadding)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(0.08))
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                showImportPicker = true
+            } label: {
+                HStack(spacing: UIConstants.tinyPadding) {
+                    Image(systemName: "square.and.arrow.down")
+                    Text("Import")
                 }
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.white)
@@ -958,6 +1002,33 @@ struct DetailsView: View {
                 }
             }
             appState.services.offlineManager.endDownload(for: detailItem)
+        }
+    }
+
+    private func handleImportSelection(_ urls: [URL]) {
+        showImportPicker = false
+        let candidates = appState.services.downloadManager.buildImportCandidates(urls: urls)
+        if candidates.isEmpty {
+            importMessage = "No supported video files were selected."
+            return
+        }
+        importCandidates = candidates
+        if candidates.allSatisfy({ $0.episodeNumber != nil }) {
+            performImport(candidates: candidates)
+        } else {
+            showImportReview = true
+        }
+    }
+
+    private func performImport(candidates: [EpisodeImportCandidate]) {
+        showImportReview = false
+        Task { @MainActor in
+            let result = await appState.services.downloadManager.importEpisodes(media: detailItem, candidates: candidates)
+            if !result.failed.isEmpty {
+                importMessage = "Imported \(result.imported), skipped \(result.skipped), failed \(result.failed.count)."
+            } else {
+                importMessage = "Imported \(result.imported), skipped \(result.skipped)."
+            }
         }
     }
 }
