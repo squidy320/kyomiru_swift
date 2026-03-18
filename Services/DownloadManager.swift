@@ -1464,7 +1464,12 @@ actor MediaConversionManager {
         } catch {
             AppLog.error(.downloads, "vt remux failed input=\(inputURL.path) error=\(error.localizedDescription) fallback=ffmpeg")
         }
-        return try await convertToMp4WithFFmpeg(inputURL: inputURL, outputURL: outputURL, progress: progress)
+        return try await convertToMp4WithFFmpeg(
+            inputURL: inputURL,
+            outputURL: outputURL,
+            progress: progress,
+            preferHardwareTranscode: true
+        )
     }
 
     func remuxToMp4(
@@ -1480,7 +1485,12 @@ actor MediaConversionManager {
         } catch {
             AppLog.error(.downloads, "vt remux failed input=\(inputURL.path) error=\(error.localizedDescription) fallback=ffmpeg")
         }
-        return try await convertToMp4WithFFmpeg(inputURL: inputURL, outputURL: outputURL, progress: progress)
+        return try await convertToMp4WithFFmpeg(
+            inputURL: inputURL,
+            outputURL: outputURL,
+            progress: progress,
+            preferHardwareTranscode: true
+        )
     }
 
     func convertHlsToMp4(
@@ -1572,7 +1582,8 @@ actor MediaConversionManager {
     private func convertToMp4WithFFmpeg(
         inputURL: URL,
         outputURL: URL,
-        progress: (@Sendable (Double) -> Void)? = nil
+        progress: (@Sendable (Double) -> Void)? = nil,
+        preferHardwareTranscode: Bool = false
     ) async throws -> URL {
         let inputPath = inputURL.path
         let outputPath = outputURL.path
@@ -1587,6 +1598,23 @@ actor MediaConversionManager {
         let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
 
         AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration) audio=aac")
+
+        if preferHardwareTranscode {
+            AppLog.debug(.downloads, "ffmpeg remux prefer hardware transcode input=\(inputPath)")
+            let hw = await runFFmpeg(commandFullTranscodeVT, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(hw.code) {
+                if inputURL.pathExtension.lowercased() == "ts" {
+                    try? FileManager.default.removeItem(at: inputURL)
+                }
+                AppLog.debug(.downloads, "ffmpeg remux success (vt transcode) output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(hw.code) {
+                AppLog.error(.downloads, "ffmpeg remux cancelled (vt transcode) input=\(inputPath)")
+                throw ConversionError.cancelled
+            }
+            AppLog.error(.downloads, "ffmpeg remux vt transcode failed, falling back to copy input=\(inputPath)")
+        }
 
         let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
         if ReturnCode.isSuccess(first.code) {
