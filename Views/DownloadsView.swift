@@ -54,7 +54,7 @@ struct DownloadsView: View {
                             editBar
                             DownloadsGridView(
                                 groups: filteredGroups(),
-                                mediaLookup: mediaItem(forTitle:),
+                                mediaLookup: mediaItem(for:),
                                 sizeLookup: totalSize(for:),
                                 watchedLookup: isGroupWatched(title:items:),
                                 isEditing: isEditing,
@@ -76,6 +76,7 @@ struct DownloadsView: View {
         }
         .onAppear {
             AppLog.debug(.ui, "downloads view appear")
+            backfillDownloadMetadata()
         }
     }
 }
@@ -119,6 +120,20 @@ private extension DownloadsView {
             let candidate = normalizeTitle($0.title)
             return candidate == lookup || candidate.contains(lookup) || lookup.contains(candidate)
         }
+    }
+
+    func mediaItem(for group: DownloadGroup) -> MediaItem? {
+        if let item = mediaItem(forTitle: group.title) {
+            return item
+        }
+        guard let fallback = group.items.first else { return nil }
+        return MediaItem(
+            externalId: fallback.mediaId,
+            title: fallback.title,
+            posterImageURL: fallback.posterURL,
+            heroImageURL: fallback.bannerURL ?? fallback.posterURL,
+            totalEpisodes: fallback.totalEpisodes
+        )
     }
 
     func filteredGroups() -> [DownloadGroup] {
@@ -186,6 +201,15 @@ private extension DownloadsView {
 
     func normalizeTitle(_ title: String) -> String {
         title.lowercased().filter { $0.isLetter || $0.isNumber }
+    }
+
+    func backfillDownloadMetadata() {
+        let completed = manager.items.filter { $0.status == "Completed" }
+        for group in groupedDownloads(completed) {
+            if let media = mediaItem(forTitle: group.title) {
+                manager.updateMediaInfo(title: group.title, media: media)
+            }
+        }
     }
 
     var downloadsSummary: some View {
@@ -352,7 +376,7 @@ private struct DownloadsQueueView: View {
 
 private struct DownloadsGridView: View {
     let groups: [DownloadGroup]
-    let mediaLookup: (String) -> MediaItem?
+    let mediaLookup: (DownloadGroup) -> MediaItem?
     let sizeLookup: ([DownloadItem]) -> Int64
     let watchedLookup: (String, [DownloadItem]) -> Bool
     let isEditing: Bool
@@ -374,10 +398,11 @@ private struct DownloadsGridView: View {
         } else {
             LazyVGrid(columns: gridColumns, spacing: UIConstants.interCardSpacing) {
                 ForEach(groups) { group in
-                    let mediaItem = mediaLookup(group.title)
+                    let mediaItem = mediaLookup(group)
                     let totalBytes = sizeLookup(group.items)
                     let sizeText = totalBytes > 0 ? " • \(formatBytes(totalBytes))" : ""
                     let watched = watchedLookup(group.title, group.items)
+                    let posterURL = mediaItem?.posterImageURL ?? group.items.first?.posterURL
                     Group {
                         if isEditing {
                             Button {
@@ -386,7 +411,7 @@ private struct DownloadsGridView: View {
                                 MediaPosterCard(
                                     title: group.title,
                                     subtitle: "\(group.items.count) Episodes\(sizeText)",
-                                    imageURL: mediaItem?.posterImageURL,
+                                    imageURL: posterURL,
                                     media: nil,
                                     score: nil,
                                     statusBadge: watched ? "Watched" : mediaItem?.status.badgeTitle,
@@ -411,7 +436,7 @@ private struct DownloadsGridView: View {
                                 MediaPosterCard(
                                     title: group.title,
                                     subtitle: "\(group.items.count) Episodes\(sizeText)",
-                                    imageURL: mediaItem?.posterImageURL,
+                                    imageURL: posterURL,
                                     media: nil,
                                     score: nil,
                                     statusBadge: watched ? "Watched" : mediaItem?.status.badgeTitle,
@@ -543,7 +568,22 @@ private struct DownloadsDetailView: View {
         }
     }
 
-    private var mediaId: Int { mediaItem?.externalId ?? 0 }
+    private var mediaId: Int {
+        if let external = mediaItem?.externalId, external > 0 { return external }
+        return items.first?.mediaId ?? 0
+    }
+
+    private var posterURL: URL? {
+        mediaItem?.posterImageURL ?? items.first?.posterURL
+    }
+
+    private var bannerURL: URL? {
+        mediaItem?.heroImageURL ?? items.first?.bannerURL ?? posterURL
+    }
+
+    private var totalEpisodes: Int? {
+        mediaItem?.totalEpisodes ?? items.first?.totalEpisodes
+    }
 
     private var sortedItems: [DownloadItem] {
         items.sorted { $0.episode < $1.episode }
@@ -582,21 +622,21 @@ private struct DownloadsDetailView: View {
     }
 
     private func loadCachedMetadata() {
-        guard let mediaItem, let externalId = mediaItem.externalId, externalId > 0 else { return }
+        guard mediaId > 0 else { return }
         let media = AniListMedia(
-            id: externalId,
+            id: mediaId,
             idMal: nil,
-            title: AniListTitle(romaji: mediaItem.title, english: mediaItem.title, native: nil),
-            coverURL: mediaItem.posterImageURL,
-            bannerURL: mediaItem.heroImageURL,
-            averageScore: mediaItem.ratingScore,
-            episodes: mediaItem.totalEpisodes,
+            title: AniListTitle(romaji: mediaItem?.title ?? title, english: mediaItem?.title ?? title, native: nil),
+            coverURL: posterURL,
+            bannerURL: bannerURL,
+            averageScore: mediaItem?.ratingScore,
+            episodes: totalEpisodes,
             seasonYear: nil,
             startDate: nil,
             format: nil,
             status: nil,
             isAdult: false,
-            genres: mediaItem.genres,
+            genres: mediaItem?.genres ?? [],
             studios: []
         )
         let fallbackURL = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -620,12 +660,19 @@ private struct DownloadsDetailView: View {
     }
 
     private func play(_ item: DownloadItem) {
-        guard let fileURL = DownloadManager.shared.playableURL(for: item) ?? item.localFile else {
+        var fileURL = DownloadManager.shared.playableURL(for: item) ?? item.localFile
+        if fileURL == nil {
+            let fallback = DownloadManager.shared.localFileURL(for: item.title, episode: item.episode)
+            if FileManager.default.fileExists(atPath: fallback.path) {
+                fileURL = fallback
+            }
+        }
+        guard let resolved = fileURL else {
             playbackError = "Missing local file for this episode."
             return
         }
         selectedItem = item
-        playURL = fileURL
+        playURL = resolved
         showPlayer = true
     }
 }

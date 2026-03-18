@@ -107,13 +107,15 @@ struct DetailsView: View {
                             title: media.title.best,
                             episode: selectedEpisode?.number ?? 0,
                             url: source.url,
-                            headers: source.headers
+                            headers: source.headers,
+                            media: detailItem
                         )
                     } else {
                         appState.services.downloadManager.enqueue(
                             title: media.title.best,
                             episode: selectedEpisode?.number ?? 0,
-                            url: source.url
+                            url: source.url,
+                            media: detailItem
                         )
                     }
                 }
@@ -940,13 +942,15 @@ struct DetailsView: View {
                             title: media.title.best,
                             episode: ep.number,
                             url: best.url,
-                            headers: best.headers
+                            headers: best.headers,
+                            media: detailItem
                         )
                     } else {
                         appState.services.downloadManager.enqueue(
                             title: media.title.best,
                             episode: ep.number,
-                            url: best.url
+                            url: best.url,
+                            media: detailItem
                         )
                     }
                 } catch {

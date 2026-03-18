@@ -484,6 +484,11 @@ struct DownloadItem: Identifiable, Equatable {
     var downloadedBytes: Int64?
     var totalBytes: Int64?
     var speedBytesPerSec: Double?
+    var mediaId: Int?
+    var malId: Int?
+    var posterURL: URL?
+    var bannerURL: URL?
+    var totalEpisodes: Int?
 }
 
 @MainActor
@@ -522,7 +527,7 @@ final class DownloadManager: NSObject, ObservableObject {
         saveAniSkipCache()
     }
 
-    func enqueue(title: String, episode: Int, url: URL) {
+    func enqueue(title: String, episode: Int, url: URL, media: MediaItem? = nil) {
         let id = "\(title)|\(episode)|\(url.absoluteString)"
         if items.contains(where: { $0.id == id }) {
             AppLog.debug(.downloads, "download already queued id=\(id)")
@@ -540,7 +545,12 @@ final class DownloadManager: NSObject, ObservableObject {
             isHls: false,
             downloadedBytes: nil,
             totalBytes: nil,
-            speedBytesPerSec: nil
+            speedBytesPerSec: nil,
+            mediaId: media?.externalId,
+            malId: nil,
+            posterURL: media?.posterImageURL,
+            bannerURL: media?.heroImageURL,
+            totalEpisodes: media?.totalEpisodes
         )
         items.append(item)
         saveIndex()
@@ -551,7 +561,7 @@ final class DownloadManager: NSObject, ObservableObject {
         updateStatus(id: id, status: "Downloading")
     }
 
-    func enqueueHLS(title: String, episode: Int, url: URL, headers: [String: String]) {
+    func enqueueHLS(title: String, episode: Int, url: URL, headers: [String: String], media: MediaItem? = nil) {
         let id = "\(title)|\(episode)|\(url.absoluteString)"
         if items.contains(where: { $0.id == id }) {
             AppLog.debug(.downloads, "hls already queued id=\(id)")
@@ -569,7 +579,12 @@ final class DownloadManager: NSObject, ObservableObject {
             isHls: true,
             downloadedBytes: nil,
             totalBytes: nil,
-            speedBytesPerSec: nil
+            speedBytesPerSec: nil,
+            mediaId: media?.externalId,
+            malId: nil,
+            posterURL: media?.posterImageURL,
+            bannerURL: media?.heroImageURL,
+            totalEpisodes: media?.totalEpisodes
         )
         items.append(item)
         saveIndex()
@@ -823,6 +838,33 @@ final class DownloadManager: NSObject, ObservableObject {
             $0.episode == episode &&
             normalizeTitle($0.title) == key
         })
+    }
+
+    func updateMediaInfo(title: String, media: MediaItem) {
+        let key = normalizeTitle(title)
+        var didUpdate = false
+        for idx in items.indices {
+            guard normalizeTitle(items[idx].title) == key else { continue }
+            if items[idx].mediaId == nil {
+                items[idx].mediaId = media.externalId
+                didUpdate = true
+            }
+            if items[idx].posterURL == nil, let poster = media.posterImageURL {
+                items[idx].posterURL = poster
+                didUpdate = true
+            }
+            if items[idx].bannerURL == nil, let banner = media.heroImageURL {
+                items[idx].bannerURL = banner
+                didUpdate = true
+            }
+            if items[idx].totalEpisodes == nil, let total = media.totalEpisodes {
+                items[idx].totalEpisodes = total
+                didUpdate = true
+            }
+        }
+        if didUpdate {
+            saveIndex()
+        }
     }
 
     // markWatched removed: downloads no longer auto-sync watched state
@@ -1126,6 +1168,11 @@ private struct PersistedDownload: Codable {
     let status: String
     let isHls: Bool
     let headers: [String: String]?
+    let mediaId: Int?
+    let malId: Int?
+    let posterURL: String?
+    let bannerURL: String?
+    let totalEpisodes: Int?
 
     init(from item: DownloadItem) {
         id = item.id
@@ -1137,6 +1184,11 @@ private struct PersistedDownload: Codable {
         status = item.status
         isHls = item.isHls
         headers = item.headers
+        mediaId = item.mediaId
+        malId = item.malId
+        posterURL = item.posterURL?.absoluteString
+        bannerURL = item.bannerURL?.absoluteString
+        totalEpisodes = item.totalEpisodes
     }
 
     func asItem() -> DownloadItem {
@@ -1152,7 +1204,12 @@ private struct PersistedDownload: Codable {
             isHls: isHls,
             downloadedBytes: nil,
             totalBytes: nil,
-            speedBytesPerSec: nil
+            speedBytesPerSec: nil,
+            mediaId: mediaId,
+            malId: malId,
+            posterURL: posterURL.flatMap(URL.init(string:)),
+            bannerURL: bannerURL.flatMap(URL.init(string:)),
+            totalEpisodes: totalEpisodes
         )
     }
 }

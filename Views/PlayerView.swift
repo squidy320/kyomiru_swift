@@ -81,6 +81,22 @@ private struct AVPlayerScreen: View {
                     .foregroundColor(.white)
             }
 
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(10)
+                    .background(
+                        Circle().fill(Color.black.opacity(0.55))
+                    )
+            }
+            .padding(.leading, 16)
+            .padding(.top, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .buttonStyle(.plain)
+
             if let activeSkip {
                 Button {
                     seekToSkipEnd(activeSkip)
