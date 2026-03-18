@@ -38,11 +38,8 @@ jobs:
           git clone --depth 1 --branch v6.0 https://github.com/arthenica/ffmpeg-kit.git /tmp/ffmpeg-kit
           cd /tmp/ffmpeg-kit
           ./ios.sh --xcframework \
-            --enable-videotoolbox \
-            --enable-encoder=h264_videotoolbox \
-            --enable-decoder=h264_videotoolbox \
-            --enable-encoder=aac \
-            --enable-decoder=aac
+            --enable-ios-videotoolbox \
+            --enable-ios-audiotoolbox
           XC_PATH=$(find /tmp/ffmpeg-kit -path "*bundle-apple-xcframework-ios*" -name "ffmpegkit.xcframework" -print -quit)
           if [ -z "${XC_PATH}" ]; then
             XC_PATH=$(find /tmp/ffmpeg-kit -name "ffmpegkit.xcframework" -print -quit)
