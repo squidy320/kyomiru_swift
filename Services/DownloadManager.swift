@@ -1706,17 +1706,18 @@ actor MediaConversionManager {
         let frameRate = try await videoTrack.load(.nominalFrameRate)
         let size = apply(transform: preferredTransform, to: naturalSize)
         let estimatedRate = try await videoTrack.load(.estimatedDataRate)
+        let estimatedRateDouble = Double(estimatedRate)
         let bitrate = videoBitrate(
             width: Int(size.width),
             height: Int(size.height),
             fps: frameRate,
-            sourceRate: estimatedRate > 0 ? estimatedRate : nil
+            sourceRate: estimatedRate > 0 ? estimatedRateDouble : nil
         )
 
         let isPlayable = try await asset.load(.isPlayable)
         AppLog.debug(
             .downloads,
-            "vt details size=\(Int(size.width))x\(Int(size.height)) fps=\(frameRate) bitrate=\(bitrate) sourceRate=\(Int(estimatedRate)) playable=\(isPlayable ? 1 : 0) input=\(inputURL.lastPathComponent)"
+            "vt details size=\(Int(size.width))x\(Int(size.height)) fps=\(frameRate) bitrate=\(bitrate) sourceRate=\(Int(estimatedRateDouble)) playable=\(isPlayable ? 1 : 0) input=\(inputURL.lastPathComponent)"
         )
         if !isPlayable {
             throw ConversionError.exportFailed("vt preflight failed: asset not playable")
@@ -1959,7 +1960,8 @@ actor MediaConversionManager {
         guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first else {
             return 3_500_000
         }
-        let estimated = (try? await videoTrack.load(.estimatedDataRate)) ?? 0
+        let estimatedFloat = (try? await videoTrack.load(.estimatedDataRate)) ?? 0
+        let estimated = Double(estimatedFloat)
         let minRate = 1_800_000.0
         let maxRate = 5_500_000.0
         if estimated > 0 {
