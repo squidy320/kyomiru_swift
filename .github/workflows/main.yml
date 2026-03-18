@@ -22,7 +22,6 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
-          lfs: true
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
