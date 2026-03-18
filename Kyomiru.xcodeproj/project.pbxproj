@@ -388,6 +388,7 @@
             );
             name = Kyomiru;
 			packageProductDependencies = (
+				B3E8C6D4F1A24B7C9E0F1A2B /* Kingfisher */,
 			);
             productName = Kyomiru;
             productReference = 72071117F02B492EA7D8D08E /* Kyomiru.app */;
@@ -404,6 +405,7 @@
             hasScannedForEncodings = 0;
             mainGroup = A1F6688393CD43E789FC9C3D;
 			packageReferences = (
+				A2D7F5B1C4A84D9E8F1B2C3D /* Kingfisher */,
 			);
             productRefGroup = A1F6688393CD43E789FC9C3D;
             projectDirPath = "";
@@ -501,9 +503,22 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A2D7F5B1C4A84D9E8F1B2C3D /* Kingfisher */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/onevcat/Kingfisher.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		B3E8C6D4F1A24B7C9E0F1A2B /* Kingfisher */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A2D7F5B1C4A84D9E8F1B2C3D /* Kingfisher */;
+			productName = Kingfisher;
+		};
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin XCLocalSwiftPackageReference section */

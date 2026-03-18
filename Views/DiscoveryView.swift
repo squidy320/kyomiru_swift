@@ -1,5 +1,6 @@
 ﻿import SwiftUI
 import UIKit
+import Kingfisher
 
 struct DiscoveryView: View {
     @State private var query = ""
@@ -605,17 +606,8 @@ struct GenreDetailGridView: View {
                     NavigationLink {
                         DetailsView(media: media)
                     } label: {
-                        MediaPosterCard(
-                            title: media.title.best,
-                            subtitle: nil,
-                            imageURL: media.coverURL,
-                            media: media,
-                            score: media.averageScore,
-                            statusBadge: nil,
-                            cornerBadge: nil,
-                            size: cardSize()
-                        )
-                        .frame(maxWidth: .infinity)
+                        GenrePosterCard(media: media, size: cardSize())
+                            .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.plain)
                     .onAppear {
@@ -689,6 +681,52 @@ struct GenreDetailGridView: View {
         let isPad = UIDevice.current.userInterfaceIdiom == .pad
         let width: CGFloat = isPad ? 150 : 120
         return CGSize(width: width, height: width * 1.47)
+    }
+}
+
+private struct GenrePosterCard: View {
+    let media: AniListMedia
+    let size: CGSize
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            ZStack(alignment: .bottomLeading) {
+                RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+
+                if let url = media.coverURL {
+                    KFImage(url)
+                        .cancelOnDisappear(true)
+                        .cacheOriginalImage()
+                        .loadDiskFileSynchronously()
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: size.width, height: size.height)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
+                }
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.85), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(height: 120)
+
+                Text(media.title.best)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .padding(UIConstants.rowPadding)
+            }
+            .frame(width: size.width, height: size.height)
+            .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
+
+            RatingBadge(score: media.averageScore)
+                .padding(UIConstants.mediumPadding)
+        }
+        .frame(width: size.width, height: size.height)
+        .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
     }
 }
 
