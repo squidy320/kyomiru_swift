@@ -1431,6 +1431,7 @@ extension DownloadManager: @preconcurrency URLSessionDownloadDelegate {
 
 actor MediaConversionManager {
     static let shared = MediaConversionManager()
+    private let conversionSemaphore = AsyncSemaphore(value: 2)
 
     enum ConversionError: LocalizedError {
         case exportFailed(String)
@@ -1447,29 +1448,31 @@ actor MediaConversionManager {
     }
 
     func convertToMp4(inputURL: URL, progress: (@Sendable (Double) -> Void)? = nil) async throws -> URL {
-        if inputURL.pathExtension.lowercased() == "mp4" {
-            return inputURL
-        }
+        try await withConversionPermit {
+            if inputURL.pathExtension.lowercased() == "mp4" {
+                return inputURL
+            }
 
-        let outputURL = inputURL.deletingPathExtension().appendingPathExtension("mp4")
-        if FileManager.default.fileExists(atPath: outputURL.path) {
-            return outputURL
-        }
+            let outputURL = inputURL.deletingPathExtension().appendingPathExtension("mp4")
+            if FileManager.default.fileExists(atPath: outputURL.path) {
+                return outputURL
+            }
 
-        do {
-            AppLog.debug(.downloads, "vt remux start input=\(inputURL.path) output=\(outputURL.path)")
-            let output = try await convertWithVideoToolbox(inputURL: inputURL, outputURL: outputURL)
-            AppLog.debug(.downloads, "vt remux success output=\(output.path)")
-            return output
-        } catch {
-            AppLog.error(.downloads, "vt remux failed input=\(inputURL.path) error=\(error.localizedDescription) fallback=ffmpeg")
+            do {
+                AppLog.debug(.downloads, "vt remux start input=\(inputURL.path) output=\(outputURL.path)")
+                let output = try await convertWithVideoToolbox(inputURL: inputURL, outputURL: outputURL)
+                AppLog.debug(.downloads, "vt remux success output=\(output.path)")
+                return output
+            } catch {
+                AppLog.error(.downloads, "vt remux failed input=\(inputURL.path) error=\(error.localizedDescription) fallback=ffmpeg")
+            }
+            return try await convertToMp4WithFFmpeg(
+                inputURL: inputURL,
+                outputURL: outputURL,
+                progress: progress,
+                preferHardwareTranscode: true
+            )
         }
-        return try await convertToMp4WithFFmpeg(
-            inputURL: inputURL,
-            outputURL: outputURL,
-            progress: progress,
-            preferHardwareTranscode: true
-        )
     }
 
     func remuxToMp4(
@@ -1477,20 +1480,22 @@ actor MediaConversionManager {
         outputURL: URL,
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> URL {
-        do {
-            AppLog.debug(.downloads, "vt remux start input=\(inputURL.path) output=\(outputURL.path)")
-            let output = try await convertWithVideoToolbox(inputURL: inputURL, outputURL: outputURL)
-            AppLog.debug(.downloads, "vt remux success output=\(output.path)")
-            return output
-        } catch {
-            AppLog.error(.downloads, "vt remux failed input=\(inputURL.path) error=\(error.localizedDescription) fallback=ffmpeg")
+        try await withConversionPermit {
+            do {
+                AppLog.debug(.downloads, "vt remux start input=\(inputURL.path) output=\(outputURL.path)")
+                let output = try await convertWithVideoToolbox(inputURL: inputURL, outputURL: outputURL)
+                AppLog.debug(.downloads, "vt remux success output=\(output.path)")
+                return output
+            } catch {
+                AppLog.error(.downloads, "vt remux failed input=\(inputURL.path) error=\(error.localizedDescription) fallback=ffmpeg")
+            }
+            return try await convertToMp4WithFFmpeg(
+                inputURL: inputURL,
+                outputURL: outputURL,
+                progress: progress,
+                preferHardwareTranscode: true
+            )
         }
-        return try await convertToMp4WithFFmpeg(
-            inputURL: inputURL,
-            outputURL: outputURL,
-            progress: progress,
-            preferHardwareTranscode: true
-        )
     }
 
     func convertHlsToMp4(
@@ -1499,84 +1504,92 @@ actor MediaConversionManager {
         outputURL: URL,
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> URL {
-        if FileManager.default.fileExists(atPath: outputURL.path) {
-            return outputURL
-        }
+        try await withConversionPermit {
+            if FileManager.default.fileExists(atPath: outputURL.path) {
+                return outputURL
+            }
 
-        let playlistPath = playlistURL.absoluteString
-        let outputPath = outputURL.path
-        try? FileManager.default.removeItem(at: outputURL)
+            let playlistPath = playlistURL.absoluteString
+            let outputPath = outputURL.path
+            try? FileManager.default.removeItem(at: outputURL)
 
-        let headerString = buildHeaderString(headers)
-        let headerArg = headerString.isEmpty ? "" : "-headers \(quoted(value: headerString))"
-        let duration = await probeDurationSeconds(path: playlistPath)
-        let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v? -map 0:a?"
-        let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
-        let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
-        let commandAudioReencode = commandNoBsf
-        let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v 3500k -maxrate 3500k -bufsize 7000k -pix_fmt yuv420p -c:a aac -b:a 128k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
-        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 128k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+            let headerString = buildHeaderString(headers)
+            let headerArg = headerString.isEmpty ? "" : "-headers \(quoted(value: headerString))"
+            let duration = await probeDurationSeconds(path: playlistPath)
+            let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v? -map 0:a?"
+            let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+            let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+            let commandAudioReencode = commandNoBsf
+            let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v 2500k -maxrate 2500k -bufsize 5000k -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+            let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
 
-        AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count) audio=aac")
+            AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count) audio=aac")
 
-        let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
-        if ReturnCode.isSuccess(first.code) {
-            AppLog.debug(.downloads, "ffmpeg hls success output=\(outputPath)")
-            return outputURL
-        }
-        if ReturnCode.isCancel(first.code) {
-            AppLog.error(.downloads, "ffmpeg hls cancelled input=\(playlistPath)")
-            throw ConversionError.cancelled
-        }
+            let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(first.code) {
+                AppLog.debug(.downloads, "ffmpeg hls success output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(first.code) {
+                AppLog.error(.downloads, "ffmpeg hls cancelled input=\(playlistPath)")
+                throw ConversionError.cancelled
+            }
 
-        AppLog.error(.downloads, "ffmpeg hls failed with aac_adtstoasc, retrying without bsf input=\(playlistPath)")
-        let second = await runFFmpeg(commandNoBsf, duration: duration, progress: progress)
-        if ReturnCode.isSuccess(second.code) {
-            AppLog.debug(.downloads, "ffmpeg hls success (no bsf) output=\(outputPath)")
-            return outputURL
-        }
-        if ReturnCode.isCancel(second.code) {
-            AppLog.error(.downloads, "ffmpeg hls cancelled (no bsf) input=\(playlistPath)")
-            throw ConversionError.cancelled
-        }
+            AppLog.error(.downloads, "ffmpeg hls failed with aac_adtstoasc, retrying without bsf input=\(playlistPath)")
+            let second = await runFFmpeg(commandNoBsf, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(second.code) {
+                AppLog.debug(.downloads, "ffmpeg hls success (no bsf) output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(second.code) {
+                AppLog.error(.downloads, "ffmpeg hls cancelled (no bsf) input=\(playlistPath)")
+                throw ConversionError.cancelled
+            }
 
-        AppLog.error(.downloads, "ffmpeg hls failed copy, retrying with audio reencode input=\(playlistPath)")
-        let third = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
-        if ReturnCode.isSuccess(third.code) {
-            AppLog.debug(.downloads, "ffmpeg hls success (audio reencode) output=\(outputPath)")
-            return outputURL
-        }
-        if ReturnCode.isCancel(third.code) {
-            AppLog.error(.downloads, "ffmpeg hls cancelled (audio reencode) input=\(playlistPath)")
-            throw ConversionError.cancelled
-        }
+            AppLog.error(.downloads, "ffmpeg hls failed copy, retrying with audio reencode input=\(playlistPath)")
+            let third = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(third.code) {
+                AppLog.debug(.downloads, "ffmpeg hls success (audio reencode) output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(third.code) {
+                AppLog.error(.downloads, "ffmpeg hls cancelled (audio reencode) input=\(playlistPath)")
+                throw ConversionError.cancelled
+            }
 
-        AppLog.error(.downloads, "ffmpeg hls failed audio reencode, retrying full transcode (videotoolbox) input=\(playlistPath)")
-        let fourth = await runFFmpeg(commandFullTranscodeVT, duration: duration, progress: progress)
-        if ReturnCode.isSuccess(fourth.code) {
-            AppLog.debug(.downloads, "ffmpeg hls success (vt transcode) output=\(outputPath)")
-            return outputURL
-        }
-        if ReturnCode.isCancel(fourth.code) {
-            AppLog.error(.downloads, "ffmpeg hls cancelled (vt transcode) input=\(playlistPath)")
-            throw ConversionError.cancelled
-        }
+            AppLog.error(.downloads, "ffmpeg hls failed audio reencode, retrying full transcode (videotoolbox) input=\(playlistPath)")
+            let fourth = await runFFmpeg(commandFullTranscodeVT, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(fourth.code) {
+                AppLog.debug(.downloads, "ffmpeg hls success (vt transcode) output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(fourth.code) {
+                AppLog.error(.downloads, "ffmpeg hls cancelled (vt transcode) input=\(playlistPath)")
+                throw ConversionError.cancelled
+            }
 
-        AppLog.error(.downloads, "ffmpeg hls failed vt transcode, retrying libx264 input=\(playlistPath)")
-        let fifth = await runFFmpeg(commandFullTranscode, duration: duration, progress: progress)
-        if ReturnCode.isSuccess(fifth.code) {
-            AppLog.debug(.downloads, "ffmpeg hls success (libx264) output=\(outputPath)")
-            return outputURL
-        }
-        if ReturnCode.isCancel(fifth.code) {
-            AppLog.error(.downloads, "ffmpeg hls cancelled (libx264) input=\(playlistPath)")
-            throw ConversionError.cancelled
-        }
+            AppLog.error(.downloads, "ffmpeg hls failed vt transcode, retrying libx264 input=\(playlistPath)")
+            let fifth = await runFFmpeg(commandFullTranscode, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(fifth.code) {
+                AppLog.debug(.downloads, "ffmpeg hls success (libx264) output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(fifth.code) {
+                AppLog.error(.downloads, "ffmpeg hls cancelled (libx264) input=\(playlistPath)")
+                throw ConversionError.cancelled
+            }
 
-        let message = fifth.logs ?? fourth.logs ?? third.logs ?? second.logs ?? first.logs ?? "ffmpeg hls conversion failed"
-        AppLog.error(.downloads, "ffmpeg hls failed input=\(playlistPath) error=\(message)")
-        try? FileManager.default.removeItem(at: outputURL)
-        throw ConversionError.exportFailed(message)
+            let message = fifth.logs ?? fourth.logs ?? third.logs ?? second.logs ?? first.logs ?? "ffmpeg hls conversion failed"
+            AppLog.error(.downloads, "ffmpeg hls failed input=\(playlistPath) error=\(message)")
+            try? FileManager.default.removeItem(at: outputURL)
+            throw ConversionError.exportFailed(message)
+        }
+    }
+
+    private func withConversionPermit<T>(_ work: () async throws -> T) async throws -> T {
+        await conversionSemaphore.wait()
+        defer { conversionSemaphore.signal() }
+        return try await work()
     }
 
     private func convertToMp4WithFFmpeg(
@@ -1595,8 +1608,8 @@ actor MediaConversionManager {
         let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
         let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
         let commandAudioReencode = commandNoBsf
-        let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v \(targetBitrate) -maxrate \(targetBitrate) -bufsize \(targetBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 128k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
-        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 128k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v \(targetBitrate) -maxrate \(targetBitrate) -bufsize \(targetBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
 
         AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration) audio=aac")
 
@@ -1869,13 +1882,13 @@ actor MediaConversionManager {
 
     private func videoBitrate(width: Int, height: Int, fps: Float, sourceRate: Double?) -> Int {
         let clampedFps = max(24, min(60, fps == 0 ? 30 : fps))
-        let bpp: Double = 0.04
+        let bpp: Double = 0.028
         let raw = Double(width * height) * Double(clampedFps) * bpp
-        let minRate = 1_500_000.0
-        let maxRate = 6_000_000.0
+        let minRate = 1_200_000.0
+        let maxRate = 3_500_000.0
         let estimate = max(minRate, min(maxRate, raw))
         if let sourceRate, sourceRate > 0 {
-            let sourceTarget = max(minRate, min(maxRate, sourceRate * 0.8))
+            let sourceTarget = max(minRate, min(maxRate, sourceRate * 0.6))
             return Int(min(estimate, sourceTarget))
         }
         return Int(estimate)
@@ -1969,6 +1982,25 @@ actor MediaConversionManager {
             return Int(target)
         }
         return 3_500_000
+    }
+}
+
+actor AsyncSemaphore {
+    private var value: Int
+
+    init(value: Int) {
+        self.value = value
+    }
+
+    func wait() async {
+        while value == 0 {
+            await Task.yield()
+        }
+        value -= 1
+    }
+
+    func signal() {
+        value += 1
     }
 }
 
