@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import CommonCrypto
 import ffmpegkit
+import VideoToolbox
 import UIKit
 
 struct AniSkipSegment: Codable, Equatable, Hashable {
@@ -1455,6 +1456,14 @@ actor MediaConversionManager {
             return outputURL
         }
 
+        do {
+            AppLog.debug(.downloads, "vt remux start input=\(inputURL.path) output=\(outputURL.path)")
+            let output = try await convertWithVideoToolbox(inputURL: inputURL, outputURL: outputURL)
+            AppLog.debug(.downloads, "vt remux success output=\(output.path)")
+            return output
+        } catch {
+            AppLog.error(.downloads, "vt remux failed input=\(inputURL.path) error=\(error.localizedDescription) fallback=ffmpeg")
+        }
         return try await convertToMp4WithFFmpeg(inputURL: inputURL, outputURL: outputURL, progress: progress)
     }
 
@@ -1463,6 +1472,14 @@ actor MediaConversionManager {
         outputURL: URL,
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> URL {
+        do {
+            AppLog.debug(.downloads, "vt remux start input=\(inputURL.path) output=\(outputURL.path)")
+            let output = try await convertWithVideoToolbox(inputURL: inputURL, outputURL: outputURL)
+            AppLog.debug(.downloads, "vt remux success output=\(output.path)")
+            return output
+        } catch {
+            AppLog.error(.downloads, "vt remux failed input=\(inputURL.path) error=\(error.localizedDescription) fallback=ffmpeg")
+        }
         return try await convertToMp4WithFFmpeg(inputURL: inputURL, outputURL: outputURL, progress: progress)
     }
 
@@ -1616,6 +1633,169 @@ actor MediaConversionManager {
         let message = fourth.logs ?? third.logs ?? second.logs ?? first.logs ?? "ffmpeg conversion failed"
         AppLog.error(.downloads, "ffmpeg remux failed input=\(inputPath) error=\(message)")
         throw ConversionError.exportFailed(message)
+    }
+
+    private func convertWithVideoToolbox(inputURL: URL, outputURL: URL) async throws -> URL {
+        try? FileManager.default.removeItem(at: outputURL)
+        let asset = AVAsset(url: inputURL)
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else {
+            throw ConversionError.exportFailed("missing video track")
+        }
+
+        let reader = try AVAssetReader(asset: asset)
+        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+
+        let naturalSize = try await videoTrack.load(.naturalSize)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
+        let frameRate = try await videoTrack.load(.nominalFrameRate)
+        let size = apply(transform: preferredTransform, to: naturalSize)
+        let bitrate = videoBitrate(width: Int(size.width), height: Int(size.height), fps: frameRate)
+
+        let videoOutput = AVAssetReaderTrackOutput(
+            track: videoTrack,
+            outputSettings: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+            ]
+        )
+        videoOutput.alwaysCopiesSampleData = false
+        guard reader.canAdd(videoOutput) else {
+            throw ConversionError.exportFailed("reader video output unsupported")
+        }
+        reader.add(videoOutput)
+
+        let videoInput = AVAssetWriterInput(
+            mediaType: .video,
+            outputSettings: [
+                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoWidthKey: size.width,
+                AVVideoHeightKey: size.height,
+                AVVideoCompressionPropertiesKey: [
+                    AVVideoAverageBitRateKey: bitrate,
+                    AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+                ]
+            ]
+        )
+        videoInput.transform = preferredTransform
+        videoInput.expectsMediaDataInRealTime = false
+        guard writer.canAdd(videoInput) else {
+            throw ConversionError.exportFailed("writer video input unsupported")
+        }
+        writer.add(videoInput)
+
+        var audioInput: AVAssetWriterInput?
+        var audioOutput: AVAssetReaderTrackOutput?
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        if let audioTrack = audioTracks.first {
+            let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
+            output.alwaysCopiesSampleData = false
+            if reader.canAdd(output) {
+                reader.add(output)
+                audioOutput = output
+            }
+
+            let input = AVAssetWriterInput(
+                mediaType: .audio,
+                outputSettings: [
+                    AVFormatIDKey: kAudioFormatMPEG4AAC,
+                    AVNumberOfChannelsKey: 2,
+                    AVSampleRateKey: 44100,
+                    AVEncoderBitRateKey: 160000
+                ]
+            )
+            input.expectsMediaDataInRealTime = false
+            if writer.canAdd(input) {
+                writer.add(input)
+                audioInput = input
+            }
+        }
+
+        guard writer.startWriting() else {
+            throw ConversionError.exportFailed(writer.error?.localizedDescription ?? "writer start failed")
+        }
+        guard reader.startReading() else {
+            throw ConversionError.exportFailed(reader.error?.localizedDescription ?? "reader start failed")
+        }
+        writer.startSession(atSourceTime: .zero)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let group = DispatchGroup()
+            var finalizeError: Error?
+
+            let videoQueue = DispatchQueue(label: "vt.video.queue")
+            group.enter()
+            videoInput.requestMediaDataWhenReady(on: videoQueue) {
+                while videoInput.isReadyForMoreMediaData {
+                    if let sample = videoOutput.copyNextSampleBuffer() {
+                        if !videoInput.append(sample) {
+                            finalizeError = writer.error ?? ConversionError.exportFailed("video append failed")
+                            videoInput.markAsFinished()
+                            group.leave()
+                            return
+                        }
+                    } else {
+                        videoInput.markAsFinished()
+                        group.leave()
+                        return
+                    }
+                }
+            }
+
+            if let audioInput, let audioOutput {
+                let audioQueue = DispatchQueue(label: "vt.audio.queue")
+                group.enter()
+                audioInput.requestMediaDataWhenReady(on: audioQueue) {
+                    while audioInput.isReadyForMoreMediaData {
+                        if let sample = audioOutput.copyNextSampleBuffer() {
+                            if !audioInput.append(sample) {
+                                finalizeError = writer.error ?? ConversionError.exportFailed("audio append failed")
+                                audioInput.markAsFinished()
+                                group.leave()
+                                return
+                            }
+                        } else {
+                            audioInput.markAsFinished()
+                            group.leave()
+                            return
+                        }
+                    }
+                }
+            }
+
+            group.notify(queue: .global()) {
+                if reader.status == .failed {
+                    finalizeError = reader.error ?? ConversionError.exportFailed("reader failed")
+                }
+                writer.finishWriting {
+                    if let finalizeError {
+                        try? FileManager.default.removeItem(at: outputURL)
+                        continuation.resume(throwing: finalizeError)
+                        return
+                    }
+                    if writer.status == .failed || writer.status == .cancelled {
+                        let error = writer.error?.localizedDescription ?? "writer failed"
+                        try? FileManager.default.removeItem(at: outputURL)
+                        continuation.resume(throwing: ConversionError.exportFailed(error))
+                        return
+                    }
+                    continuation.resume(returning: outputURL)
+                }
+            }
+        }
+    }
+
+    private func apply(transform: CGAffineTransform, to size: CGSize) -> CGSize {
+        let rect = CGRect(origin: .zero, size: size).applying(transform)
+        return CGSize(width: abs(rect.width), height: abs(rect.height))
+    }
+
+    private func videoBitrate(width: Int, height: Int, fps: Float) -> Int {
+        let clampedFps = max(24, min(60, fps == 0 ? 30 : fps))
+        let bpp: Double = 0.07
+        let raw = Double(width * height) * Double(clampedFps) * bpp
+        let minRate = 2_000_000.0
+        let maxRate = 12_000_000.0
+        return Int(max(minRate, min(maxRate, raw)))
     }
 
     private func runFFmpeg(
