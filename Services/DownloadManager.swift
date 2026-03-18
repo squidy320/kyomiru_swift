@@ -541,11 +541,16 @@ final class DownloadManager: NSObject, ObservableObject {
 
     @MainActor
     func importEpisodes(media: MediaItem, candidates: [EpisodeImportCandidate]) async -> (imported: Int, skipped: Int, failed: [String]) {
-        let bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "kyomiru.import") {
+        var bgTaskId = UIBackgroundTaskIdentifier.invalid
+        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "kyomiru.import") {
             UIApplication.shared.endBackgroundTask(bgTaskId)
+            bgTaskId = UIBackgroundTaskIdentifier.invalid
         }
         defer {
-            UIApplication.shared.endBackgroundTask(bgTaskId)
+            if bgTaskId != UIBackgroundTaskIdentifier.invalid {
+                UIApplication.shared.endBackgroundTask(bgTaskId)
+                bgTaskId = UIBackgroundTaskIdentifier.invalid
+            }
         }
         let sorted = candidates.compactMap { candidate -> EpisodeImportCandidate? in
             guard let _ = candidate.episodeNumber else { return nil }
