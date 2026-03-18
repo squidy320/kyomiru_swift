@@ -71,10 +71,16 @@ jobs:
           git lfs ls-files
 
       - name: Commit FFmpegKit XCFramework
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Update FFmpegKit (VideoToolbox) [skip ci]"
-          file_pattern: Vendor/FFmpegKit/ffmpegkit.xcframework
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Vendor/FFmpegKit/ffmpegkit.xcframework .gitattributes
+          git commit -m "Update FFmpegKit (VideoToolbox) [skip ci]" || exit 0
+          git lfs push origin HEAD
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
 
   build-release:
     runs-on: macos-latest
