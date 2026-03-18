@@ -1588,7 +1588,7 @@ actor MediaConversionManager {
 
     private func withConversionPermit<T>(_ work: () async throws -> T) async throws -> T {
         await conversionSemaphore.wait()
-        defer { conversionSemaphore.signal() }
+        defer { Task { await conversionSemaphore.signal() } }
         return try await work()
     }
 
@@ -1613,23 +1613,6 @@ actor MediaConversionManager {
 
         AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration) audio=aac")
 
-        if preferHardwareTranscode {
-            AppLog.debug(.downloads, "ffmpeg remux prefer hardware transcode input=\(inputPath)")
-            let hw = await runFFmpeg(commandFullTranscodeVT, duration: duration, progress: progress)
-            if ReturnCode.isSuccess(hw.code) {
-                if inputURL.pathExtension.lowercased() == "ts" {
-                    try? FileManager.default.removeItem(at: inputURL)
-                }
-                AppLog.debug(.downloads, "ffmpeg remux success (vt transcode) output=\(outputPath)")
-                return outputURL
-            }
-            if ReturnCode.isCancel(hw.code) {
-                AppLog.error(.downloads, "ffmpeg remux cancelled (vt transcode) input=\(inputPath)")
-                throw ConversionError.cancelled
-            }
-            AppLog.error(.downloads, "ffmpeg remux vt transcode failed, falling back to copy input=\(inputPath)")
-        }
-
         let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
         if ReturnCode.isSuccess(first.code) {
             if inputURL.pathExtension.lowercased() == "ts" {
@@ -1643,7 +1626,24 @@ actor MediaConversionManager {
             throw ConversionError.cancelled
         }
 
-        AppLog.error(.downloads, "ffmpeg remux failed with aac_adtstoasc, retrying without bsf input=\(inputPath)")
+        if preferHardwareTranscode {
+            AppLog.debug(.downloads, "ffmpeg remux copy failed, trying vt transcode input=\(inputPath)")
+            let hw = await runFFmpeg(commandFullTranscodeVT, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(hw.code) {
+                if inputURL.pathExtension.lowercased() == "ts" {
+                    try? FileManager.default.removeItem(at: inputURL)
+                }
+                AppLog.debug(.downloads, "ffmpeg remux success (vt transcode) output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(hw.code) {
+                AppLog.error(.downloads, "ffmpeg remux cancelled (vt transcode) input=\(inputPath)")
+                throw ConversionError.cancelled
+            }
+            AppLog.error(.downloads, "ffmpeg remux vt transcode failed, retrying without bsf input=\(inputPath)")
+        } else {
+            AppLog.error(.downloads, "ffmpeg remux failed with aac_adtstoasc, retrying without bsf input=\(inputPath)")
+        }
         let second = await runFFmpeg(commandNoBsf, duration: duration, progress: progress)
         if ReturnCode.isSuccess(second.code) {
             if inputURL.pathExtension.lowercased() == "ts" {
@@ -1975,13 +1975,13 @@ actor MediaConversionManager {
         }
         let estimatedFloat = (try? await videoTrack.load(.estimatedDataRate)) ?? 0
         let estimated = Double(estimatedFloat)
-        let minRate = 1_800_000.0
-        let maxRate = 5_500_000.0
+        let minRate = 1_000_000.0
+        let maxRate = 3_000_000.0
         if estimated > 0 {
-            let target = max(minRate, min(maxRate, estimated * 0.75))
+            let target = max(minRate, min(maxRate, estimated * 0.6))
             return Int(target)
         }
-        return 3_500_000
+        return 2_500_000
     }
 }
 
