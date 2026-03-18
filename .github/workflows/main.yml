@@ -79,6 +79,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Vendor/FFmpegKit/ffmpegkit.xcframework .gitattributes
           git commit -m "Update FFmpegKit (VideoToolbox) [skip ci]" || exit 0
+          git config lfs.url "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git/info/lfs"
           git lfs push origin HEAD
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
 
