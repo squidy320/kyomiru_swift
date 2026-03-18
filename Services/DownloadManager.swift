@@ -1643,14 +1643,19 @@ actor MediaConversionManager {
             throw ConversionError.exportFailed("missing video track")
         }
 
-        let reader = try AVAssetReader(asset: asset)
-        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-
         let naturalSize = try await videoTrack.load(.naturalSize)
         let preferredTransform = try await videoTrack.load(.preferredTransform)
         let frameRate = try await videoTrack.load(.nominalFrameRate)
         let size = apply(transform: preferredTransform, to: naturalSize)
         let bitrate = videoBitrate(width: Int(size.width), height: Int(size.height), fps: frameRate)
+
+        AppLog.debug(
+            .downloads,
+            "vt details size=\(Int(size.width))x\(Int(size.height)) fps=\(frameRate) bitrate=\(bitrate) input=\(inputURL.lastPathComponent)"
+        )
+
+        let reader = try AVAssetReader(asset: asset)
+        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
 
         let videoOutput = AVAssetReaderTrackOutput(
             track: videoTrack,
@@ -1768,16 +1773,19 @@ actor MediaConversionManager {
                 }
                 writer.finishWriting {
                     if let finalizeError {
+                        AppLog.error(.downloads, "vt finish failed error=\(finalizeError.localizedDescription)")
                         try? FileManager.default.removeItem(at: outputURL)
                         continuation.resume(throwing: finalizeError)
                         return
                     }
                     if writer.status == .failed || writer.status == .cancelled {
                         let error = writer.error?.localizedDescription ?? "writer failed"
+                        AppLog.error(.downloads, "vt writer failed status=\(writer.status.rawValue) error=\(error)")
                         try? FileManager.default.removeItem(at: outputURL)
                         continuation.resume(throwing: ConversionError.exportFailed(error))
                         return
                     }
+                    AppLog.debug(.downloads, "vt finish success output=\(outputURL.lastPathComponent)")
                     continuation.resume(returning: outputURL)
                 }
             }
@@ -1804,9 +1812,14 @@ actor MediaConversionManager {
         progress: (@Sendable (Double) -> Void)?
     ) async -> (code: ReturnCode?, logs: String?) {
         await withCheckedContinuation { continuation in
+            let usesVideoToolbox = command.localizedCaseInsensitiveContains("videotoolbox")
+            AppLog.debug(.downloads, "ffmpeg exec start uses_vt=\(usesVideoToolbox ? 1 : 0) duration=\(duration) cmd=\(command)")
             FFmpegKit.executeAsync(command, withCompleteCallback: { session in
                 let returnCode = session?.getReturnCode()
                 let logs = session?.getAllLogsAsString()
+                if let logs, logs.localizedCaseInsensitiveContains("videotoolbox") {
+                    AppLog.debug(.downloads, "ffmpeg log contains videotoolbox")
+                }
                 continuation.resume(returning: (returnCode, logs))
             }, withLogCallback: nil, withStatisticsCallback: { stats in
                 guard let stats, duration > 0 else { return }
