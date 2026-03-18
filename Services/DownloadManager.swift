@@ -1514,8 +1514,8 @@ actor MediaConversionManager {
         let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
         let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
         let commandAudioReencode = commandNoBsf
-        let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v 4500k -pix_fmt yuv420p -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
-        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v 3500k -maxrate 3500k -bufsize 7000k -pix_fmt yuv420p -c:a aac -b:a 128k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 128k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
 
         AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count) audio=aac")
 
@@ -1591,11 +1591,12 @@ actor MediaConversionManager {
 
         let duration = await probeDurationSeconds(path: inputPath)
         let baseArgs = "-y -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn -i \(quoted(path: inputPath)) -map 0:v? -map 0:a?"
+        let targetBitrate = await estimatedHardwareBitrate(inputURL: inputURL)
         let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
         let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
         let commandAudioReencode = commandNoBsf
-        let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v 4500k -pix_fmt yuv420p -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
-        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -b:v \(targetBitrate) -maxrate \(targetBitrate) -bufsize \(targetBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 128k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
+        let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -pix_fmt yuv420p -c:a aac -b:a 128k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: outputPath))"
 
         AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration) audio=aac")
 
@@ -1704,12 +1705,18 @@ actor MediaConversionManager {
         let preferredTransform = try await videoTrack.load(.preferredTransform)
         let frameRate = try await videoTrack.load(.nominalFrameRate)
         let size = apply(transform: preferredTransform, to: naturalSize)
-        let bitrate = videoBitrate(width: Int(size.width), height: Int(size.height), fps: frameRate)
+        let estimatedRate = try await videoTrack.load(.estimatedDataRate)
+        let bitrate = videoBitrate(
+            width: Int(size.width),
+            height: Int(size.height),
+            fps: frameRate,
+            sourceRate: estimatedRate > 0 ? estimatedRate : nil
+        )
 
         let isPlayable = try await asset.load(.isPlayable)
         AppLog.debug(
             .downloads,
-            "vt details size=\(Int(size.width))x\(Int(size.height)) fps=\(frameRate) bitrate=\(bitrate) playable=\(isPlayable ? 1 : 0) input=\(inputURL.lastPathComponent)"
+            "vt details size=\(Int(size.width))x\(Int(size.height)) fps=\(frameRate) bitrate=\(bitrate) sourceRate=\(Int(estimatedRate)) playable=\(isPlayable ? 1 : 0) input=\(inputURL.lastPathComponent)"
         )
         if !isPlayable {
             throw ConversionError.exportFailed("vt preflight failed: asset not playable")
@@ -1859,13 +1866,18 @@ actor MediaConversionManager {
         return CGSize(width: abs(rect.width), height: abs(rect.height))
     }
 
-    private func videoBitrate(width: Int, height: Int, fps: Float) -> Int {
+    private func videoBitrate(width: Int, height: Int, fps: Float, sourceRate: Double?) -> Int {
         let clampedFps = max(24, min(60, fps == 0 ? 30 : fps))
-        let bpp: Double = 0.07
+        let bpp: Double = 0.04
         let raw = Double(width * height) * Double(clampedFps) * bpp
-        let minRate = 2_000_000.0
-        let maxRate = 12_000_000.0
-        return Int(max(minRate, min(maxRate, raw)))
+        let minRate = 1_500_000.0
+        let maxRate = 6_000_000.0
+        let estimate = max(minRate, min(maxRate, raw))
+        if let sourceRate, sourceRate > 0 {
+            let sourceTarget = max(minRate, min(maxRate, sourceRate * 0.8))
+            return Int(min(estimate, sourceTarget))
+        }
+        return Int(estimate)
     }
 
     private func runFFmpeg(
@@ -1938,6 +1950,23 @@ actor MediaConversionManager {
     private func buildHeaderString(_ headers: [String: String]?) -> String {
         guard let headers, !headers.isEmpty else { return "" }
         return headers.map { "\($0): \($1)" }.joined(separator: "\r\n") + "\r\n"
+    }
+
+    private func estimatedHardwareBitrate(inputURL: URL) async -> Int {
+        let asset = AVURLAsset(url: inputURL, options: [
+            AVURLAssetPreferPreciseDurationAndTimingKey: false
+        ])
+        guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first else {
+            return 3_500_000
+        }
+        let estimated = (try? await videoTrack.load(.estimatedDataRate)) ?? 0
+        let minRate = 1_800_000.0
+        let maxRate = 5_500_000.0
+        if estimated > 0 {
+            let target = max(minRate, min(maxRate, estimated * 0.75))
+            return Int(target)
+        }
+        return 3_500_000
     }
 }
 
