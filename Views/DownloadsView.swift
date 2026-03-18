@@ -493,39 +493,7 @@ private struct DownloadsDetailView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if isPad {
-                ipadEpisodeCarousel
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                        ForEach(sortedItems) { item in
-                            let meta = episodeMetadata[item.episode]
-                            EpisodeRowView(
-                                episodeNumber: item.episode,
-                                title: meta?.title ?? "Episode \(item.episode)",
-                                ratingText: nil,
-                                description: nil,
-                                thumbnailURL: meta?.thumbnailURL,
-                                isPlayable: true,
-                                isWatched: isEpisodeWatched(item.episode),
-                                isDownloaded: true,
-                                isNew: false,
-                                onTap: {
-                                    play(item)
-                                }
-                            )
-                            .contextMenu {
-                                Button("Delete") {
-                                    DownloadManager.shared.delete(itemId: item.id)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, UIConstants.standardPadding)
-                    .padding(.top, UIConstants.smallPadding)
-                    .padding(.bottom, UIConstants.bottomBarHeight)
-                }
-            }
+            downloadsBody
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
@@ -633,6 +601,47 @@ private struct DownloadsDetailView: View {
 
     private var sortedItems: [DownloadItem] {
         items.sorted { $0.episode < $1.episode }
+    }
+
+    @ViewBuilder
+    private var downloadsBody: some View {
+        if isPad {
+            ipadEpisodeCarousel
+        } else {
+            episodeList
+        }
+    }
+
+    private var episodeList: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                ForEach(sortedItems) { item in
+                    let meta = episodeMetadata[item.episode]
+                    EpisodeRowView(
+                        episodeNumber: item.episode,
+                        title: meta?.title ?? "Episode \(item.episode)",
+                        ratingText: nil,
+                        description: nil,
+                        thumbnailURL: meta?.thumbnailURL,
+                        isPlayable: true,
+                        isWatched: isEpisodeWatched(item.episode),
+                        isDownloaded: true,
+                        isNew: false,
+                        onTap: {
+                            play(item)
+                        }
+                    )
+                    .contextMenu {
+                        Button("Delete") {
+                            DownloadManager.shared.delete(itemId: item.id)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, UIConstants.standardPadding)
+            .padding(.top, UIConstants.smallPadding)
+            .padding(.bottom, UIConstants.bottomBarHeight)
+        }
     }
 
     private var ipadEpisodeCarousel: some View {
