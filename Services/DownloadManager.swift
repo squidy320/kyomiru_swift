@@ -652,14 +652,16 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func ensureLocalFile(_ url: URL) async throws {
-        let values = try url.resourceValues(forKeys: [.isUbiquitousItemKey, .isDownloadedKey])
+        let values = try url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
         guard values.isUbiquitousItem == true else { return }
-        if values.isDownloaded == true { return }
+        if values.ubiquitousItemDownloadingStatus == URLUbiquitousItemDownloadingStatus.current {
+            return
+        }
         try FileManager.default.startDownloadingUbiquitousItem(at: url)
         let deadline = Date().addingTimeInterval(120)
         while Date() < deadline {
-            let refreshed = try? url.resourceValues(forKeys: [.isDownloadedKey])
-            if refreshed?.isDownloaded == true {
+            let refreshed = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+            if refreshed?.ubiquitousItemDownloadingStatus == URLUbiquitousItemDownloadingStatus.current {
                 return
             }
             try? await Task.sleep(nanoseconds: 300_000_000)
