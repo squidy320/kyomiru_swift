@@ -768,6 +768,7 @@ final class DownloadManager: NSObject, ObservableObject {
 
     private func updateProgress(id: String, progress: Double) {
         if let idx = items.firstIndex(where: { $0.id == id }) {
+            objectWillChange.send()
             items[idx].progress = progress
             saveIndex()
         }
@@ -775,6 +776,7 @@ final class DownloadManager: NSObject, ObservableObject {
 
     private func updateTransferStats(id: String, written: Int64, expected: Int64) {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        objectWillChange.send()
         let now = Date().timeIntervalSince1970
         let previous = speedSamples[id]
         var speed: Double? = items[idx].speedBytesPerSec
@@ -793,6 +795,7 @@ final class DownloadManager: NSObject, ObservableObject {
 
     private func updateStatus(id: String, status: String, localFile: URL? = nil) {
         if let idx = items.firstIndex(where: { $0.id == id }) {
+            objectWillChange.send()
             items[idx].status = status
             if let localFile { items[idx].localFile = localFile }
             saveIndex()
@@ -926,6 +929,7 @@ final class DownloadManager: NSObject, ObservableObject {
         do {
             try fm.moveItem(at: location, to: target)
             if let idx = items.firstIndex(where: { $0.id == id }) {
+                objectWillChange.send()
                 let size = (try? fm.attributesOfItem(atPath: target.path)[.size] as? NSNumber)?.int64Value ?? 0
                 items[idx].downloadedBytes = size > 0 ? size : nil
                 items[idx].totalBytes = size > 0 ? size : items[idx].totalBytes
@@ -1435,6 +1439,12 @@ actor MediaConversionManager {
     private static var ffmpegBuildconfChecked = false
     private static var ffmpegHasVideoToolbox = false
 
+    private struct MediaProbeResult {
+        let format: String
+        let videoCodec: String?
+        let audioCodec: String?
+    }
+
     enum ConversionError: LocalizedError {
         case exportFailed(String)
         case cancelled
@@ -1684,6 +1694,7 @@ actor MediaConversionManager {
         await waitForStableFile(inputURL)
 
         let duration = await probeDurationSeconds(path: inputPath)
+        let probe = await probeMedia(path: inputPath)
         let allowHwDecode = inputURL.isFileURL && ensureFFmpegBuildconfLogged()
         let hwDecodeArgs = allowHwDecode ? "-hwaccel videotoolbox -hwaccel_output_format videotoolbox" : ""
         let baseArgs = "-y -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) -i \(quoted(path: inputPath)) -map 0:v? -map 0:a?"
@@ -1694,8 +1705,67 @@ actor MediaConversionManager {
         let commandAudioReencode = "\(baseArgs) -c:v copy -c:a aac -b:a 128k -ac 2 -ar 44100 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
         let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -realtime true -preset veryfast -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
         let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 96k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
+        let canCopyVideo = probe.videoCodec.map(isMp4VideoCodecCompatible) ?? false
+        let canCopyAudio = probe.audioCodec.map(isMp4AudioCodecCompatible) ?? false
 
-        AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration) audio=aac")
+        AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration) format=\(probe.format) vcodec=\(probe.videoCodec ?? "none") acodec=\(probe.audioCodec ?? "none")")
+
+        if !canCopyVideo {
+            AppLog.debug(.downloads, "ffmpeg remux preflight: video codec requires full transcode")
+            let fourth = await runFFmpeg(commandFullTranscodeVT, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(fourth.code) {
+                if inputURL.pathExtension.lowercased() == "ts" {
+                    try? FileManager.default.removeItem(at: inputURL)
+                }
+                try? FileManager.default.removeItem(at: outputURL)
+                try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
+                AppLog.debug(.downloads, "ffmpeg remux success (vt transcode) output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(fourth.code) {
+                AppLog.error(.downloads, "ffmpeg remux cancelled (vt transcode) input=\(inputPath)")
+                throw ConversionError.cancelled
+            }
+
+            AppLog.error(.downloads, "ffmpeg remux failed vt transcode, retrying libx264 input=\(inputPath)")
+            let fifth = await runFFmpeg(commandFullTranscode, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(fifth.code) {
+                if inputURL.pathExtension.lowercased() == "ts" {
+                    try? FileManager.default.removeItem(at: inputURL)
+                }
+                try? FileManager.default.removeItem(at: outputURL)
+                try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
+                AppLog.debug(.downloads, "ffmpeg remux success (libx264) output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(fifth.code) {
+                AppLog.error(.downloads, "ffmpeg remux cancelled (libx264) input=\(inputPath)")
+                throw ConversionError.cancelled
+            }
+
+            let message = fifth.logs ?? fourth.logs ?? "ffmpeg conversion failed"
+            AppLog.error(.downloads, "ffmpeg remux failed input=\(inputPath) error=\(message)")
+            throw ConversionError.exportFailed(message)
+        }
+
+        if !canCopyAudio, probe.audioCodec != nil {
+            AppLog.debug(.downloads, "ffmpeg remux preflight: audio codec requires reencode")
+            let third = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(third.code) {
+                if inputURL.pathExtension.lowercased() == "ts" {
+                    try? FileManager.default.removeItem(at: inputURL)
+                }
+                try? FileManager.default.removeItem(at: outputURL)
+                try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
+                AppLog.debug(.downloads, "ffmpeg remux success (audio reencode) output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(third.code) {
+                AppLog.error(.downloads, "ffmpeg remux cancelled (audio reencode) input=\(inputPath)")
+                throw ConversionError.cancelled
+            }
+            logCopyFailure(label: "audio reencode", result: third)
+        }
 
         let instant = await runFFmpeg(commandInstantMux, duration: duration, progress: progress)
         if ReturnCode.isSuccess(instant.code) {
@@ -1746,7 +1816,7 @@ actor MediaConversionManager {
         }
         logCopyFailure(label: "copy", result: second)
 
-        if isAudioIncompatible(second.logs) || isAudioIncompatible(first.logs) || isAudioIncompatible(instant.logs) {
+        if canCopyAudio == false || isAudioIncompatible(second.logs) || isAudioIncompatible(first.logs) || isAudioIncompatible(instant.logs) {
             AppLog.error(.downloads, "ffmpeg remux detected incompatible audio, retrying with audio transcode input=\(inputPath)")
         } else {
             AppLog.error(.downloads, "ffmpeg remux copy path failed, retrying with audio reencode input=\(inputPath)")
@@ -2022,6 +2092,30 @@ actor MediaConversionManager {
                 continuation.resume(returning: 0)
             }
         }
+    }
+
+    private func probeMedia(path: String) async -> MediaProbeResult {
+        await withCheckedContinuation { continuation in
+            FFprobeKit.getMediaInformationAsync(path) { session in
+                guard let info = session?.getMediaInformation() else {
+                    continuation.resume(returning: MediaProbeResult(format: "", videoCodec: nil, audioCodec: nil))
+                    return
+                }
+                let format = info.getFormat() ?? ""
+                let streams = info.getStreams() as? [StreamInformation] ?? []
+                let videoCodec = streams.first(where: { $0.getType() == "video" })?.getCodec()?.lowercased()
+                let audioCodec = streams.first(where: { $0.getType() == "audio" })?.getCodec()?.lowercased()
+                continuation.resume(returning: MediaProbeResult(format: format.lowercased(), videoCodec: videoCodec, audioCodec: audioCodec))
+            }
+        }
+    }
+
+    private func isMp4VideoCodecCompatible(_ codec: String) -> Bool {
+        ["h264", "hevc", "mpeg4"].contains(codec)
+    }
+
+    private func isMp4AudioCodecCompatible(_ codec: String) -> Bool {
+        ["aac", "alac", "mp3"].contains(codec)
     }
 
     private func logCopyFailure(label: String, result: (code: ReturnCode?, logs: String?)) {
