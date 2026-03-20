@@ -1572,7 +1572,7 @@ actor MediaConversionManager {
             let hwDecodeArgs = allowHwDecode ? "-hwaccel videotoolbox -hwaccel_output_format videotoolbox" : ""
             let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v? -map 0:a?"
             let limitedBitrate = await limitedTranscodeBitrate(inputURL: playlistURL)
-            let commandInstantMux = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL \(headerArg) -i \(quoted(value: playlistPath)) -c copy -map 0 -movflags +faststart \(quoted(path: tempOutput.path))"
+            let commandInstantMux = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v? -map 0:a? -dn -sn -c copy -movflags +faststart \(quoted(path: tempOutput.path))"
             let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
             let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
             let commandAudioReencode = "\(baseArgs) -c:v copy -c:a aac -b:a 128k -ac 2 -ar 44100 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
@@ -1699,7 +1699,7 @@ actor MediaConversionManager {
         let hwDecodeArgs = allowHwDecode ? "-hwaccel videotoolbox -hwaccel_output_format videotoolbox" : ""
         let baseArgs = "-y -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) -i \(quoted(path: inputPath)) -map 0:v? -map 0:a?"
         let limitedBitrate = await limitedTranscodeBitrate(inputURL: inputURL)
-        let commandInstantMux = "-y -i \(quoted(path: inputPath)) -c copy -map 0 -movflags +faststart \(quoted(path: tempOutput.path))"
+        let commandInstantMux = "-y -i \(quoted(path: inputPath)) -map 0:v? -map 0:a? -dn -sn -c copy -movflags +faststart \(quoted(path: tempOutput.path))"
         let commandWithBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
         let commandNoBsf = "\(baseArgs) -c:v copy -c:a aac -b:a 160k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
         let commandAudioReencode = "\(baseArgs) -c:v copy -c:a aac -b:a 128k -ac 2 -ar 44100 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
