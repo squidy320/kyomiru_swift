@@ -65,9 +65,13 @@ private struct AVPlayerScreen: View {
     @State private var skipSegments: [AniSkipSegment] = []
     @State private var activeSkip: AniSkipSegment?
     @State private var didMarkWatched: Bool = false
-    @State private var seekToken: UUID?
     @State private var isSeeking: Bool = false
     @State private var shouldLogBufferState: Bool = true
+    @State private var itemObservers: [NSKeyValueObservation] = []
+    @State private var playbackStallObserver: NSObjectProtocol?
+    @State private var pendingSeekRequest: PendingSeekRequest?
+    @State private var pendingResumeTime: Double?
+    @State private var isRemoteStream: Bool = false
 
     var body: some View {
         ZStack {
@@ -130,6 +134,7 @@ private struct AVPlayerScreen: View {
 
         let resolved = PlaybackService.resolvePlayableURL(for: source.url, title: mediaTitle, episode: episode.number)
         let isRemoteStream = !resolved.isFileURL
+        self.isRemoteStream = isRemoteStream
         let headers = resolved.isFileURL ? [:] : source.headers
 
         let asset: AVURLAsset
@@ -143,14 +148,14 @@ private struct AVPlayerScreen: View {
 
         let item = AVPlayerItem(asset: asset)
         if isRemoteStream {
-            item.preferredForwardBufferDuration = 8
+            item.preferredForwardBufferDuration = 2
             if #available(iOS 10.0, *) {
                 item.canUseNetworkResourcesForLiveStreamingWhilePaused = true
             }
         }
         self.playerItem = item
         let avPlayer = AVPlayer(playerItem: item)
-        avPlayer.automaticallyWaitsToMinimizeStalling = true
+        avPlayer.automaticallyWaitsToMinimizeStalling = !isRemoteStream
         self.player = avPlayer
 
         addObservers(to: avPlayer, item: item)
@@ -165,9 +170,17 @@ private struct AVPlayerScreen: View {
         }
         statusObserver?.invalidate()
         statusObserver = nil
-        seekToken = nil
+        itemObservers.forEach { $0.invalidate() }
+        itemObservers.removeAll()
+        if let playbackStallObserver {
+            NotificationCenter.default.removeObserver(playbackStallObserver)
+            self.playbackStallObserver = nil
+        }
+        pendingSeekRequest = nil
+        pendingResumeTime = nil
         isSeeking = false
         shouldLogBufferState = true
+        isRemoteStream = false
         activeSkip = nil
         didMarkWatched = false
         player.pause()
@@ -178,13 +191,13 @@ private struct AVPlayerScreen: View {
 
     private func addObservers(to player: AVPlayer, item: AVPlayerItem) {
         let startTime = startAt ?? (PlaybackHistoryStore.shared.position(for: episode.id) ?? 0)
+        pendingResumeTime = startTime > 0 ? startTime : nil
 
         statusObserver = item.observe(\.status, options: [.initial, .new]) { observed, _ in
             switch observed.status {
             case .readyToPlay:
-                if startTime > 0 {
-                    requestSeek(to: startTime, reason: "resume")
-                }
+                applyPendingResumeIfNeeded(reason: "readyToPlay")
+                performPendingSeekIfPossible(reason: "statusReady")
             case .failed:
                 errorMessage = observed.error?.localizedDescription ?? "Playback failed."
             default:
@@ -192,19 +205,43 @@ private struct AVPlayerScreen: View {
             }
         }
 
-        item.observe(\.isPlaybackBufferEmpty, options: [.new]) { observed, _ in
-            if observed.isPlaybackBufferEmpty {
-                AppLog.debug(.player, "buffer: empty")
+        itemObservers = [
+            item.observe(\.isPlaybackBufferEmpty, options: [.new]) { observed, _ in
+                if observed.isPlaybackBufferEmpty {
+                    AppLog.debug(.player, "buffer: empty")
+                }
+            },
+            item.observe(\.isPlaybackBufferFull, options: [.new]) { observed, _ in
+                if observed.isPlaybackBufferFull {
+                    AppLog.debug(.player, "buffer: full")
+                }
+            },
+            item.observe(\.isPlaybackLikelyToKeepUp, options: [.initial, .new]) { observed, _ in
+                if shouldLogBufferState {
+                    AppLog.debug(.player, "buffer: likelyToKeepUp=\(observed.isPlaybackLikelyToKeepUp)")
+                }
+                if observed.isPlaybackLikelyToKeepUp {
+                    applyPendingResumeIfNeeded(reason: "likelyToKeepUp")
+                    performPendingSeekIfPossible(reason: "keepUp")
+                }
+            },
+            item.observe(\.seekableTimeRanges, options: [.initial, .new]) { _, _ in
+                applyPendingResumeIfNeeded(reason: "seekableRanges")
+                performPendingSeekIfPossible(reason: "seekableRanges")
             }
-        }
-        item.observe(\.isPlaybackBufferFull, options: [.new]) { observed, _ in
-            if observed.isPlaybackBufferFull {
-                AppLog.debug(.player, "buffer: full")
-            }
-        }
-        item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { observed, _ in
-            if shouldLogBufferState {
-                AppLog.debug(.player, "buffer: likelyToKeepUp=\(observed.isPlaybackLikelyToKeepUp)")
+        ]
+
+        playbackStallObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemPlaybackStalled,
+            object: item,
+            queue: .main
+        ) { _ in
+            AppLog.debug(.player, "buffer: stalled remote=\(isRemoteStream) seeking=\(isSeeking)")
+            guard isRemoteStream else { return }
+            if let pendingSeekRequest {
+                performPendingSeekIfPossible(reason: "stall")
+            } else {
+                player.playImmediately(atRate: 1.0)
             }
         }
 
@@ -299,22 +336,92 @@ private struct AVPlayerScreen: View {
     }
 
     private func requestSeek(to seconds: Double, reason: String) {
-        guard let player else { return }
-        let token = UUID()
-        seekToken = token
+        let shouldResume = player?.timeControlStatus != .paused || player?.rate ?? 0 > 0
+        pendingSeekRequest = PendingSeekRequest(seconds: seconds, reason: reason, shouldResumePlayback: shouldResume)
+        AppLog.debug(.player, "seek: queued time=\(seconds) reason=\(reason)")
+        performPendingSeekIfPossible(reason: "request")
+    }
+
+    private func applyPendingResumeIfNeeded(reason: String) {
+        guard let seconds = pendingResumeTime else { return }
+        guard let item = playerItem, item.status == .readyToPlay else { return }
+        guard isSeekable(item: item, targetSeconds: seconds) else { return }
+        pendingResumeTime = nil
+        requestSeek(to: seconds, reason: "resume:\(reason)")
+    }
+
+    private func performPendingSeekIfPossible(reason: String) {
+        guard !isSeeking else { return }
+        guard let request = pendingSeekRequest else { return }
+        guard let player, let item = player.currentItem else { return }
+        guard item.status == .readyToPlay else { return }
+        guard isSeekable(item: item, targetSeconds: request.seconds) else {
+            AppLog.debug(.player, "seek: waiting seekable time=\(request.seconds) reason=\(request.reason) trigger=\(reason)")
+            return
+        }
+
+        let clampedSeconds = clampedSeekTime(request.seconds, item: item)
+        pendingSeekRequest = nil
         isSeeking = true
-        let target = CMTime(seconds: seconds, preferredTimescale: 600)
-        let tolerance = CMTime(seconds: 0.35, preferredTimescale: 600)
-        AppLog.debug(.player, "seek: request time=\(seconds) reason=\(reason)")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-            guard seekToken == token else { return }
-            player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { finished in
-                if seekToken == token {
-                    isSeeking = false
+        let tolerance = CMTime(seconds: isRemoteStream ? 1.0 : 0.25, preferredTimescale: 600)
+        let target = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
+        let shouldResume = request.shouldResumePlayback
+
+        item.cancelPendingSeeks()
+        player.pause()
+        AppLog.debug(.player, "seek: perform time=\(clampedSeconds) reason=\(request.reason) trigger=\(reason)")
+        player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { finished in
+            AppLog.debug(.player, "seek: finished=\(finished) time=\(clampedSeconds) reason=\(request.reason)")
+            isSeeking = false
+
+            if let next = pendingSeekRequest {
+                AppLog.debug(.player, "seek: chaining next time=\(next.seconds) reason=\(next.reason)")
+                performPendingSeekIfPossible(reason: "chain")
+                return
+            }
+
+            if shouldResume {
+                if isRemoteStream {
+                    player.playImmediately(atRate: 1.0)
+                } else {
+                    player.play()
                 }
-                AppLog.debug(.player, "seek: finished=\(finished) time=\(seconds)")
             }
         }
+    }
+
+    private func isSeekable(item: AVPlayerItem, targetSeconds: Double) -> Bool {
+        guard item.status == .readyToPlay else { return false }
+        if !isRemoteStream {
+            return true
+        }
+
+        let ranges = item.seekableTimeRanges.compactMap { value -> ClosedRange<Double>? in
+            let range = value.timeRangeValue
+            let start = range.start.seconds
+            let duration = range.duration.seconds
+            guard start.isFinite, duration.isFinite else { return nil }
+            let end = start + duration
+            guard end > start else { return nil }
+            return start...end
+        }
+
+        if ranges.isEmpty {
+            return false
+        }
+
+        return ranges.contains { range in
+            targetSeconds >= max(0, range.lowerBound - 2) && targetSeconds <= range.upperBound + 2
+        }
+    }
+
+    private func clampedSeekTime(_ seconds: Double, item: AVPlayerItem) -> Double {
+        var clamped = max(0, seconds)
+        let duration = item.duration.seconds
+        if duration.isFinite, duration > 1 {
+            clamped = min(clamped, duration - 0.5)
+        }
+        return clamped
     }
 
     private func skipButtonTitle(for segment: AniSkipSegment) -> String {
@@ -350,6 +457,12 @@ private struct AVPlayerScreen: View {
         } else {
             seekForwardByDefaultInterval()
         }
+    }
+
+    private struct PendingSeekRequest: Equatable {
+        let seconds: Double
+        let reason: String
+        let shouldResumePlayback: Bool
     }
 }
 
@@ -390,6 +503,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         private weak var progressSlider: UISlider?
         private weak var buttonHostView: UIView?
         private var syncTask: Task<Void, Never>?
+        private var placementConstraints: [NSLayoutConstraint] = []
 
         init(onSkipTapped: @escaping () -> Void) {
             self.onSkipTapped = onSkipTapped
@@ -461,20 +575,23 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
                 if blurView.superview !== host {
                     blurView.removeFromSuperview()
                     host.addSubview(blurView)
-                    NSLayoutConstraint.deactivate(blurView.constraints)
+                    NSLayoutConstraint.deactivate(placementConstraints)
                     blurView.translatesAutoresizingMaskIntoConstraints = false
-                    NSLayoutConstraint.activate([
+                    placementConstraints = [
                         blurView.leadingAnchor.constraint(equalTo: slider.leadingAnchor),
                         blurView.bottomAnchor.constraint(equalTo: slider.topAnchor, constant: -12)
-                    ])
+                    ]
+                    NSLayoutConstraint.activate(placementConstraints)
                     buttonHostView = host
                 }
             } else if blurView.superview == nil, let overlay = controller.contentOverlayView {
                 overlay.addSubview(blurView)
-                NSLayoutConstraint.activate([
+                NSLayoutConstraint.deactivate(placementConstraints)
+                placementConstraints = [
                     blurView.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 16),
                     blurView.bottomAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.bottomAnchor, constant: -56)
-                ])
+                ]
+                NSLayoutConstraint.activate(placementConstraints)
                 buttonHostView = overlay
             }
         }
@@ -493,15 +610,31 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         }
 
         private func findProgressSlider(in root: UIView) -> UISlider? {
-            if let slider = root as? UISlider, root.bounds.width > 120 {
-                return slider
-            }
-            for subview in root.subviews {
-                if let slider = findProgressSlider(in: subview) {
-                    return slider
+            var matches: [UISlider] = []
+
+            func collect(from view: UIView) {
+                if let slider = view as? UISlider,
+                   slider.bounds.width > 120,
+                   !slider.isHidden,
+                   slider.alpha > 0.01 {
+                    matches.append(slider)
+                }
+                for subview in view.subviews {
+                    collect(from: subview)
                 }
             }
-            return nil
+
+            collect(from: root)
+            guard !matches.isEmpty else { return nil }
+
+            return matches.max { lhs, rhs in
+                let leftPoint = lhs.convert(lhs.bounds.origin, to: root)
+                let rightPoint = rhs.convert(rhs.bounds.origin, to: root)
+                if abs(leftPoint.y - rightPoint.y) < 8 {
+                    return lhs.bounds.width < rhs.bounds.width
+                }
+                return leftPoint.y < rightPoint.y
+            }
         }
 
         @objc
