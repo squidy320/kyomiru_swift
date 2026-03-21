@@ -1947,7 +1947,7 @@ actor MediaConversionManager {
             throw ConversionError.cancelled
         }
 
-        let message = fifth.logs ?? fourth.logs ?? third.logs ?? second.logs ?? first.logs ?? instant.logs ?? "ffmpeg conversion failed"
+        let message = fifth.logs ?? fourth.logs ?? third.logs ?? second.logs ?? first.logs ?? "ffmpeg conversion failed"
         AppLog.error(.downloads, "ffmpeg remux failed input=\(inputPath) error=\(message)")
         throw ConversionError.exportFailed(message)
     }
