@@ -363,12 +363,11 @@ private struct AVPlayerScreen: View {
         let clampedSeconds = clampedSeekTime(request.seconds, item: item)
         pendingSeekRequest = nil
         isSeeking = true
-        let tolerance = CMTime(seconds: isRemoteStream ? 1.0 : 0.25, preferredTimescale: 600)
+        let tolerance = CMTime(seconds: isRemoteStream ? 3.0 : 0.25, preferredTimescale: 600)
         let target = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
         let shouldResume = request.shouldResumePlayback
 
         item.cancelPendingSeeks()
-        player.pause()
         AppLog.debug(.player, "seek: perform time=\(clampedSeconds) reason=\(request.reason) trigger=\(reason)")
         player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { finished in
             AppLog.debug(.player, "seek: finished=\(finished) time=\(clampedSeconds) reason=\(request.reason)")
@@ -381,12 +380,12 @@ private struct AVPlayerScreen: View {
             }
 
             if shouldResume {
-                if isRemoteStream {
-                    player.playImmediately(atRate: 1.0)
-                } else {
-                    player.play()
-                }
+                resumePlaybackAfterSeek(player: player)
             }
+        }
+
+        if shouldResume, isRemoteStream {
+            resumePlaybackAfterSeek(player: player)
         }
     }
 
@@ -422,6 +421,14 @@ private struct AVPlayerScreen: View {
             clamped = min(clamped, duration - 0.5)
         }
         return clamped
+    }
+
+    private func resumePlaybackAfterSeek(player: AVPlayer) {
+        if isRemoteStream {
+            player.playImmediately(atRate: 1.0)
+        } else {
+            player.play()
+        }
     }
 
     private func skipButtonTitle(for segment: AniSkipSegment) -> String {
