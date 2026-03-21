@@ -4,14 +4,39 @@ import AVFoundation
 import AVKit
 #endif
 
-struct PlayerView: View {
+#if os(iOS)
+@MainActor
+final class PlayerSessionController: ObservableObject, Identifiable {
+    let id = UUID()
     let episode: SoraEpisode
     let sources: [SoraSource]
     let mediaId: Int
     let malId: Int?
     let mediaTitle: String?
     let startAt: Double?
-    @EnvironmentObject private var appState: AppState
+    let services: AppServices
+    let markEpisodeWatched: @MainActor (Int, Int) async -> Void
+
+    @Published var player: AVPlayer?
+    @Published var errorMessage: String?
+    @Published var activeSkip: AniSkipSegment?
+
+    var isPictureInPictureActive = false
+    var shouldRestoreAfterPictureInPicture = false
+
+    private var playerItem: AVPlayerItem?
+    private var timeObserver: Any?
+    private var statusObserver: NSKeyValueObservation?
+    private var itemObservers: [NSKeyValueObservation] = []
+    private var playbackStallObserver: NSObjectProtocol?
+    private var skipSegments: [AniSkipSegment] = []
+    private var didMarkWatched = false
+    private var isSeeking = false
+    private var shouldLogBufferState = true
+    private var pendingSeekRequest: PendingSeekRequest?
+    private var pendingResumeTime: Double?
+    private var isRemoteStream = false
+    private var hasStartedPlayback = false
 
     init(
         episode: SoraEpisode,
@@ -19,7 +44,9 @@ struct PlayerView: View {
         mediaId: Int,
         malId: Int?,
         mediaTitle: String?,
-        startAt: Double? = nil
+        startAt: Double?,
+        services: AppServices,
+        markEpisodeWatched: @escaping @MainActor (Int, Int) async -> Void
     ) {
         self.episode = episode
         self.sources = sources
@@ -27,91 +54,19 @@ struct PlayerView: View {
         self.malId = malId
         self.mediaTitle = mediaTitle
         self.startAt = startAt
+        self.services = services
+        self.markEpisodeWatched = markEpisodeWatched
     }
 
-    var body: some View {
-        Group {
-#if os(iOS)
-            AVPlayerScreen(
-                episode: episode,
-                sources: sources,
-                mediaId: mediaId,
-                malId: malId,
-                mediaTitle: mediaTitle,
-                startAt: startAt
-            )
-#else
-            Text("Playback is only supported on iOS.")
-#endif
-        }
-    }
-}
-
-#if os(iOS)
-private struct AVPlayerScreen: View {
-    let episode: SoraEpisode
-    let sources: [SoraSource]
-    let mediaId: Int
-    let malId: Int?
-    let mediaTitle: String?
-    let startAt: Double?
-    @EnvironmentObject private var appState: AppState
-    @Environment(\.dismiss) private var dismiss
-    @State private var player: AVPlayer?
-    @State private var playerItem: AVPlayerItem?
-    @State private var timeObserver: Any?
-    @State private var statusObserver: NSKeyValueObservation?
-    @State private var errorMessage: String?
-    @State private var skipSegments: [AniSkipSegment] = []
-    @State private var activeSkip: AniSkipSegment?
-    @State private var didMarkWatched: Bool = false
-    @State private var isSeeking: Bool = false
-    @State private var shouldLogBufferState: Bool = true
-    @State private var itemObservers: [NSKeyValueObservation] = []
-    @State private var playbackStallObserver: NSObjectProtocol?
-    @State private var pendingSeekRequest: PendingSeekRequest?
-    @State private var pendingResumeTime: Double?
-    @State private var isRemoteStream: Bool = false
-    @State private var isPictureInPictureActive: Bool = false
-
-    var body: some View {
-        ZStack {
-            if let player {
-                AVPlayerViewControllerRepresentable(
-                    player: player,
-                    skipButtonTitle: overlaySkipButtonTitle,
-                    onSkipTapped: handleOverlaySkipAction,
-                    onPictureInPictureChanged: handlePictureInPictureChanged
-                )
-                    .ignoresSafeArea()
-            } else {
-                Color.black.ignoresSafeArea()
-                ProgressView("Loading player...")
-                    .tint(.white)
-                    .foregroundColor(.white)
-            }
-        }
-        .onAppear {
-            loadSkipSegments()
-            startPlayback()
-        }
-        .onDisappear(perform: handleDisappear)
-        .alert("Playback Error", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { _ in errorMessage = nil }
-        )) {
-            Button("OK", role: .cancel) {
-                dismiss()
-            }
-        } message: {
-            Text(errorMessage ?? "Unknown error")
+    deinit {
+        Task { @MainActor in
+            self.invalidateObservers()
         }
     }
 
-    private func startPlayback() {
-        if player != nil {
-            return
-        }
+    func startPlaybackIfNeeded() {
+        guard !hasStartedPlayback else { return }
+        hasStartedPlayback = true
 #if os(iOS) && !targetEnvironment(macCatalyst)
         do {
             let session = AVAudioSession.sharedInstance()
@@ -138,8 +93,7 @@ private struct AVPlayerScreen: View {
         }
 
         let resolved = PlaybackService.resolvePlayableURL(for: source.url, title: mediaTitle, episode: episode.number)
-        let isRemoteStream = !resolved.isFileURL
-        self.isRemoteStream = isRemoteStream
+        isRemoteStream = !resolved.isFileURL
         let headers = resolved.isFileURL ? [:] : source.headers
 
         let asset: AVURLAsset
@@ -158,26 +112,61 @@ private struct AVPlayerScreen: View {
                 item.canUseNetworkResourcesForLiveStreamingWhilePaused = true
             }
         }
-        self.playerItem = item
+        playerItem = item
         let avPlayer = AVPlayer(playerItem: item)
         avPlayer.automaticallyWaitsToMinimizeStalling = true
-        self.player = avPlayer
+        player = avPlayer
 
+        loadSkipSegments()
         addObservers(to: avPlayer, item: item)
         avPlayer.play()
     }
 
-    private func handleDisappear() {
-        if isPictureInPictureActive {
-            AppLog.debug(.player, "pip: keeping playback alive while view disappears")
-            return
-        }
-        stopPlayback()
+    func stopPlayback() {
+        guard let player else { return }
+        invalidateObservers()
+        pendingSeekRequest = nil
+        pendingResumeTime = nil
+        isSeeking = false
+        shouldLogBufferState = true
+        isRemoteStream = false
+        activeSkip = nil
+        didMarkWatched = false
+        hasStartedPlayback = false
+        isPictureInPictureActive = false
+        shouldRestoreAfterPictureInPicture = false
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        self.player = nil
+        self.playerItem = nil
     }
 
-    private func stopPlayback() {
-        guard let player else { return }
-        if let timeObserver {
+    func clearError() {
+        errorMessage = nil
+    }
+
+    func handleOverlaySkipAction() {
+        if let activeSkip {
+            seekToSkipEnd(activeSkip)
+        } else {
+            seekForwardByDefaultInterval()
+        }
+    }
+
+    var overlaySkipButtonTitle: String {
+        if let activeSkip {
+            return skipButtonTitle(for: activeSkip)
+        }
+        return "+85s"
+    }
+
+    private var currentPlaybackTime: Double {
+        let seconds = player?.currentTime().seconds ?? 0
+        return seconds.isFinite ? seconds : 0
+    }
+
+    private func invalidateObservers() {
+        if let player, let timeObserver {
             player.removeTimeObserver(timeObserver)
             self.timeObserver = nil
         }
@@ -189,37 +178,22 @@ private struct AVPlayerScreen: View {
             NotificationCenter.default.removeObserver(playbackStallObserver)
             self.playbackStallObserver = nil
         }
-        pendingSeekRequest = nil
-        pendingResumeTime = nil
-        isSeeking = false
-        shouldLogBufferState = true
-        isRemoteStream = false
-        activeSkip = nil
-        didMarkWatched = false
-        player.pause()
-        player.replaceCurrentItem(with: nil)
-        self.player = nil
-        self.playerItem = nil
-    }
-
-    private func handlePictureInPictureChanged(_ isActive: Bool) {
-        isPictureInPictureActive = isActive
-        AppLog.debug(.player, "pip: active=\(isActive)")
     }
 
     private func addObservers(to player: AVPlayer, item: AVPlayerItem) {
         let startTime = startAt ?? (PlaybackHistoryStore.shared.position(for: episode.id) ?? 0)
         pendingResumeTime = startTime > 0 ? startTime : nil
 
-        statusObserver = item.observe(\.status, options: [.initial, .new]) { observed, _ in
+        statusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] observed, _ in
+            guard let self else { return }
             switch observed.status {
             case .readyToPlay:
-                if !isRemoteStream {
-                    applyPendingResumeIfNeeded(reason: "readyToPlay")
+                if !self.isRemoteStream {
+                    self.applyPendingResumeIfNeeded(reason: "readyToPlay")
                 }
-                performPendingSeekIfPossible(reason: "statusReady")
+                self.performPendingSeekIfPossible(reason: "statusReady")
             case .failed:
-                errorMessage = observed.error?.localizedDescription ?? "Playback failed."
+                self.errorMessage = observed.error?.localizedDescription ?? "Playback failed."
             default:
                 break
             }
@@ -236,20 +210,22 @@ private struct AVPlayerScreen: View {
                     AppLog.debug(.player, "buffer: full")
                 }
             },
-            item.observe(\.isPlaybackLikelyToKeepUp, options: [.initial, .new]) { observed, _ in
-                if shouldLogBufferState {
+            item.observe(\.isPlaybackLikelyToKeepUp, options: [.initial, .new]) { [weak self] observed, _ in
+                guard let self else { return }
+                if self.shouldLogBufferState {
                     AppLog.debug(.player, "buffer: likelyToKeepUp=\(observed.isPlaybackLikelyToKeepUp)")
                 }
-                if observed.isPlaybackLikelyToKeepUp, !isRemoteStream {
-                    applyPendingResumeIfNeeded(reason: "likelyToKeepUp")
-                    performPendingSeekIfPossible(reason: "keepUp")
+                if observed.isPlaybackLikelyToKeepUp, !self.isRemoteStream {
+                    self.applyPendingResumeIfNeeded(reason: "likelyToKeepUp")
+                    self.performPendingSeekIfPossible(reason: "keepUp")
                 }
             },
-            item.observe(\.seekableTimeRanges, options: [.initial, .new]) { _, _ in
-                if !isRemoteStream {
-                    applyPendingResumeIfNeeded(reason: "seekableRanges")
+            item.observe(\.seekableTimeRanges, options: [.initial, .new]) { [weak self] _, _ in
+                guard let self else { return }
+                if !self.isRemoteStream {
+                    self.applyPendingResumeIfNeeded(reason: "seekableRanges")
                 }
-                performPendingSeekIfPossible(reason: "seekableRanges")
+                self.performPendingSeekIfPossible(reason: "seekableRanges")
             }
         ]
 
@@ -257,47 +233,49 @@ private struct AVPlayerScreen: View {
             forName: .AVPlayerItemPlaybackStalled,
             object: item,
             queue: .main
-        ) { _ in
-            AppLog.debug(.player, "buffer: stalled remote=\(isRemoteStream) seeking=\(isSeeking)")
-            guard isRemoteStream else { return }
-            if let pendingSeekRequest {
-                performPendingSeekIfPossible(reason: "stall")
+        ) { [weak self] _ in
+            guard let self else { return }
+            AppLog.debug(.player, "buffer: stalled remote=\(self.isRemoteStream) seeking=\(self.isSeeking)")
+            guard self.isRemoteStream else { return }
+            if self.pendingSeekRequest != nil {
+                self.performPendingSeekIfPossible(reason: "stall")
             } else {
                 player.play()
             }
         }
 
         let interval = CMTime(seconds: 1.0, preferredTimescale: 2)
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            guard let self else { return }
             let seconds = time.seconds
             guard seconds.isFinite else { return }
-            if isRemoteStream, seconds >= 1 {
-                applyPendingResumeIfNeeded(reason: "playbackAdvanced")
+            if self.isRemoteStream, seconds >= 1 {
+                self.applyPendingResumeIfNeeded(reason: "playbackAdvanced")
             }
-            updateActiveSkip(at: seconds)
-            if isSeeking { return }
+            self.updateActiveSkip(at: seconds)
+            if self.isSeeking { return }
             let duration = player.currentItem?.duration.seconds ?? 0
             if duration > 0 {
                 let fraction = seconds / duration
-                if !didMarkWatched, fraction >= 0.85 {
-                    didMarkWatched = true
-                    Task { await appState.markEpisodeWatched(mediaId: mediaId, episodeNumber: episode.number) }
-                    PlaybackHistoryStore.shared.clearMedia(mediaId: mediaId)
+                if !self.didMarkWatched, fraction >= 0.85 {
+                    self.didMarkWatched = true
+                    Task { await self.markEpisodeWatched(self.mediaId, self.episode.number) }
+                    PlaybackHistoryStore.shared.clearMedia(mediaId: self.mediaId)
                 }
                 Task { @MainActor in
-                    appState.services.playbackEngine.updateProgress(
-                        for: String(mediaId),
+                    self.services.playbackEngine.updateProgress(
+                        for: String(self.mediaId),
                         currentTime: seconds,
                         duration: duration
                     )
-                    appState.services.playbackEngine.updateProgress(
-                        for: "episode:\(episode.id)",
+                    self.services.playbackEngine.updateProgress(
+                        for: "episode:\(self.episode.id)",
                         currentTime: seconds,
                         duration: duration
                     )
-                    if !didMarkWatched {
-                        PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
-                        PlaybackHistoryStore.shared.saveDuration(duration, for: episode.id)
+                    if !self.didMarkWatched {
+                        PlaybackHistoryStore.shared.save(position: seconds, for: self.episode.id)
+                        PlaybackHistoryStore.shared.saveDuration(duration, for: self.episode.id)
                     }
                 }
             }
@@ -311,7 +289,7 @@ private struct AVPlayerScreen: View {
             AppLog.debug(.player, "aniskip: no malId for mediaId=\(mediaId) ep=\(episode.number)")
             return
         }
-        if let cached = appState.services.downloadManager.cachedSkipSegments(malId: malId, episode: episode.number) {
+        if let cached = services.downloadManager.cachedSkipSegments(malId: malId, episode: episode.number) {
             skipSegments = cached
             updateActiveSkip(at: currentPlaybackTime)
             AppLog.debug(.player, "aniskip: cache hit malId=\(malId) ep=\(episode.number) count=\(cached.count)")
@@ -319,18 +297,17 @@ private struct AVPlayerScreen: View {
             skipSegments = []
             AppLog.debug(.player, "aniskip: cache miss malId=\(malId) ep=\(episode.number)")
         }
-        Task {
-            let segments = await appState.services.aniSkipService.fetchSkipSegments(malId: malId, episode: episode.number)
+        Task { [weak self] in
+            guard let self else { return }
+            let segments = await self.services.aniSkipService.fetchSkipSegments(malId: malId, episode: self.episode.number)
             guard !segments.isEmpty else {
-                AppLog.debug(.player, "aniskip: no segments malId=\(malId) ep=\(episode.number)")
+                AppLog.debug(.player, "aniskip: no segments malId=\(malId) ep=\(self.episode.number)")
                 return
             }
-            await MainActor.run {
-                skipSegments = segments
-                updateActiveSkip(at: currentPlaybackTime)
-                AppLog.debug(.player, "aniskip: fetched malId=\(malId) ep=\(episode.number) count=\(segments.count)")
-            }
-            appState.services.downloadManager.storeSkipSegments(segments, malId: malId, episode: episode.number)
+            self.skipSegments = segments
+            self.updateActiveSkip(at: self.currentPlaybackTime)
+            AppLog.debug(.player, "aniskip: fetched malId=\(malId) ep=\(self.episode.number) count=\(segments.count)")
+            self.services.downloadManager.storeSkipSegments(segments, malId: malId, episode: self.episode.number)
         }
     }
 
@@ -394,24 +371,26 @@ private struct AVPlayerScreen: View {
 
         item.cancelPendingSeeks()
         AppLog.debug(.player, "seek: perform time=\(clampedSeconds) reason=\(request.reason) trigger=\(reason)")
-        player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { finished in
+        player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] finished in
+            guard let self else { return }
             AppLog.debug(.player, "seek: finished=\(finished) time=\(clampedSeconds) reason=\(request.reason)")
-            isSeeking = false
+            self.isSeeking = false
 
-            if let next = pendingSeekRequest {
+            if let next = self.pendingSeekRequest {
                 AppLog.debug(.player, "seek: chaining next time=\(next.seconds) reason=\(next.reason)")
-                performPendingSeekIfPossible(reason: "chain")
+                self.performPendingSeekIfPossible(reason: "chain")
                 return
             }
 
             if shouldResume {
-                resumePlaybackAfterSeek(player: player)
+                self.resumePlaybackAfterSeek(player: player)
             }
         }
 
         if shouldResume, isRemoteStream {
-            DispatchQueue.main.async {
-                resumePlaybackAfterSeek(player: player)
+            DispatchQueue.main.async { [weak self, weak player] in
+                guard let self, let player else { return }
+                self.resumePlaybackAfterSeek(player: player)
             }
         }
     }
@@ -469,30 +448,97 @@ private struct AVPlayerScreen: View {
         }
     }
 
-    private var overlaySkipButtonTitle: String {
-        if let activeSkip {
-            return skipButtonTitle(for: activeSkip)
-        }
-        return "+85s"
-    }
-
-    private var currentPlaybackTime: Double {
-        let seconds = player?.currentTime().seconds ?? 0
-        return seconds.isFinite ? seconds : 0
-    }
-
-    private func handleOverlaySkipAction() {
-        if let activeSkip {
-            seekToSkipEnd(activeSkip)
-        } else {
-            seekForwardByDefaultInterval()
-        }
-    }
-
     private struct PendingSeekRequest: Equatable {
         let seconds: Double
         let reason: String
         let shouldResumePlayback: Bool
+    }
+}
+#endif
+
+struct PlayerView: View {
+#if os(iOS)
+    @ObservedObject var controller: PlayerSessionController
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+#endif
+
+    var body: some View {
+        Group {
+#if os(iOS)
+            AVPlayerScreen(controller: controller)
+#else
+            Text("Playback is only supported on iOS.")
+#endif
+        }
+    }
+}
+
+#if os(iOS)
+private struct AVPlayerScreen: View {
+    @ObservedObject var controller: PlayerSessionController
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            if let player = controller.player {
+                AVPlayerViewControllerRepresentable(
+                    player: player,
+                    skipButtonTitle: controller.overlaySkipButtonTitle,
+                    onSkipTapped: controller.handleOverlaySkipAction,
+                    onPictureInPictureStarted: handlePictureInPictureStarted,
+                    onPictureInPictureStopped: handlePictureInPictureStopped,
+                    onRestoreFromPictureInPicture: restoreUserInterfaceFromPictureInPicture,
+                    onPictureInPictureFailed: handlePictureInPictureFailed
+                )
+                .ignoresSafeArea()
+            } else {
+                Color.black.ignoresSafeArea()
+                ProgressView("Loading player...")
+                    .tint(.white)
+                    .foregroundColor(.white)
+            }
+        }
+        .onAppear {
+            controller.startPlaybackIfNeeded()
+        }
+        .alert("Playback Error", isPresented: Binding(
+            get: { controller.errorMessage != nil },
+            set: { _ in controller.clearError() }
+        )) {
+            Button("OK", role: .cancel) {
+                appState.closeActivePlayerSession()
+                dismiss()
+            }
+        } message: {
+            Text(controller.errorMessage ?? "Unknown error")
+        }
+    }
+
+    private func handlePictureInPictureStarted() {
+        controller.isPictureInPictureActive = true
+        controller.shouldRestoreAfterPictureInPicture = true
+        AppLog.debug(.player, "pip: active=true")
+        appState.dismissPlayerForPictureInPicture()
+    }
+
+    private func handlePictureInPictureStopped() {
+        AppLog.debug(.player, "pip: active=false")
+        appState.handlePictureInPictureStopped()
+    }
+
+    private func restoreUserInterfaceFromPictureInPicture(_ completion: @escaping (Bool) -> Void) {
+        AppLog.debug(.player, "pip: restore requested")
+        appState.handlePictureInPictureStopped()
+        DispatchQueue.main.async {
+            completion(true)
+        }
+    }
+
+    private func handlePictureInPictureFailed(_ error: Error) {
+        AppLog.error(.player, "pip: failed start error=\(error.localizedDescription)")
+        appState.handlePictureInPictureFailedToStart()
     }
 }
 
@@ -500,10 +546,19 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
     let player: AVPlayer
     let skipButtonTitle: String
     let onSkipTapped: () -> Void
-    let onPictureInPictureChanged: (Bool) -> Void
+    let onPictureInPictureStarted: () -> Void
+    let onPictureInPictureStopped: () -> Void
+    let onRestoreFromPictureInPicture: (@escaping (Bool) -> Void) -> Void
+    let onPictureInPictureFailed: (Error) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onSkipTapped: onSkipTapped, onPictureInPictureChanged: onPictureInPictureChanged)
+        Coordinator(
+            onSkipTapped: onSkipTapped,
+            onPictureInPictureStarted: onPictureInPictureStarted,
+            onPictureInPictureStopped: onPictureInPictureStopped,
+            onRestoreFromPictureInPicture: onRestoreFromPictureInPicture,
+            onPictureInPictureFailed: onPictureInPictureFailed
+        )
     }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
@@ -524,7 +579,10 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
             uiViewController.player = player
         }
         context.coordinator.onSkipTapped = onSkipTapped
-        context.coordinator.onPictureInPictureChanged = onPictureInPictureChanged
+        context.coordinator.onPictureInPictureStarted = onPictureInPictureStarted
+        context.coordinator.onPictureInPictureStopped = onPictureInPictureStopped
+        context.coordinator.onRestoreFromPictureInPicture = onRestoreFromPictureInPicture
+        context.coordinator.onPictureInPictureFailed = onPictureInPictureFailed
         uiViewController.delegate = context.coordinator
         context.coordinator.installSkipButtonIfNeeded(in: uiViewController)
         context.coordinator.updateSkipButtonTitle(skipButtonTitle)
@@ -532,20 +590,28 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
 
     final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
         var onSkipTapped: () -> Void
-        var onPictureInPictureChanged: (Bool) -> Void
+        var onPictureInPictureStarted: () -> Void
+        var onPictureInPictureStopped: () -> Void
+        var onRestoreFromPictureInPicture: (@escaping (Bool) -> Void) -> Void
+        var onPictureInPictureFailed: (Error) -> Void
         private weak var skipButton: UIButton?
         private weak var blurView: SkipOverlayView?
         private weak var progressSlider: UISlider?
-        private weak var buttonHostView: UIView?
         private var syncTask: Task<Void, Never>?
         private var placementConstraints: [NSLayoutConstraint] = []
 
         init(
             onSkipTapped: @escaping () -> Void,
-            onPictureInPictureChanged: @escaping (Bool) -> Void
+            onPictureInPictureStarted: @escaping () -> Void,
+            onPictureInPictureStopped: @escaping () -> Void,
+            onRestoreFromPictureInPicture: @escaping (@escaping (Bool) -> Void) -> Void,
+            onPictureInPictureFailed: @escaping (Error) -> Void
         ) {
             self.onSkipTapped = onSkipTapped
-            self.onPictureInPictureChanged = onPictureInPictureChanged
+            self.onPictureInPictureStarted = onPictureInPictureStarted
+            self.onPictureInPictureStopped = onPictureInPictureStopped
+            self.onRestoreFromPictureInPicture = onRestoreFromPictureInPicture
+            self.onPictureInPictureFailed = onPictureInPictureFailed
         }
 
         deinit {
@@ -625,7 +691,6 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
                         blurView.bottomAnchor.constraint(equalTo: slider.topAnchor, constant: -12)
                     ]
                     NSLayoutConstraint.activate(placementConstraints)
-                    buttonHostView = host
                 }
                 host.bringSubviewToFront(blurView)
             } else if blurView.superview == nil, let overlay = controller.contentOverlayView {
@@ -636,7 +701,6 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
                     blurView.bottomAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.bottomAnchor, constant: -56)
                 ]
                 NSLayoutConstraint.activate(placementConstraints)
-                buttonHostView = overlay
                 overlay.bringSubviewToFront(blurView)
             }
         }
@@ -689,33 +753,30 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
 
         @objc
         private func handleSkipTouchDown() {
-            // Keep the native controls visible while the user taps the custom skip control.
             blurView?.alpha = 1
             blurView?.isHidden = false
         }
 
         func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
-            onPictureInPictureChanged(true)
-        }
-
-        func playerViewControllerDidStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
-            onPictureInPictureChanged(true)
-        }
-
-        func playerViewControllerWillStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
-            onPictureInPictureChanged(false)
+            onPictureInPictureStarted()
         }
 
         func playerViewControllerDidStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
-            onPictureInPictureChanged(false)
+            onPictureInPictureStopped()
+        }
+
+        func playerViewController(
+            _ playerViewController: AVPlayerViewController,
+            restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
+        ) {
+            onRestoreFromPictureInPicture(completionHandler)
         }
 
         func playerViewController(
             _ playerViewController: AVPlayerViewController,
             failedToStartPictureInPictureWithError error: Error
         ) {
-            AppLog.error(.player, "pip: failed start error=\(error.localizedDescription)")
-            onPictureInPictureChanged(false)
+            onPictureInPictureFailed(error)
         }
     }
 
