@@ -196,7 +196,9 @@ private struct AVPlayerScreen: View {
         statusObserver = item.observe(\.status, options: [.initial, .new]) { observed, _ in
             switch observed.status {
             case .readyToPlay:
-                applyPendingResumeIfNeeded(reason: "readyToPlay")
+                if !isRemoteStream {
+                    applyPendingResumeIfNeeded(reason: "readyToPlay")
+                }
                 performPendingSeekIfPossible(reason: "statusReady")
             case .failed:
                 errorMessage = observed.error?.localizedDescription ?? "Playback failed."
@@ -220,13 +222,15 @@ private struct AVPlayerScreen: View {
                 if shouldLogBufferState {
                     AppLog.debug(.player, "buffer: likelyToKeepUp=\(observed.isPlaybackLikelyToKeepUp)")
                 }
-                if observed.isPlaybackLikelyToKeepUp {
+                if observed.isPlaybackLikelyToKeepUp, !isRemoteStream {
                     applyPendingResumeIfNeeded(reason: "likelyToKeepUp")
                     performPendingSeekIfPossible(reason: "keepUp")
                 }
             },
             item.observe(\.seekableTimeRanges, options: [.initial, .new]) { _, _ in
-                applyPendingResumeIfNeeded(reason: "seekableRanges")
+                if !isRemoteStream {
+                    applyPendingResumeIfNeeded(reason: "seekableRanges")
+                }
                 performPendingSeekIfPossible(reason: "seekableRanges")
             }
         ]
@@ -249,6 +253,9 @@ private struct AVPlayerScreen: View {
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             let seconds = time.seconds
             guard seconds.isFinite else { return }
+            if isRemoteStream, seconds >= 1 {
+                applyPendingResumeIfNeeded(reason: "playbackAdvanced")
+            }
             updateActiveSkip(at: seconds)
             if isSeeking { return }
             let duration = player.currentItem?.duration.seconds ?? 0
