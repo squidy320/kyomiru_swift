@@ -34,6 +34,7 @@ struct DetailsView: View {
     @State private var showImportReview = false
     @State private var importCandidates: [EpisodeImportCandidate] = []
     @State private var importMessage: String?
+    @State private var downloadMessage: String?
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -98,33 +99,18 @@ struct DetailsView: View {
             }
         }
         .sheet(isPresented: $showSourceSheet) {
-            SourcePickerSheet(
+            StreamSourcePickerSheet(
                 media: media,
                 episode: selectedEpisode,
                 sources: sources,
+                preferredAudio: appState.settings.defaultAudio,
+                preferredQuality: appState.settings.defaultQuality,
                 onPlay: { picked in
-                    if let picked {
-                        self.sources = [picked]
-                    }
+                    self.sources = [picked]
                     showPlayer = true
                 },
                 onDownload: { source in
-                    if source.format.lowercased() == "m3u8" {
-                        appState.services.downloadManager.enqueueHLS(
-                            title: media.title.best,
-                            episode: selectedEpisode?.number ?? 0,
-                            url: source.url,
-                            headers: source.headers,
-                            media: detailItem
-                        )
-                    } else {
-                        appState.services.downloadManager.enqueue(
-                            title: media.title.best,
-                            episode: selectedEpisode?.number ?? 0,
-                            url: source.url,
-                            media: detailItem
-                        )
-                    }
+                    enqueueDownload(source, episodeNumber: selectedEpisode?.number ?? 0)
                 }
             )
         }
@@ -181,6 +167,14 @@ struct DetailsView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(importMessage ?? "")
+        }
+        .alert("Downloads", isPresented: Binding(
+            get: { downloadMessage != nil },
+            set: { _ in downloadMessage = nil }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(downloadMessage ?? "")
         }
         .toolbar {
             if !isPad {
@@ -289,6 +283,7 @@ struct DetailsView: View {
                     let title = streamingTitle(for: episode) ?? meta?.title ?? "Episode \(episode.number)"
                     let thumb = streamingThumbnail(for: episode) ?? meta?.thumbnailURL ?? episodeThumbnailURL(for: episode)
                     Button {
+                        playerStartAt = nil
                         selectEpisode(episode)
                     } label: {
                         EpisodeThumbCard(
@@ -588,6 +583,7 @@ struct DetailsView: View {
                         .buttonStyle(.plain)
                     } else if let ep = card.episode {
                         Button {
+                            playerStartAt = nil
                             selectEpisode(ep)
                         } label: {
                             EpisodeRow(card: card)
@@ -629,6 +625,7 @@ struct DetailsView: View {
                     isDownloaded: isEpisodeDownloaded(episode.number),
                     isNew: false,
                     onTap: {
+                        playerStartAt = nil
                         selectEpisode(episode)
                     }
                 )
@@ -749,7 +746,6 @@ struct DetailsView: View {
     }
 
     private func selectEpisode(_ episode: SoraEpisode) {
-        playerStartAt = nil
         selectedEpisode = episode
         AppLog.debug(.ui, "episode selected ep=\(episode.number)")
         Task {
@@ -784,7 +780,7 @@ struct DetailsView: View {
                 if sources.isEmpty {
                     errorMessage = "No streams available."
                 } else {
-                    showSourceSheet = true
+                    handleLoadedSourcesForPlayback(sources, episode: episode)
                 }
             } catch {
                 errorMessage = "Failed to load streams."
@@ -817,6 +813,7 @@ struct DetailsView: View {
 
     private func playFirstEpisode() {
         guard let first = episodes.first else { return }
+        playerStartAt = nil
         selectEpisode(first)
     }
 
@@ -825,7 +822,7 @@ struct DetailsView: View {
            let episode = episodes.first(where: { $0.number == lastNumber }),
            let position = PlaybackHistoryStore.shared.position(for: episode.id),
            position > 0 {
-            playerStartAt = nil
+            playerStartAt = position
             selectEpisode(episode)
             return
         }
@@ -988,31 +985,69 @@ struct DetailsView: View {
         AppLog.debug(.downloads, "download all start mediaId=\(media.id) count=\(episodes.count)")
         Task {
             appState.services.offlineManager.beginDownload(for: detailItem)
+            var queued = 0
+            var skipped = 0
             for ep in episodes {
                 do {
                     let sources = try await appState.services.episodeService.loadSources(for: ep)
-                    guard let best = sources.first else { continue }
-                    if best.format.lowercased() == "m3u8" {
-                        appState.services.downloadManager.enqueueHLS(
-                            title: media.title.best,
-                            episode: ep.number,
-                            url: best.url,
-                            headers: best.headers,
-                            media: detailItem
-                        )
-                    } else {
-                        appState.services.downloadManager.enqueue(
-                            title: media.title.best,
-                            episode: ep.number,
-                            url: best.url,
-                            media: detailItem
-                        )
+                    guard let preferred = preferredSource(in: sources) else {
+                        skipped += 1
+                        continue
                     }
+                    enqueueDownload(preferred, episodeNumber: ep.number)
+                    queued += 1
                 } catch {
                     continue
                 }
             }
             appState.services.offlineManager.endDownload(for: detailItem)
+            await MainActor.run {
+                if skipped > 0 {
+                    downloadMessage = "Queued \(queued) episode(s). Skipped \(skipped) because your saved audio/quality preference was unavailable."
+                } else if queued > 0 {
+                    downloadMessage = "Queued \(queued) episode(s) using your saved stream preference."
+                } else {
+                    downloadMessage = "No episodes matched your saved audio/quality preference."
+                }
+            }
+        }
+    }
+
+    private func handleLoadedSourcesForPlayback(_ loadedSources: [SoraSource], episode: SoraEpisode) {
+        self.sources = loadedSources
+        if let preferred = preferredSource(in: loadedSources) {
+            self.sources = [preferred]
+            selectedEpisode = episode
+            presentSelectedEpisode()
+        } else {
+            showSourceSheet = true
+        }
+    }
+
+    private func preferredSource(in loadedSources: [SoraSource]) -> SoraSource? {
+        StreamSourcePreferenceResolver.preferredSource(
+            in: loadedSources,
+            preferredAudio: appState.settings.defaultAudio,
+            preferredQuality: appState.settings.defaultQuality
+        )
+    }
+
+    private func enqueueDownload(_ source: SoraSource, episodeNumber: Int) {
+        if source.format.lowercased() == "m3u8" {
+            appState.services.downloadManager.enqueueHLS(
+                title: media.title.best,
+                episode: episodeNumber,
+                url: source.url,
+                headers: source.headers,
+                media: detailItem
+            )
+        } else {
+            appState.services.downloadManager.enqueue(
+                title: media.title.best,
+                episode: episodeNumber,
+                url: source.url,
+                media: detailItem
+            )
         }
     }
 
@@ -1304,115 +1339,6 @@ private struct ListManagerView: View {
                 }
             }
         }
-    }
-}
-
-private struct SourcePickerSheet: View {
-    let media: AniListMedia
-    let episode: SoraEpisode?
-    let sources: [SoraSource]
-    let onPlay: (SoraSource?) -> Void
-    let onDownload: (SoraSource) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var selectedAudio: String = "Sub"
-    @State private var selectedQuality: String = "Auto"
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Picker("Audio", selection: $selectedAudio) {
-                        ForEach(audioOptions(), id: \.self) { a in
-                            Text(a).tag(a)
-                        }
-                    }
-                    Picker("Quality", selection: $selectedQuality) {
-                        ForEach(qualityOptions(), id: \.self) { q in
-                            Text(q).tag(q)
-                        }
-                    }
-                }
-                ForEach(filteredSources()) { source in
-                    VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
-                        Text("\(source.quality) - \(source.subOrDub)")
-                        Text(source.format.uppercased())
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                        HStack {
-                            Button("Play") {
-                                dismiss()
-                                onPlay(bestSource())
-                            }
-                            .buttonStyle(.borderedProminent)
-                            if source.format.lowercased() == "mp4" || source.format.lowercased() == "m3u8" {
-                                Button("Download") {
-                                    onDownload(source)
-                                }
-                                .buttonStyle(.bordered)
-                            } else {
-                                Text("Download only for MP4/HLS")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .padding(.vertical, UIConstants.tinyPadding)
-                }
-            }
-            .navigationTitle("\(media.title.best) ??? Ep \(episode?.number ?? 0)")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Close") { dismiss() }
-                }
-            }
-        }
-    }
-
-    private func audioKey(_ value: String) -> String {
-        let v = value.lowercased()
-        if v.contains("sub") || v.contains("jpn") || v.contains("jp") { return "sub" }
-        if v.contains("dub") || v.contains("eng") { return "dub" }
-        return "sub"
-    }
-
-    private func audioOptions() -> [String] {
-        let options = Set(sources.map { audioKey($0.subOrDub) == "dub" ? "Dub" : "Sub" })
-        return options.isEmpty ? ["Sub"] : Array(options)
-    }
-
-    private func qualityOptions() -> [String] {
-        let key = audioKey(selectedAudio)
-        let pool = sources.filter { audioKey($0.subOrDub) == key }
-        let list = pool.isEmpty ? sources : pool
-        let qualities = Set(list.map { $0.quality.isEmpty ? "Auto" : $0.quality })
-        return qualities.sorted { a, b in
-            if a == "Auto" { return true }
-            if b == "Auto" { return false }
-            return a > b
-        }
-    }
-
-    private func filteredSources() -> [SoraSource] {
-        let key = audioKey(selectedAudio)
-        var list = sources.filter { audioKey($0.subOrDub) == key }
-        if list.isEmpty { list = sources }
-        if selectedQuality.lowercased() != "auto" {
-            if let exact = list.first(where: { $0.quality.lowercased().contains(selectedQuality.lowercased()) }) {
-                return [exact]
-            }
-        }
-        return list
-    }
-
-    private func bestSource() -> SoraSource? {
-        let filtered = filteredSources()
-        let ranked = filtered.sorted { qualityRank($0.quality) > qualityRank($1.quality) }
-        return ranked.first
-    }
-
-    private func qualityRank(_ q: String) -> Int {
-        let digits = q.filter { $0.isNumber }
-        return Int(digits) ?? 0
     }
 }
 

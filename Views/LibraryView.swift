@@ -17,7 +17,9 @@ struct LibraryView: View {
     @State private var selectedContinueEpisode: SoraEpisode?
     @State private var selectedContinueMedia: AniListMedia?
     @State private var continueSources: [SoraSource] = []
+    @State private var continuePlayerStartAt: Double?
     @State private var showContinuePlayer = false
+    @State private var showContinueSourceSheet = false
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -175,8 +177,29 @@ struct LibraryView: View {
                     mediaId: media.id,
                     malId: media.idMal,
                     mediaTitle: media.title.best,
+                    startAt: continuePlayerStartAt,
                     onRestoreAfterPictureInPicture: {
                         showContinuePlayer = true
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: $showContinueSourceSheet) {
+            if let episode = selectedContinueEpisode,
+               let media = selectedContinueMedia,
+               !continueSources.isEmpty {
+                StreamSourcePickerSheet(
+                    media: media,
+                    episode: episode,
+                    sources: continueSources,
+                    preferredAudio: appState.settings.defaultAudio,
+                    preferredQuality: appState.settings.defaultQuality,
+                    onPlay: { picked in
+                        continueSources = [picked]
+                        presentContinuePlayer()
+                    },
+                    onDownload: { source in
+                        enqueueContinueDownload(source, media: media, episodeNumber: episode.number)
                     }
                 )
             }
@@ -223,7 +246,9 @@ struct LibraryView: View {
                 selectedContinueEpisode = nil
                 selectedContinueMedia = nil
                 continueSources = []
+                continuePlayerStartAt = nil
                 showContinuePlayer = false
+                showContinueSourceSheet = false
                 return
             }
             Task {
@@ -476,18 +501,25 @@ struct LibraryView: View {
                     selectedContinueEpisode = episode
                     selectedContinueMedia = media
                     continueSources = [source]
+                    continuePlayerStartAt = PlaybackHistoryStore.shared.position(for: episode.id)
                     presentContinuePlayer()
                     continueLoading = false
                     return
                 }
-                let sources = try await appState.services.episodeService.loadSources(for: episode)
-                if sources.isEmpty {
+                let loadedSources = try await appState.services.episodeService.loadSources(for: episode)
+                if loadedSources.isEmpty {
                     continueError = "No streams available."
                 } else {
                     selectedContinueEpisode = episode
                     selectedContinueMedia = media
-                    continueSources = sources
-                    presentContinuePlayer()
+                    continuePlayerStartAt = PlaybackHistoryStore.shared.position(for: episode.id)
+                    continueSources = loadedSources
+                    if let preferred = preferredSource(in: loadedSources) {
+                        continueSources = [preferred]
+                        presentContinuePlayer()
+                    } else {
+                        showContinueSourceSheet = true
+                    }
                 }
             } catch {
                 continueError = "Failed to load stream."
@@ -503,7 +535,52 @@ struct LibraryView: View {
               !continueSources.isEmpty else { return }
         _ = episode
         _ = media
+        showContinueSourceSheet = false
         showContinuePlayer = true
+    }
+
+    private func preferredSource(in sources: [SoraSource]) -> SoraSource? {
+        StreamSourcePreferenceResolver.preferredSource(
+            in: sources,
+            preferredAudio: appState.settings.defaultAudio,
+            preferredQuality: appState.settings.defaultQuality
+        )
+    }
+
+    private func enqueueContinueDownload(_ source: SoraSource, media: AniListMedia, episodeNumber: Int) {
+        let mediaItem = MediaItem(
+            externalId: media.id,
+            title: media.title.best,
+            subtitle: media.format,
+            posterImageURL: media.coverURL,
+            heroImageURL: media.bannerURL ?? media.coverURL,
+            ratingScore: media.averageScore,
+            matchPercent: media.averageScore,
+            contentRating: media.isAdult ? "TV-MA" : "TV-14",
+            genres: media.genres,
+            totalEpisodes: media.episodes,
+            currentEpisode: 0,
+            userRating: 0,
+            studio: media.studios.first ?? media.format,
+            status: .planning
+        )
+
+        if source.format.lowercased() == "m3u8" {
+            appState.services.downloadManager.enqueueHLS(
+                title: media.title.best,
+                episode: episodeNumber,
+                url: source.url,
+                headers: source.headers,
+                media: mediaItem
+            )
+        } else {
+            appState.services.downloadManager.enqueue(
+                title: media.title.best,
+                episode: episodeNumber,
+                url: source.url,
+                media: mediaItem
+            )
+        }
     }
 
     private func formatRemaining(_ seconds: TimeInterval) -> String {

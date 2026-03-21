@@ -363,11 +363,6 @@ private struct AVPlayerScreen: View {
         requestSeek(to: segment.end, reason: "skip:\(segment.type)", shouldResumePlayback: true)
     }
 
-    private func seekForwardByDefaultInterval() {
-        let target = currentPlaybackTime + 85
-        requestSeek(to: target, reason: "skip:+85", shouldResumePlayback: true)
-    }
-
     private func requestSeek(to seconds: Double, reason: String, shouldResumePlayback: Bool? = nil) {
         let shouldResume = shouldResumePlayback ?? (player?.timeControlStatus != .paused || player?.rate ?? 0 > 0)
         pendingSeekRequest = PendingSeekRequest(seconds: seconds, reason: reason, shouldResumePlayback: shouldResume)
@@ -477,11 +472,9 @@ private struct AVPlayerScreen: View {
         }
     }
 
-    private var overlaySkipButtonTitle: String {
-        if let activeSkip {
-            return skipButtonTitle(for: activeSkip)
-        }
-        return "+85s"
+    private var overlaySkipButtonTitle: String? {
+        guard let activeSkip else { return nil }
+        return skipButtonTitle(for: activeSkip)
     }
 
     private var currentPlaybackTime: Double {
@@ -490,11 +483,8 @@ private struct AVPlayerScreen: View {
     }
 
     private func handleOverlaySkipAction() {
-        if let activeSkip {
-            seekToSkipEnd(activeSkip)
-        } else {
-            seekForwardByDefaultInterval()
-        }
+        guard let activeSkip else { return }
+        seekToSkipEnd(activeSkip)
     }
 
     private func handlePictureInPictureStarted() {
@@ -544,7 +534,7 @@ private struct AVPlayerScreen: View {
 
 private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentable {
     let player: AVPlayer
-    let skipButtonTitle: String
+    let skipButtonTitle: String?
     let onSkipTapped: () -> Void
     let onPictureInPictureStarted: () -> Void
     let onPictureInPictureStopped: () -> Void
@@ -599,6 +589,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         private weak var progressSlider: UISlider?
         private var syncTask: Task<Void, Never>?
         private var placementConstraints: [NSLayoutConstraint] = []
+        private var isSkipButtonEnabled = false
 
         init(
             onSkipTapped: @escaping () -> Void,
@@ -658,9 +649,11 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
             ensureSyncTask(for: controller)
         }
 
-        func updateSkipButtonTitle(_ title: String) {
+        func updateSkipButtonTitle(_ title: String?) {
             skipButton?.setTitle(title, for: .normal)
-            blurView?.isHidden = title.isEmpty
+            isSkipButtonEnabled = !(title?.isEmpty ?? true)
+            blurView?.isHidden = !isSkipButtonEnabled
+            blurView?.isUserInteractionEnabled = isSkipButtonEnabled
         }
 
         private func ensureSyncTask(for controller: AVPlayerViewController) {
@@ -707,6 +700,12 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
 
         private func syncButtonVisibility() {
             guard let blurView else { return }
+            guard isSkipButtonEnabled else {
+                blurView.alpha = 0
+                blurView.isUserInteractionEnabled = false
+                blurView.isHidden = true
+                return
+            }
             if let slider = progressSlider {
                 let shouldShow = !slider.isHidden && slider.alpha > 0.05 && !(slider.superview?.isHidden ?? false)
                 blurView.alpha = shouldShow ? (slider.superview?.alpha ?? slider.alpha) : 0
