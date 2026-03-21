@@ -82,6 +82,8 @@ private struct AVPlayerScreen: View {
     @State private var didDismissForPictureInPicture = false
     @State private var shouldRestoreAfterPictureInPicture = false
     @State private var didRequestRestoreAfterPictureInPicture = false
+    @State private var wasPlayingBeforeHoldSpeed = false
+    @State private var previousPlaybackRate: Float = 1.0
 
     var body: some View {
         ZStack {
@@ -90,6 +92,7 @@ private struct AVPlayerScreen: View {
                     player: player,
                     skipButtonTitle: overlaySkipButtonTitle,
                     onSkipTapped: handleOverlaySkipAction,
+                    onHoldSpeedChanged: handleHoldSpeedChanged,
                     onPictureInPictureStarted: handlePictureInPictureStarted,
                     onPictureInPictureStopped: handlePictureInPictureStopped,
                     onRestoreFromPictureInPicture: restoreUserInterfaceFromPictureInPicture,
@@ -209,6 +212,8 @@ private struct AVPlayerScreen: View {
         didDismissForPictureInPicture = false
         shouldRestoreAfterPictureInPicture = false
         didRequestRestoreAfterPictureInPicture = false
+        wasPlayingBeforeHoldSpeed = false
+        previousPlaybackRate = 1.0
         player.pause()
         player.replaceCurrentItem(with: nil)
         self.player = nil
@@ -487,6 +492,25 @@ private struct AVPlayerScreen: View {
         seekToSkipEnd(activeSkip)
     }
 
+    private func handleHoldSpeedChanged(_ isActive: Bool) {
+        guard let player else { return }
+
+        if isActive {
+            guard player.timeControlStatus != .paused || player.rate > 0 else { return }
+            wasPlayingBeforeHoldSpeed = true
+            previousPlaybackRate = player.rate > 0 ? player.rate : 1.0
+            player.rate = Float(appState.settings.playerHoldSpeed.rawValue)
+            AppLog.debug(.player, "hold speed active rate=\(appState.settings.playerHoldSpeed.rawValue)")
+        } else {
+            guard wasPlayingBeforeHoldSpeed else { return }
+            let restoreRate = previousPlaybackRate > 0 ? previousPlaybackRate : 1.0
+            player.rate = restoreRate
+            wasPlayingBeforeHoldSpeed = false
+            previousPlaybackRate = 1.0
+            AppLog.debug(.player, "hold speed ended restoreRate=\(restoreRate)")
+        }
+    }
+
     private func handlePictureInPictureStarted() {
         isPictureInPictureActive = true
         didDismissForPictureInPicture = true
@@ -536,6 +560,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
     let player: AVPlayer
     let skipButtonTitle: String?
     let onSkipTapped: () -> Void
+    let onHoldSpeedChanged: (Bool) -> Void
     let onPictureInPictureStarted: () -> Void
     let onPictureInPictureStopped: () -> Void
     let onRestoreFromPictureInPicture: (@escaping (Bool) -> Void) -> Void
@@ -544,6 +569,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
     func makeCoordinator() -> Coordinator {
         Coordinator(
             onSkipTapped: onSkipTapped,
+            onHoldSpeedChanged: onHoldSpeedChanged,
             onPictureInPictureStarted: onPictureInPictureStarted,
             onPictureInPictureStopped: onPictureInPictureStopped,
             onRestoreFromPictureInPicture: onRestoreFromPictureInPicture,
@@ -560,6 +586,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
             controller.canStartPictureInPictureAutomaticallyFromInline = true
         }
         context.coordinator.installSkipButtonIfNeeded(in: controller)
+        context.coordinator.installHoldSpeedRecognizerIfNeeded(in: controller)
         context.coordinator.updateSkipButtonTitle(skipButtonTitle)
         return controller
     }
@@ -569,17 +596,20 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
             uiViewController.player = player
         }
         context.coordinator.onSkipTapped = onSkipTapped
+        context.coordinator.onHoldSpeedChanged = onHoldSpeedChanged
         context.coordinator.onPictureInPictureStarted = onPictureInPictureStarted
         context.coordinator.onPictureInPictureStopped = onPictureInPictureStopped
         context.coordinator.onRestoreFromPictureInPicture = onRestoreFromPictureInPicture
         context.coordinator.onPictureInPictureFailed = onPictureInPictureFailed
         uiViewController.delegate = context.coordinator
         context.coordinator.installSkipButtonIfNeeded(in: uiViewController)
+        context.coordinator.installHoldSpeedRecognizerIfNeeded(in: uiViewController)
         context.coordinator.updateSkipButtonTitle(skipButtonTitle)
     }
 
     final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
         var onSkipTapped: () -> Void
+        var onHoldSpeedChanged: (Bool) -> Void
         var onPictureInPictureStarted: () -> Void
         var onPictureInPictureStopped: () -> Void
         var onRestoreFromPictureInPicture: (@escaping (Bool) -> Void) -> Void
@@ -587,18 +617,21 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         private weak var skipButton: UIButton?
         private weak var blurView: SkipOverlayView?
         private weak var progressSlider: UISlider?
+        private weak var holdRecognizer: UILongPressGestureRecognizer?
         private var syncTask: Task<Void, Never>?
         private var placementConstraints: [NSLayoutConstraint] = []
         private var isSkipButtonEnabled = false
 
         init(
             onSkipTapped: @escaping () -> Void,
+            onHoldSpeedChanged: @escaping (Bool) -> Void,
             onPictureInPictureStarted: @escaping () -> Void,
             onPictureInPictureStopped: @escaping () -> Void,
             onRestoreFromPictureInPicture: @escaping (@escaping (Bool) -> Void) -> Void,
             onPictureInPictureFailed: @escaping (Error) -> Void
         ) {
             self.onSkipTapped = onSkipTapped
+            self.onHoldSpeedChanged = onHoldSpeedChanged
             self.onPictureInPictureStarted = onPictureInPictureStarted
             self.onPictureInPictureStopped = onPictureInPictureStopped
             self.onRestoreFromPictureInPicture = onRestoreFromPictureInPicture
@@ -654,6 +687,15 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
             isSkipButtonEnabled = !(title?.isEmpty ?? true)
             blurView?.isHidden = !isSkipButtonEnabled
             blurView?.isUserInteractionEnabled = isSkipButtonEnabled
+        }
+
+        func installHoldSpeedRecognizerIfNeeded(in controller: AVPlayerViewController) {
+            if holdRecognizer != nil { return }
+            let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleHoldSpeed(_:)))
+            recognizer.minimumPressDuration = 0.25
+            recognizer.cancelsTouchesInView = false
+            controller.view.addGestureRecognizer(recognizer)
+            holdRecognizer = recognizer
         }
 
         private func ensureSyncTask(for controller: AVPlayerViewController) {
@@ -754,6 +796,18 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         private func handleSkipTouchDown() {
             blurView?.alpha = 1
             blurView?.isHidden = false
+        }
+
+        @objc
+        private func handleHoldSpeed(_ recognizer: UILongPressGestureRecognizer) {
+            switch recognizer.state {
+            case .began:
+                onHoldSpeedChanged(true)
+            case .ended, .cancelled, .failed:
+                onHoldSpeedChanged(false)
+            default:
+                break
+            }
         }
 
         func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {

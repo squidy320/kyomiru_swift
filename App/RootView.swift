@@ -9,6 +9,7 @@ struct RootView: View {
         .environmentObject(appState.authState)
         .accentColor(Theme.accent)
         .background(Theme.baseBackground.ignoresSafeArea())
+        .preferredColorScheme(appState.settings.appearanceThemeMode.colorScheme)
         .task {
             AppLog.debug(.ui, "root view task start")
             await appState.bootstrap()
