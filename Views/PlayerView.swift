@@ -387,14 +387,24 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         var onSkipTapped: () -> Void
         private weak var skipButton: UIButton?
         private weak var blurView: UIVisualEffectView?
+        private weak var progressSlider: UISlider?
+        private weak var buttonHostView: UIView?
+        private var syncTask: Task<Void, Never>?
 
         init(onSkipTapped: @escaping () -> Void) {
             self.onSkipTapped = onSkipTapped
         }
 
+        deinit {
+            syncTask?.cancel()
+        }
+
         func installSkipButtonIfNeeded(in controller: AVPlayerViewController) {
-            guard skipButton == nil || blurView == nil else { return }
-            guard let overlay = controller.contentOverlayView else { return }
+            if skipButton != nil, blurView != nil {
+                attachButtonNearProgressBarIfNeeded(in: controller)
+                ensureSyncTask(for: controller)
+                return
+            }
 
             let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
             blur.translatesAutoresizingMaskIntoConstraints = false
@@ -412,25 +422,86 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
             button.addTarget(self, action: #selector(handleSkipTap), for: .touchUpInside)
 
             blur.contentView.addSubview(button)
-            overlay.addSubview(blur)
-
             NSLayoutConstraint.activate([
                 button.leadingAnchor.constraint(equalTo: blur.contentView.leadingAnchor),
                 button.trailingAnchor.constraint(equalTo: blur.contentView.trailingAnchor),
                 button.topAnchor.constraint(equalTo: blur.contentView.topAnchor),
-                button.bottomAnchor.constraint(equalTo: blur.contentView.bottomAnchor),
-
-                blur.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -16),
-                blur.bottomAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.bottomAnchor, constant: -22)
+                button.bottomAnchor.constraint(equalTo: blur.contentView.bottomAnchor)
             ])
 
             skipButton = button
             blurView = blur
+            attachButtonNearProgressBarIfNeeded(in: controller)
+            ensureSyncTask(for: controller)
         }
 
         func updateSkipButtonTitle(_ title: String) {
             skipButton?.setTitle(title, for: .normal)
             blurView?.isHidden = title.isEmpty
+        }
+
+        private func ensureSyncTask(for controller: AVPlayerViewController) {
+            guard syncTask == nil || syncTask?.isCancelled == true else { return }
+            syncTask = Task { @MainActor [weak self, weak controller] in
+                while !Task.isCancelled {
+                    guard let self, let controller else { break }
+                    self.attachButtonNearProgressBarIfNeeded(in: controller)
+                    self.syncButtonVisibility()
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                }
+            }
+        }
+
+        private func attachButtonNearProgressBarIfNeeded(in controller: AVPlayerViewController) {
+            guard let blurView else { return }
+
+            if let slider = findProgressSlider(in: controller.view) {
+                progressSlider = slider
+                let host = slider.superview ?? controller.view!
+                if blurView.superview !== host {
+                    blurView.removeFromSuperview()
+                    host.addSubview(blurView)
+                    NSLayoutConstraint.deactivate(blurView.constraints)
+                    blurView.translatesAutoresizingMaskIntoConstraints = false
+                    NSLayoutConstraint.activate([
+                        blurView.leadingAnchor.constraint(equalTo: slider.leadingAnchor),
+                        blurView.bottomAnchor.constraint(equalTo: slider.topAnchor, constant: -12)
+                    ])
+                    buttonHostView = host
+                }
+            } else if blurView.superview == nil, let overlay = controller.contentOverlayView {
+                overlay.addSubview(blurView)
+                NSLayoutConstraint.activate([
+                    blurView.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 16),
+                    blurView.bottomAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.bottomAnchor, constant: -56)
+                ])
+                buttonHostView = overlay
+            }
+        }
+
+        private func syncButtonVisibility() {
+            guard let blurView else { return }
+            if let slider = progressSlider {
+                let shouldShow = !slider.isHidden && slider.alpha > 0.05 && !(slider.superview?.isHidden ?? false)
+                blurView.alpha = shouldShow ? (slider.superview?.alpha ?? slider.alpha) : 0
+                blurView.isUserInteractionEnabled = shouldShow
+                blurView.isHidden = !shouldShow
+            } else {
+                blurView.alpha = 1
+                blurView.isHidden = false
+            }
+        }
+
+        private func findProgressSlider(in root: UIView) -> UISlider? {
+            if let slider = root as? UISlider, root.bounds.width > 120 {
+                return slider
+            }
+            for subview in root.subviews {
+                if let slider = findProgressSlider(in: subview) {
+                    return slider
+                }
+            }
+            return nil
         }
 
         @objc
