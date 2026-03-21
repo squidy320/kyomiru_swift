@@ -1503,7 +1503,7 @@ actor MediaConversionManager {
             AppLog.debug(.downloads, "import preflight requires remux path=\(inputURL.path) reason=video codec=\(probe.videoCodec ?? "none")")
             return false
         }
-        if let audioCodec = probe.audioCodec, !isMp4AudioCodecCompatible(audioCodec) {
+        if let audioCodec = probe.audioCodec, !isAVPlayerSafeMp4AudioCodec(audioCodec) {
             AppLog.debug(.downloads, "import preflight requires remux path=\(inputURL.path) reason=audio codec=\(audioCodec)")
             return false
         }
@@ -1582,6 +1582,7 @@ actor MediaConversionManager {
             let headerString = buildHeaderString(headers)
             let headerArg = headerString.isEmpty ? "" : "-headers \(quoted(value: headerString))"
             let duration = await probeDurationSeconds(path: playlistPath)
+            let probe = await probeMedia(path: playlistPath)
             let isLocalHls = playlistURL.isFileURL && (headers == nil || headerString.isEmpty)
             let allowHwDecode = isLocalHls && ensureFFmpegBuildconfLogged()
             let hwDecodeArgs = allowHwDecode ? "-hwaccel videotoolbox -hwaccel_output_format videotoolbox" : ""
@@ -1593,8 +1594,57 @@ actor MediaConversionManager {
             let commandAudioReencode = "\(baseArgs) -c:v copy -c:a aac -b:a 192k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
             let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -realtime true -preset veryfast -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 192k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
             let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 192k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
+            let canCopyVideo = probe.videoCodec.map(isMp4VideoCodecCompatible) ?? false
+            let canCopyAudio = probe.audioCodec.map(isAVPlayerSafeMp4AudioCodec) ?? false
 
-            AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count) audio=aac")
+            AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count) format=\(probe.format) vcodec=\(probe.videoCodec ?? "none") acodec=\(probe.audioCodec ?? "none")")
+
+            if !canCopyVideo {
+                AppLog.debug(.downloads, "ffmpeg hls preflight: video codec requires full transcode")
+                let fourth = await runFFmpeg(commandFullTranscodeVT, duration: duration, progress: progress)
+                if ReturnCode.isSuccess(fourth.code) {
+                    try? FileManager.default.removeItem(at: outputURL)
+                    try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
+                    AppLog.debug(.downloads, "ffmpeg hls success (vt transcode) output=\(outputPath)")
+                    return outputURL
+                }
+                if ReturnCode.isCancel(fourth.code) {
+                    AppLog.error(.downloads, "ffmpeg hls cancelled (vt transcode) input=\(playlistPath)")
+                    throw ConversionError.cancelled
+                }
+                AppLog.error(.downloads, "ffmpeg hls failed vt transcode, retrying libx264 input=\(playlistPath)")
+                let fifth = await runFFmpeg(commandFullTranscode, duration: duration, progress: progress)
+                if ReturnCode.isSuccess(fifth.code) {
+                    try? FileManager.default.removeItem(at: outputURL)
+                    try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
+                    AppLog.debug(.downloads, "ffmpeg hls success (libx264) output=\(outputPath)")
+                    return outputURL
+                }
+                if ReturnCode.isCancel(fifth.code) {
+                    AppLog.error(.downloads, "ffmpeg hls cancelled (libx264) input=\(playlistPath)")
+                    throw ConversionError.cancelled
+                }
+                let message = fifth.logs ?? fourth.logs ?? "ffmpeg hls conversion failed"
+                AppLog.error(.downloads, "ffmpeg hls failed input=\(playlistPath) error=\(message)")
+                try? FileManager.default.removeItem(at: outputURL)
+                throw ConversionError.exportFailed(message)
+            }
+
+            if !canCopyAudio, probe.audioCodec != nil {
+                AppLog.debug(.downloads, "ffmpeg hls preflight: audio codec requires AV-compatible AAC")
+                let third = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
+                if ReturnCode.isSuccess(third.code) {
+                    try? FileManager.default.removeItem(at: outputURL)
+                    try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
+                    AppLog.debug(.downloads, "ffmpeg hls success (audio reencode) output=\(outputPath)")
+                    return outputURL
+                }
+                if ReturnCode.isCancel(third.code) {
+                    AppLog.error(.downloads, "ffmpeg hls cancelled (audio reencode) input=\(playlistPath)")
+                    throw ConversionError.cancelled
+                }
+                logCopyFailure(label: "hls audio reencode", result: third)
+            }
 
             let instant = await runFFmpeg(commandInstantMux, duration: duration, progress: progress)
             if ReturnCode.isSuccess(instant.code) {
@@ -1721,7 +1771,7 @@ actor MediaConversionManager {
         let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -realtime true -preset veryfast -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 192k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
         let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 192k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
         let canCopyVideo = probe.videoCodec.map(isMp4VideoCodecCompatible) ?? false
-        let canCopyAudio = probe.audioCodec.map(isMp4AudioCodecCompatible) ?? false
+        let canCopyAudio = probe.audioCodec.map(isAVPlayerSafeMp4AudioCodec) ?? false
 
         AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration) format=\(probe.format) vcodec=\(probe.videoCodec ?? "none") acodec=\(probe.audioCodec ?? "none")")
 
@@ -2131,6 +2181,10 @@ actor MediaConversionManager {
 
     private func isMp4AudioCodecCompatible(_ codec: String) -> Bool {
         ["aac", "alac", "mp3"].contains(codec)
+    }
+
+    private func isAVPlayerSafeMp4AudioCodec(_ codec: String) -> Bool {
+        ["aac"].contains(codec)
     }
 
     private func logCopyFailure(label: String, result: (code: ReturnCode?, logs: String?)) {
