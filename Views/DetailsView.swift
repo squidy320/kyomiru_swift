@@ -119,16 +119,19 @@ struct DetailsView: View {
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
+        let useComfortableLayout = appState.settings.useComfortableLayout
+        let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
+        let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
             Color.black.ignoresSafeArea()
             if isPad {
                 ipadEpisodeLayout
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                    VStack(alignment: .leading, spacing: screenSpacing) {
                         detailHeroHeader
 
-                        VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                        VStack(alignment: .leading, spacing: screenSpacing) {
                             actionRow
 
                             if isLoading {
@@ -148,7 +151,7 @@ struct DetailsView: View {
                                 RelationsCarouselView(sections: relatedSections)
                             }
                         }
-                        .padding(.horizontal, UIConstants.standardPadding)
+                        .padding(.horizontal, screenPadding)
                         .padding(.top, UIConstants.smallPadding)
                         .padding(.bottom, UIConstants.bottomBarHeight)
                     }

@@ -28,14 +28,17 @@ struct DiscoveryView: View {
     }
 
     var body: some View {
+        let useComfortableLayout = appState.settings.useComfortableLayout
+        let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
+        let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
             Theme.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                    VStack(alignment: .leading, spacing: screenSpacing) {
                         heroHeader
 
-                        VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                        VStack(alignment: .leading, spacing: screenSpacing) {
                             SearchField(placeholder: "Search anime...", text: $query)
                             GenreFilterCarousel(genres: GenreFilterCarousel.defaultGenres)
 
@@ -57,7 +60,7 @@ struct DiscoveryView: View {
                                 }
                             } else {
                                 ForEach(coreSections) { section in
-                                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                                    VStack(alignment: .leading, spacing: screenSpacing) {
                                         HStack {
                                             Text(section.title)
                                                 .font(.system(size: 18, weight: .bold))
@@ -77,7 +80,7 @@ struct DiscoveryView: View {
                                             .buttonStyle(.plain)
                                         }
                                         ScrollView(.horizontal, showsIndicators: false) {
-                                            LazyHStack(spacing: UIConstants.interCardSpacing) {
+                                            LazyHStack(spacing: screenSpacing) {
                                                 ForEach(section.items, id: \.id) { media in
                                                     NavigationLink {
                                                         DetailsView(media: media)
@@ -104,7 +107,7 @@ struct DiscoveryView: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, UIConstants.standardPadding)
+                        .padding(.horizontal, screenPadding)
                         .padding(.top, -12)
                     }
                     .padding(.top, UIConstants.smallPadding)
@@ -185,8 +188,12 @@ struct DiscoveryView: View {
             .padding(.top, UIConstants.heroTopPadding)
             .onReceive(heroTimer) { _ in
                 guard !items.isEmpty else { return }
-                withAnimation(.easeInOut(duration: 0.4)) {
+                if appState.settings.reduceMotion {
                     heroIndex = (heroIndex + 1) % items.count
+                } else {
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        heroIndex = (heroIndex + 1) % items.count
+                    }
                 }
             }
         )

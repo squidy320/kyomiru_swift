@@ -23,11 +23,14 @@ struct LibraryView: View {
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
+        let useComfortableLayout = appState.settings.useComfortableLayout
+        let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
+        let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
             Theme.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                    VStack(alignment: .leading, spacing: screenSpacing) {
                         if UIDevice.current.userInterfaceIdiom != .pad {
                             LibraryTopBar(
                                 title: "Library",
@@ -44,12 +47,12 @@ struct LibraryView: View {
                         SearchField(placeholder: "Search in library...", text: $filterText)
 
                         if !continueWatchingItems().isEmpty {
-                            VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                            VStack(alignment: .leading, spacing: screenSpacing) {
                                 Text("Continue Watching")
                                     .font(.system(size: 18, weight: .bold))
                                     .foregroundColor(.white)
                                 ScrollView(.horizontal, showsIndicators: false) {
-                                    LazyHStack(spacing: UIConstants.interCardSpacing) {
+                                    LazyHStack(spacing: screenSpacing) {
                                         ForEach(continueWatchingItems()) { item in
                                             Button {
                                                 resumeContinueWatching(item)
@@ -120,7 +123,7 @@ struct LibraryView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, UIConstants.standardPadding)
+                    .padding(.horizontal, screenPadding)
                     .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
@@ -211,7 +214,7 @@ struct LibraryView: View {
                         .foregroundColor(Theme.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.horizontal, screenPadding)
                 .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
             } else if let continueError {
                 GlassCard {
@@ -219,7 +222,7 @@ struct LibraryView: View {
                         .foregroundColor(Theme.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.horizontal, screenPadding)
                 .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
             }
         }

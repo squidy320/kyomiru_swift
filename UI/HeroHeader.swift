@@ -20,6 +20,9 @@ struct HeroHeader: View {
 
     var body: some View {
         let useTMDB = appState.settings.cardImageSource == .tmdb
+        let useComfortableLayout = appState.settings.useComfortableLayout
+        let contentSpacing: CGFloat = useComfortableLayout ? 10 : 8
+        let contentPadding: CGFloat = useComfortableLayout ? 22 : 18
         let resolvedURL: URL? = {
             if useTMDB {
                 return tmdbLookupComplete ? (imdbBackdropURL ?? imageURL) : imdbBackdropURL
@@ -54,19 +57,19 @@ struct HeroHeader: View {
             .frame(height: height * 0.75)
             .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: contentSpacing) {
                 Text(title)
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: useComfortableLayout ? 26 : 24, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
 
                 if let subtitle {
                     Text(subtitle)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: useComfortableLayout ? 14 : 13, weight: .semibold))
                         .foregroundColor(Theme.textSecondary)
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: contentSpacing) {
                     HStack(spacing: 8) {
                         ForEach(pills) { pill in
                             MetadataPill(icon: pill.icon, text: pill.text)
@@ -81,9 +84,14 @@ struct HeroHeader: View {
                     }
                 }
             }
-            .padding(18)
+            .padding(contentPadding)
         }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .transaction { transaction in
+            if appState.settings.reduceMotion {
+                transaction.animation = nil
+            }
+        }
         .task(id: "\(media?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
             guard let media else { return }
             if useTMDB {

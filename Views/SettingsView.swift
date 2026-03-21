@@ -128,28 +128,6 @@ struct SettingsView: View {
                 )
             }
 
-            SettingsSectionCard(title: "Seek & Controls", subtitle: "Used for the manual skip amount when that player control is available.") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Skip Interval")
-                            .foregroundColor(.white)
-                        Spacer()
-                        Text("\(Int(appState.settings.playerSkipIntervalSeconds))s")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Theme.textSecondary)
-                    }
-                    Slider(
-                        value: Binding(
-                            get: { appState.settings.playerSkipIntervalSeconds },
-                            set: { appState.settings.playerSkipIntervalSeconds = round($0 / 5) * 5 }
-                        ),
-                        in: 15...120,
-                        step: 5
-                    )
-                    .tint(Theme.accent)
-                }
-            }
-
             SettingsSectionCard(title: "Gesture Hold Speed", subtitle: "Long-press in the player temporarily uses this playback speed.") {
                 Picker("Hold Speed", selection: Binding(
                     get: { appState.settings.playerHoldSpeed },

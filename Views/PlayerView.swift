@@ -607,7 +607,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         context.coordinator.updateSkipButtonTitle(skipButtonTitle)
     }
 
-    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate, UIGestureRecognizerDelegate {
         var onSkipTapped: () -> Void
         var onHoldSpeedChanged: (Bool) -> Void
         var onPictureInPictureStarted: () -> Void
@@ -694,6 +694,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
             let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleHoldSpeed(_:)))
             recognizer.minimumPressDuration = 0.25
             recognizer.cancelsTouchesInView = false
+            recognizer.delegate = self
             controller.view.addGestureRecognizer(recognizer)
             holdRecognizer = recognizer
         }
@@ -808,6 +809,21 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
             default:
                 break
             }
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            guard gestureRecognizer === holdRecognizer else { return true }
+            if touch.view is UIControl {
+                return false
+            }
+            var view = touch.view
+            while let current = view {
+                if current is UIControl || current is UISlider || current is UIButton || current is SkipOverlayView {
+                    return false
+                }
+                view = current.superview
+            }
+            return true
         }
 
         func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
