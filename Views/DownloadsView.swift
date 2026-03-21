@@ -536,7 +536,7 @@ private struct DownloadsDetailView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Theme.baseBackground.ignoresSafeArea()
             downloadsBody
         }
         .navigationTitle(title)
@@ -673,42 +673,69 @@ private struct DownloadsDetailView: View {
     @ViewBuilder
     private var downloadsBody: some View {
         if isPad {
-            ipadEpisodeCarousel
+            ipadDownloadsLayout
         } else {
-            episodeList
+            iphoneDownloadsLayout
         }
     }
 
-    private var episodeList: some View {
+    private var iphoneDownloadsLayout: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                ForEach(sortedItems) { item in
-                    let meta = episodeMetadata[item.episode]
-                    EpisodeRowView(
-                        episodeNumber: item.episode,
-                        title: meta?.title ?? "Episode \(item.episode)",
-                        ratingText: nil,
-                        description: nil,
-                        thumbnailURL: meta?.thumbnailURL,
-                        isPlayable: true,
-                        isWatched: isEpisodeWatched(item.episode),
-                        isDownloaded: true,
-                        isNew: false,
-                        onTap: {
-                            play(item)
-                        }
-                    )
-                    .contextMenu {
-                        Button("Delete") {
-                            DownloadManager.shared.delete(itemId: item.id)
-                        }
+                detailHeroHeader
+
+                episodeListContent
+            }
+            .padding(.bottom, UIConstants.bottomBarHeight)
+        }
+    }
+
+    private var ipadDownloadsLayout: some View {
+        ZStack(alignment: .bottomLeading) {
+            detailHeroBackdropFull
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                    Spacer(minLength: UIScreen.main.bounds.height * 0.35)
+
+                    ipadMetaBlock
+
+                    ipadEpisodeCarousel
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, UIConstants.bottomBarHeight)
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private var episodeListContent: some View {
+        VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+            ForEach(sortedItems) { item in
+                let meta = episodeMetadata[item.episode]
+                EpisodeRowView(
+                    episodeNumber: item.episode,
+                    title: meta?.title ?? "Episode \(item.episode)",
+                    ratingText: nil,
+                    description: nil,
+                    thumbnailURL: meta?.thumbnailURL,
+                    isPlayable: true,
+                    isWatched: isEpisodeWatched(item.episode),
+                    isDownloaded: true,
+                    isNew: false,
+                    onTap: {
+                        play(item)
+                    }
+                )
+                .contextMenu {
+                    Button("Delete") {
+                        DownloadManager.shared.delete(itemId: item.id)
                     }
                 }
             }
-            .padding(.horizontal, UIConstants.standardPadding)
-            .padding(.top, UIConstants.smallPadding)
-            .padding(.bottom, UIConstants.bottomBarHeight)
         }
+        .padding(.horizontal, UIConstants.standardPadding)
+        .padding(.top, UIConstants.smallPadding)
     }
 
     private var ipadEpisodeCarousel: some View {
@@ -741,6 +768,159 @@ private struct DownloadsDetailView: View {
             .padding(.vertical, UIConstants.heroTopPadding)
         }
         .scrollClipDisabled()
+    }
+
+    private var ipadMetaBlock: some View {
+        VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
+            Text(title)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundColor(.white)
+                .lineLimit(2)
+
+            HStack(spacing: UIConstants.tinyPadding) {
+                Text("\(sortedItems.count) EPS")
+                if let totalEpisodes, totalEpisodes > 0 {
+                    Text("OF \(totalEpisodes)")
+                }
+                Text("OFFLINE")
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(Theme.textSecondary)
+        }
+    }
+
+    private var detailHeroBackdropFull: some View {
+        let height = UIScreen.main.bounds.height
+        let topInset = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
+            .first ?? 0
+        return GeometryReader { proxy in
+            let width = proxy.size.width
+            let insetTop = proxy.safeAreaInsets.top
+            let topFeatherHeight = max(24.0, insetTop * 0.6)
+            let fallbackBackdrop = bannerURL ?? posterURL
+            ZStack {
+                Group {
+                    if let url = fallbackBackdrop {
+                        CachedImage(
+                            url: url,
+                            targetSize: CGSize(width: width, height: height + insetTop)
+                        ) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
+                        Theme.surface
+                    }
+                }
+                .frame(width: width, height: height + insetTop)
+                .clipped()
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [Color.clear, Color.black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: topFeatherHeight)
+                        Color.black
+                    }
+                )
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(width: width, height: height + insetTop)
+            }
+            .frame(width: width, height: height + insetTop)
+            .clipped()
+        }
+        .frame(height: height)
+        .offset(y: -topInset)
+    }
+
+    private var detailHeroHeader: some View {
+        let height = UIScreen.main.bounds.height * 0.5
+        let topInset = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
+            .first ?? 0
+        return GeometryReader { proxy in
+            let width = proxy.size.width
+            let insetTop = proxy.safeAreaInsets.top
+            let topFeatherHeight = max(24.0, insetTop * 0.6)
+            let fallbackBackdrop = bannerURL ?? posterURL
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let url = fallbackBackdrop {
+                        CachedImage(
+                            url: url,
+                            targetSize: CGSize(width: width, height: height + insetTop)
+                        ) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
+                        Theme.surface
+                    }
+                }
+                .frame(width: width, height: height + insetTop)
+                .clipped()
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [Color.clear, Color.black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: topFeatherHeight)
+                        Color.black
+                    }
+                )
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.clear, Color.black.opacity(0.9)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: 120)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(title)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+
+                    Text("\(sortedItems.count) Downloaded Episode\(sortedItems.count == 1 ? "" : "s")")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, 24)
+            }
+            .frame(width: width, height: height + insetTop)
+            .clipped()
+        }
+        .frame(height: height)
+        .offset(y: -topInset)
     }
 
     private func loadCachedMetadata() {
