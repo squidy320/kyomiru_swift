@@ -632,7 +632,7 @@ final class DownloadManager: NSObject, ObservableObject {
                         try fm.copyItem(at: tempURL, to: outputURL)
                         try? fm.removeItem(at: tempURL)
                     } else {
-                        _ = try await MediaConversionManager.shared.remuxToMp4(
+                        _ = try await MediaConversionManager.shared.remuxImportedToMp4(
                             inputURL: tempURL,
                             outputURL: outputURL
                         )
@@ -1564,6 +1564,39 @@ actor MediaConversionManager {
         }
     }
 
+    func remuxImportedToMp4(
+        inputURL: URL,
+        outputURL: URL,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> URL {
+        try await withConversionPermit {
+            do {
+                AppLog.debug(.downloads, "ffmpeg import remux preferred start input=\(inputURL.path) output=\(outputURL.path)")
+                let output = try await convertToMp4WithFFmpeg(
+                    inputURL: inputURL,
+                    outputURL: outputURL,
+                    progress: progress,
+                    preferHardwareTranscode: true,
+                    forceAudioReencode: true
+                )
+                AppLog.debug(.downloads, "ffmpeg import remux preferred success output=\(output.path)")
+                return output
+            } catch {
+                AppLog.error(.downloads, "ffmpeg import remux preferred failed input=\(inputURL.path) error=\(error.localizedDescription) fallback=vt")
+            }
+
+            do {
+                AppLog.debug(.downloads, "vt import remux start input=\(inputURL.path) output=\(outputURL.path)")
+                let output = try await convertWithVideoToolbox(inputURL: inputURL, outputURL: outputURL)
+                AppLog.debug(.downloads, "vt import remux success output=\(output.path)")
+                return output
+            } catch {
+                AppLog.error(.downloads, "vt import remux failed input=\(inputURL.path) error=\(error.localizedDescription)")
+            }
+            throw ConversionError.exportFailed("import conversion failed with ffmpeg and videotoolbox")
+        }
+    }
+
     func convertHlsToMp4(
         playlistURL: URL,
         headers: [String: String]?,
@@ -1755,7 +1788,8 @@ actor MediaConversionManager {
         inputURL: URL,
         outputURL: URL,
         progress: (@Sendable (Double) -> Void)? = nil,
-        preferHardwareTranscode: Bool = false
+        preferHardwareTranscode: Bool = false,
+        forceAudioReencode: Bool = false
     ) async throws -> URL {
         let inputPath = inputURL.path
         let outputPath = outputURL.path
@@ -1840,6 +1874,25 @@ actor MediaConversionManager {
                 throw ConversionError.cancelled
             }
             logCopyFailure(label: "audio reencode", result: third)
+        }
+
+        if forceAudioReencode, probe.audioCodec != nil {
+            AppLog.debug(.downloads, "ffmpeg remux preflight: forcing audio reencode for AVPlayer-safe import audio")
+            let forced = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(forced.code) {
+                if inputURL.pathExtension.lowercased() == "ts" {
+                    try? FileManager.default.removeItem(at: inputURL)
+                }
+                try? FileManager.default.removeItem(at: outputURL)
+                try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
+                AppLog.debug(.downloads, "ffmpeg remux success (forced audio reencode) output=\(outputPath)")
+                return outputURL
+            }
+            if ReturnCode.isCancel(forced.code) {
+                AppLog.error(.downloads, "ffmpeg remux cancelled (forced audio reencode) input=\(inputPath)")
+                throw ConversionError.cancelled
+            }
+            logCopyFailure(label: "forced audio reencode", result: forced)
         }
 
         if !needsTsAudioBitstreamFix {
