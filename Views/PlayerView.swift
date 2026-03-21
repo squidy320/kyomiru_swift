@@ -148,14 +148,14 @@ private struct AVPlayerScreen: View {
 
         let item = AVPlayerItem(asset: asset)
         if isRemoteStream {
-            item.preferredForwardBufferDuration = 2
+            item.preferredForwardBufferDuration = 0
             if #available(iOS 10.0, *) {
                 item.canUseNetworkResourcesForLiveStreamingWhilePaused = true
             }
         }
         self.playerItem = item
         let avPlayer = AVPlayer(playerItem: item)
-        avPlayer.automaticallyWaitsToMinimizeStalling = !isRemoteStream
+        avPlayer.automaticallyWaitsToMinimizeStalling = true
         self.player = avPlayer
 
         addObservers(to: avPlayer, item: item)
@@ -245,7 +245,7 @@ private struct AVPlayerScreen: View {
             if let pendingSeekRequest {
                 performPendingSeekIfPossible(reason: "stall")
             } else {
-                player.playImmediately(atRate: 1.0)
+                player.play()
             }
         }
 
@@ -392,7 +392,9 @@ private struct AVPlayerScreen: View {
         }
 
         if shouldResume, isRemoteStream {
-            resumePlaybackAfterSeek(player: player)
+            DispatchQueue.main.async {
+                resumePlaybackAfterSeek(player: player)
+            }
         }
     }
 
@@ -431,11 +433,7 @@ private struct AVPlayerScreen: View {
     }
 
     private func resumePlaybackAfterSeek(player: AVPlayer) {
-        if isRemoteStream {
-            player.playImmediately(atRate: 1.0)
-        } else {
-            player.play()
-        }
+        player.play()
     }
 
     private func skipButtonTitle(for segment: AniSkipSegment) -> String {
