@@ -41,16 +41,6 @@ struct NavigationShell: View {
                     .tag(AppTab.settings)
             }
         }
-        .fullScreenCover(
-            isPresented: $appState.isPlayerPresented,
-            onDismiss: { appState.handlePlayerPresentationDismissed() }
-        ) {
-            if let session = appState.activePlayerSession {
-                PlayerView(controller: session)
-                    .environmentObject(appState)
-                    .environmentObject(appState.authState)
-            }
-        }
     }
 }
 

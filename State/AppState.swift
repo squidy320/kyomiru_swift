@@ -12,12 +12,9 @@ enum AppTab: Hashable {
 final class AppState: ObservableObject {
     @Published var selectedTab: AppTab = .home
     @Published var settings = SettingsState()
-    @Published var activePlayerSession: PlayerSessionController?
-    @Published var isPlayerPresented = false
     let services: AppServices
     @Published var authState: AuthState
     private var hasBootstrapped = false
-    private var playerDismissedForPictureInPicture = false
 
     init() {
         let services = AppServices()
@@ -266,72 +263,6 @@ final class AppState: ObservableObject {
         case .dropped:
             return "DROPPED"
         }
-    }
-
-    func presentPlayer(
-        episode: SoraEpisode,
-        sources: [SoraSource],
-        mediaId: Int,
-        malId: Int?,
-        mediaTitle: String?,
-        startAt: Double? = nil
-    ) {
-        if let activePlayerSession {
-            activePlayerSession.stopPlayback()
-        }
-        activePlayerSession = PlayerSessionController(
-            episode: episode,
-            sources: sources,
-            mediaId: mediaId,
-            malId: malId,
-            mediaTitle: mediaTitle,
-            startAt: startAt,
-            services: services,
-            markEpisodeWatched: { [weak self] mediaId, episodeNumber in
-                guard let self else { return }
-                await self.markEpisodeWatched(mediaId: mediaId, episodeNumber: episodeNumber)
-            }
-        )
-        playerDismissedForPictureInPicture = false
-        isPlayerPresented = true
-    }
-
-    func dismissPlayerForPictureInPicture() {
-        guard let activePlayerSession else { return }
-        activePlayerSession.isPictureInPictureActive = true
-        activePlayerSession.shouldRestoreAfterPictureInPicture = true
-        playerDismissedForPictureInPicture = true
-        isPlayerPresented = false
-    }
-
-    func handlePictureInPictureStopped() {
-        guard let activePlayerSession else { return }
-        activePlayerSession.isPictureInPictureActive = false
-        guard activePlayerSession.shouldRestoreAfterPictureInPicture else { return }
-        activePlayerSession.shouldRestoreAfterPictureInPicture = false
-        playerDismissedForPictureInPicture = false
-        isPlayerPresented = true
-    }
-
-    func handlePictureInPictureFailedToStart() {
-        activePlayerSession?.isPictureInPictureActive = false
-        activePlayerSession?.shouldRestoreAfterPictureInPicture = false
-        playerDismissedForPictureInPicture = false
-    }
-
-    func handlePlayerPresentationDismissed() {
-        guard let activePlayerSession else { return }
-        if activePlayerSession.isPictureInPictureActive || playerDismissedForPictureInPicture {
-            return
-        }
-        closeActivePlayerSession()
-    }
-
-    func closeActivePlayerSession() {
-        activePlayerSession?.stopPlayback()
-        activePlayerSession = nil
-        isPlayerPresented = false
-        playerDismissedForPictureInPicture = false
     }
 }
 

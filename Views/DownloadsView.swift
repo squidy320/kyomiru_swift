@@ -521,6 +521,7 @@ private struct DownloadsDetailView: View {
     let mediaItem: MediaItem?
     @EnvironmentObject private var appState: AppState
     @State private var selectedItem: DownloadItem?
+    @State private var showPlayer = false
     @State private var playURL: URL?
     @State private var playbackError: String?
     @State private var episodeMetadata: [Int: EpisodeMetadata] = [:]
@@ -542,6 +543,45 @@ private struct DownloadsDetailView: View {
                 Button("Import") {
                     showImportPicker = true
                 }
+            }
+        }
+        .fullScreenCover(isPresented: $showPlayer) {
+            if let item = selectedItem, let fileURL = playURL {
+                let format = fileURL.pathExtension.lowercased()
+                let source = SoraSource(
+                    id: "local|\(item.id)",
+                    url: fileURL,
+                    quality: "Local",
+                    subOrDub: "Sub",
+                    format: format.isEmpty ? "mp4" : format,
+                    headers: [:]
+                )
+                let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
+                PlayerView(
+                    episode: episode,
+                    sources: [source],
+                    mediaId: mediaId,
+                    malId: nil,
+                    mediaTitle: title,
+                    onRestoreAfterPictureInPicture: {
+                        showPlayer = true
+                    }
+                )
+            } else {
+                VStack(spacing: 12) {
+                    Text("Unable to play this download.")
+                        .foregroundColor(.white)
+                    Button("Close") {
+                        showPlayer = false
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black.ignoresSafeArea())
             }
         }
         .alert("Playback Error", isPresented: Binding(
@@ -805,13 +845,8 @@ private struct DownloadsDetailView: View {
             headers: [:]
         )
         let episode = SoraEpisode(id: item.id, number: item.episode, playURL: resolved)
-        appState.presentPlayer(
-            episode: episode,
-            sources: [source],
-            mediaId: mediaId,
-            malId: nil,
-            mediaTitle: title
-        )
+        _ = episode
+        showPlayer = true
     }
 }
 

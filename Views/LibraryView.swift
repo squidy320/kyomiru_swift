@@ -17,6 +17,7 @@ struct LibraryView: View {
     @State private var selectedContinueEpisode: SoraEpisode?
     @State private var selectedContinueMedia: AniListMedia?
     @State private var continueSources: [SoraSource] = []
+    @State private var showContinuePlayer = false
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -164,6 +165,22 @@ struct LibraryView: View {
             LibrarySettingsSheet(manager: librarySettings)
                 .presentationDetents([.medium, .large])
         }
+        .fullScreenCover(isPresented: $showContinuePlayer) {
+            if let episode = selectedContinueEpisode,
+               let media = selectedContinueMedia,
+               !continueSources.isEmpty {
+                PlayerView(
+                    episode: episode,
+                    sources: continueSources,
+                    mediaId: media.id,
+                    malId: media.idMal,
+                    mediaTitle: media.title.best,
+                    onRestoreAfterPictureInPicture: {
+                        showContinuePlayer = true
+                    }
+                )
+            }
+        }
         .overlay(alignment: .bottom) {
             if continueLoading {
                 GlassCard {
@@ -206,6 +223,7 @@ struct LibraryView: View {
                 selectedContinueEpisode = nil
                 selectedContinueMedia = nil
                 continueSources = []
+                showContinuePlayer = false
                 return
             }
             Task {
@@ -483,13 +501,9 @@ struct LibraryView: View {
         guard let episode = selectedContinueEpisode,
               let media = selectedContinueMedia,
               !continueSources.isEmpty else { return }
-        appState.presentPlayer(
-            episode: episode,
-            sources: continueSources,
-            mediaId: media.id,
-            malId: media.idMal,
-            mediaTitle: media.title.best
-        )
+        _ = episode
+        _ = media
+        showContinuePlayer = true
     }
 
     private func formatRemaining(_ seconds: TimeInterval) -> String {
