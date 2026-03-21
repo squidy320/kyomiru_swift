@@ -511,7 +511,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
     final class Coordinator: NSObject {
         var onSkipTapped: () -> Void
         private weak var skipButton: UIButton?
-        private weak var blurView: UIVisualEffectView?
+        private weak var blurView: SkipOverlayView?
         private weak var progressSlider: UISlider?
         private weak var buttonHostView: UIView?
         private var syncTask: Task<Void, Never>?
@@ -532,20 +532,24 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
                 return
             }
 
-            let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+            let blur = SkipOverlayView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
             blur.translatesAutoresizingMaskIntoConstraints = false
             blur.clipsToBounds = true
             blur.layer.cornerRadius = 18
             blur.layer.cornerCurve = .continuous
             blur.layer.borderWidth = 1
             blur.layer.borderColor = UIColor.white.withAlphaComponent(0.14).cgColor
+            blur.isUserInteractionEnabled = true
 
             let button = UIButton(type: .system)
             button.translatesAutoresizingMaskIntoConstraints = false
             button.setTitleColor(.white, for: .normal)
             button.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
             button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 14, bottom: 10, right: 14)
+            button.isUserInteractionEnabled = true
+            button.isExclusiveTouch = true
             button.addTarget(self, action: #selector(handleSkipTap), for: .touchUpInside)
+            button.addTarget(self, action: #selector(handleSkipTouchDown), for: .touchDown)
 
             blur.contentView.addSubview(button)
             NSLayoutConstraint.activate([
@@ -596,6 +600,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
                     NSLayoutConstraint.activate(placementConstraints)
                     buttonHostView = host
                 }
+                host.bringSubviewToFront(blurView)
             } else if blurView.superview == nil, let overlay = controller.contentOverlayView {
                 overlay.addSubview(blurView)
                 NSLayoutConstraint.deactivate(placementConstraints)
@@ -605,6 +610,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
                 ]
                 NSLayoutConstraint.activate(placementConstraints)
                 buttonHostView = overlay
+                overlay.bringSubviewToFront(blurView)
             }
         }
 
@@ -652,6 +658,20 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         @objc
         private func handleSkipTap() {
             onSkipTapped()
+        }
+
+        @objc
+        private func handleSkipTouchDown() {
+            // Keep the native controls visible while the user taps the custom skip control.
+            blurView?.alpha = 1
+            blurView?.isHidden = false
+        }
+    }
+
+    final class SkipOverlayView: UIVisualEffectView {
+        override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+            let expandedBounds = bounds.insetBy(dx: -12, dy: -8)
+            return expandedBounds.contains(point)
         }
     }
 }
