@@ -990,16 +990,17 @@ final class DownloadManager: NSObject, ObservableObject {
     func playableURL(for item: DownloadItem) -> URL? {
         if let local = item.localFile {
             let resolved = resolvePlayableURL(localFile: local, item: item)
-            if resolved == nil {
-                AppLog.error(.downloads, "offline resolve failed localFile=\(local.path) title=\(item.title) ep=\(item.episode)")
+            if isVerifiedPlayablePath(resolved, item: item) {
+                return resolved
             }
-            return resolved
+            AppLog.error(.downloads, "offline resolve failed localFile=\(local.path) title=\(item.title) ep=\(item.episode)")
         }
         let resolved = resolveFallbackPlayableURL(for: item)
-        if resolved == nil {
-            AppLog.error(.downloads, "offline resolve failed no localFile title=\(item.title) ep=\(item.episode)")
+        if let resolved, isVerifiedPlayablePath(resolved, item: item) {
+            return resolved
         }
-        return resolved
+        AppLog.error(.downloads, "offline resolve failed no localFile title=\(item.title) ep=\(item.episode)")
+        return nil
     }
 
     func downloadedItem(title: String, episode: Int) -> DownloadItem? {
@@ -1175,6 +1176,29 @@ final class DownloadManager: NSObject, ObservableObject {
 
         AppLog.error(.downloads, "offline resolve failed title=\(item.title) ep=\(item.episode)")
         return nil
+    }
+
+    private func isVerifiedPlayablePath(_ url: URL, item: DownloadItem) -> Bool {
+        if url.hasDirectoryPath {
+            return fm.fileExists(atPath: url.path)
+        }
+
+        let ext = url.pathExtension.lowercased()
+        if ext == "m3u8" {
+            return fm.fileExists(atPath: url.path) && hasLocalPlaylistSegments(url)
+        }
+
+        if fm.fileExists(atPath: url.path) {
+            return true
+        }
+
+        if ext == "ts" {
+            let folder = url.deletingLastPathComponent()
+            let prefix = url.deletingPathExtension().lastPathComponent
+            return countSegments(in: folder, prefix: prefix) > 1
+        }
+
+        return false
     }
 
     private func ensurePlaylist(forFolder folder: URL, prefix: String?) -> URL? {

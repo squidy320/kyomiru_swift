@@ -453,7 +453,8 @@ private struct DownloadsGridView: View {
                                     media: nil,
                                     score: nil,
                                     statusBadge: watched ? "Watched" : mediaItem?.status.badgeTitle,
-                                    cornerBadge: nil
+                                    cornerBadge: nil,
+                                    allowFallbackWhileLoading: true
                                 )
                                 .overlay(alignment: .topTrailing) {
                                     Image(systemName: selection.contains(group.title) ? "checkmark.circle.fill" : "circle")
@@ -478,7 +479,8 @@ private struct DownloadsGridView: View {
                                     media: nil,
                                     score: nil,
                                     statusBadge: watched ? "Watched" : mediaItem?.status.badgeTitle,
-                                    cornerBadge: nil
+                                    cornerBadge: nil,
+                                    allowFallbackWhileLoading: true
                                 )
                             }
                             .buttonStyle(.plain)
@@ -519,6 +521,7 @@ private struct DownloadsDetailView: View {
     let title: String
     let items: [DownloadItem]
     let mediaItem: MediaItem?
+    @StateObject private var manager = DownloadManager.shared
     @EnvironmentObject private var appState: AppState
     @State private var selectedItem: DownloadItem?
     @State private var showPlayer = false
@@ -622,19 +625,19 @@ private struct DownloadsDetailView: View {
 
     private var mediaId: Int {
         if let external = mediaItem?.externalId, external > 0 { return external }
-        return items.first?.mediaId ?? 0
+        return currentItems.first?.mediaId ?? 0
     }
 
     private var posterURL: URL? {
-        mediaItem?.posterImageURL ?? items.first?.posterURL
+        mediaItem?.posterImageURL ?? currentItems.first?.posterURL
     }
 
     private var bannerURL: URL? {
-        mediaItem?.heroImageURL ?? items.first?.bannerURL ?? posterURL
+        mediaItem?.heroImageURL ?? currentItems.first?.bannerURL ?? posterURL
     }
 
     private var totalEpisodes: Int? {
-        mediaItem?.totalEpisodes ?? items.first?.totalEpisodes
+        mediaItem?.totalEpisodes ?? currentItems.first?.totalEpisodes
     }
 
     private var importMedia: MediaItem {
@@ -642,7 +645,7 @@ private struct DownloadsDetailView: View {
             return mediaItem
         }
         return MediaItem(
-            externalId: items.first?.mediaId,
+            externalId: currentItems.first?.mediaId,
             title: title,
             posterImageURL: posterURL,
             heroImageURL: bannerURL,
@@ -650,8 +653,21 @@ private struct DownloadsDetailView: View {
         )
     }
 
+    private var currentItems: [DownloadItem] {
+        let originalIDs = Set(items.map(\.id))
+        let liveMatches = manager.items.filter { originalIDs.contains($0.id) }
+        if !liveMatches.isEmpty {
+            return liveMatches
+        }
+        let key = normalizedTitle(title)
+        let fallbackMatches = manager.items.filter {
+            normalizedTitle($0.title) == key && $0.status == "Completed"
+        }
+        return fallbackMatches.isEmpty ? items : fallbackMatches
+    }
+
     private var sortedItems: [DownloadItem] {
-        items.sorted { $0.episode < $1.episode }
+        currentItems.sorted { $0.episode < $1.episode }
     }
 
     @ViewBuilder
@@ -822,9 +838,10 @@ private struct DownloadsDetailView: View {
     }
 
     private func play(_ item: DownloadItem) {
-        var fileURL = DownloadManager.shared.playableURL(for: item) ?? item.localFile
+        let latestItem = DownloadManager.shared.downloadedItem(title: item.title, episode: item.episode) ?? item
+        var fileURL = DownloadManager.shared.playableURL(for: latestItem) ?? latestItem.localFile
         if fileURL == nil {
-            let fallback = DownloadManager.shared.localFileURL(for: item.title, episode: item.episode)
+            let fallback = DownloadManager.shared.localFileURL(for: latestItem.title, episode: latestItem.episode)
             if FileManager.default.fileExists(atPath: fallback.path) {
                 fileURL = fallback
             }
@@ -833,20 +850,13 @@ private struct DownloadsDetailView: View {
             playbackError = "Missing local file for this episode."
             return
         }
-        selectedItem = item
+        selectedItem = latestItem
         playURL = resolved
-        let format = resolved.pathExtension.lowercased()
-        let source = SoraSource(
-            id: "local|\(item.id)",
-            url: resolved,
-            quality: "Local",
-            subOrDub: "Sub",
-            format: format.isEmpty ? "mp4" : format,
-            headers: [:]
-        )
-        let episode = SoraEpisode(id: item.id, number: item.episode, playURL: resolved)
-        _ = episode
         showPlayer = true
+    }
+
+    private func normalizedTitle(_ value: String) -> String {
+        value.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 }
 
