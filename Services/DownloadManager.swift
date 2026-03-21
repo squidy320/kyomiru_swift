@@ -624,7 +624,8 @@ final class DownloadManager: NSObject, ObservableObject {
                 if ["mp4", "m4v", "mov"].contains(ext) {
                     let asset = AVAsset(url: tempURL)
                     let hasVideo = !asset.tracks(withMediaType: .video).isEmpty
-                    if asset.isPlayable && hasVideo {
+                    let canDirectCopy = await MediaConversionManager.shared.canUseImportedFileDirectly(inputURL: tempURL)
+                    if asset.isPlayable && hasVideo && canDirectCopy {
                         if fm.fileExists(atPath: outputURL.path) {
                             try fm.removeItem(at: outputURL)
                         }
@@ -1494,6 +1495,20 @@ actor MediaConversionManager {
             }
             throw ConversionError.exportFailed("conversion failed with ffmpeg and videotoolbox")
         }
+    }
+
+    func canUseImportedFileDirectly(inputURL: URL) async -> Bool {
+        let probe = await probeMedia(path: inputURL.path)
+        guard let videoCodec = probe.videoCodec, isMp4VideoCodecCompatible(videoCodec) else {
+            AppLog.debug(.downloads, "import preflight requires remux path=\(inputURL.path) reason=video codec=\(probe.videoCodec ?? "none")")
+            return false
+        }
+        if let audioCodec = probe.audioCodec, !isMp4AudioCodecCompatible(audioCodec) {
+            AppLog.debug(.downloads, "import preflight requires remux path=\(inputURL.path) reason=audio codec=\(audioCodec)")
+            return false
+        }
+        AppLog.debug(.downloads, "import preflight direct copy allowed path=\(inputURL.path) vcodec=\(videoCodec) acodec=\(probe.audioCodec ?? "none") format=\(probe.format)")
+        return true
     }
 
     private func ensureFFmpegBuildconfLogged() -> Bool {
