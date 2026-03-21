@@ -327,16 +327,16 @@ private struct AVPlayerScreen: View {
 
     private func seekToSkipEnd(_ segment: AniSkipSegment) {
         activeSkip = nil
-        requestSeek(to: segment.end, reason: "skip:\(segment.type)")
+        requestSeek(to: segment.end, reason: "skip:\(segment.type)", shouldResumePlayback: true)
     }
 
     private func seekForwardByDefaultInterval() {
         let target = currentPlaybackTime + 85
-        requestSeek(to: target, reason: "skip:+85")
+        requestSeek(to: target, reason: "skip:+85", shouldResumePlayback: true)
     }
 
-    private func requestSeek(to seconds: Double, reason: String) {
-        let shouldResume = player?.timeControlStatus != .paused || player?.rate ?? 0 > 0
+    private func requestSeek(to seconds: Double, reason: String, shouldResumePlayback: Bool? = nil) {
+        let shouldResume = shouldResumePlayback ?? (player?.timeControlStatus != .paused || player?.rate ?? 0 > 0)
         pendingSeekRequest = PendingSeekRequest(seconds: seconds, reason: reason, shouldResumePlayback: shouldResume)
         AppLog.debug(.player, "seek: queued time=\(seconds) reason=\(reason)")
         performPendingSeekIfPossible(reason: "request")
@@ -347,7 +347,7 @@ private struct AVPlayerScreen: View {
         guard let item = playerItem, item.status == .readyToPlay else { return }
         guard isSeekable(item: item, targetSeconds: seconds) else { return }
         pendingResumeTime = nil
-        requestSeek(to: seconds, reason: "resume:\(reason)")
+        requestSeek(to: seconds, reason: "resume:\(reason)", shouldResumePlayback: true)
     }
 
     private func performPendingSeekIfPossible(reason: String) {
