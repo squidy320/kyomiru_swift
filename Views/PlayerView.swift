@@ -72,6 +72,7 @@ private struct AVPlayerScreen: View {
     @State private var pendingSeekRequest: PendingSeekRequest?
     @State private var pendingResumeTime: Double?
     @State private var isRemoteStream: Bool = false
+    @State private var isPictureInPictureActive: Bool = false
 
     var body: some View {
         ZStack {
@@ -79,7 +80,8 @@ private struct AVPlayerScreen: View {
                 AVPlayerViewControllerRepresentable(
                     player: player,
                     skipButtonTitle: overlaySkipButtonTitle,
-                    onSkipTapped: handleOverlaySkipAction
+                    onSkipTapped: handleOverlaySkipAction,
+                    onPictureInPictureChanged: handlePictureInPictureChanged
                 )
                     .ignoresSafeArea()
             } else {
@@ -93,7 +95,7 @@ private struct AVPlayerScreen: View {
             loadSkipSegments()
             startPlayback()
         }
-        .onDisappear(perform: stopPlayback)
+        .onDisappear(perform: handleDisappear)
         .alert("Playback Error", isPresented: Binding(
             get: { errorMessage != nil },
             set: { _ in errorMessage = nil }
@@ -107,6 +109,9 @@ private struct AVPlayerScreen: View {
     }
 
     private func startPlayback() {
+        if player != nil {
+            return
+        }
 #if os(iOS) && !targetEnvironment(macCatalyst)
         do {
             let session = AVAudioSession.sharedInstance()
@@ -162,6 +167,14 @@ private struct AVPlayerScreen: View {
         avPlayer.play()
     }
 
+    private func handleDisappear() {
+        if isPictureInPictureActive {
+            AppLog.debug(.player, "pip: keeping playback alive while view disappears")
+            return
+        }
+        stopPlayback()
+    }
+
     private func stopPlayback() {
         guard let player else { return }
         if let timeObserver {
@@ -187,6 +200,11 @@ private struct AVPlayerScreen: View {
         player.replaceCurrentItem(with: nil)
         self.player = nil
         self.playerItem = nil
+    }
+
+    private func handlePictureInPictureChanged(_ isActive: Bool) {
+        isPictureInPictureActive = isActive
+        AppLog.debug(.player, "pip: active=\(isActive)")
     }
 
     private func addObservers(to player: AVPlayer, item: AVPlayerItem) {
@@ -482,14 +500,16 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
     let player: AVPlayer
     let skipButtonTitle: String
     let onSkipTapped: () -> Void
+    let onPictureInPictureChanged: (Bool) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onSkipTapped: onSkipTapped)
+        Coordinator(onSkipTapped: onSkipTapped, onPictureInPictureChanged: onPictureInPictureChanged)
     }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = player
+        controller.delegate = context.coordinator
         controller.allowsPictureInPicturePlayback = true
         if #available(iOS 14.2, *) {
             controller.canStartPictureInPictureAutomaticallyFromInline = true
@@ -504,12 +524,15 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
             uiViewController.player = player
         }
         context.coordinator.onSkipTapped = onSkipTapped
+        context.coordinator.onPictureInPictureChanged = onPictureInPictureChanged
+        uiViewController.delegate = context.coordinator
         context.coordinator.installSkipButtonIfNeeded(in: uiViewController)
         context.coordinator.updateSkipButtonTitle(skipButtonTitle)
     }
 
-    final class Coordinator: NSObject {
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
         var onSkipTapped: () -> Void
+        var onPictureInPictureChanged: (Bool) -> Void
         private weak var skipButton: UIButton?
         private weak var blurView: SkipOverlayView?
         private weak var progressSlider: UISlider?
@@ -517,8 +540,12 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         private var syncTask: Task<Void, Never>?
         private var placementConstraints: [NSLayoutConstraint] = []
 
-        init(onSkipTapped: @escaping () -> Void) {
+        init(
+            onSkipTapped: @escaping () -> Void,
+            onPictureInPictureChanged: @escaping (Bool) -> Void
+        ) {
             self.onSkipTapped = onSkipTapped
+            self.onPictureInPictureChanged = onPictureInPictureChanged
         }
 
         deinit {
@@ -665,6 +692,30 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
             // Keep the native controls visible while the user taps the custom skip control.
             blurView?.alpha = 1
             blurView?.isHidden = false
+        }
+
+        func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
+            onPictureInPictureChanged(true)
+        }
+
+        func playerViewControllerDidStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
+            onPictureInPictureChanged(true)
+        }
+
+        func playerViewControllerWillStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
+            onPictureInPictureChanged(false)
+        }
+
+        func playerViewControllerDidStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
+            onPictureInPictureChanged(false)
+        }
+
+        func playerViewController(
+            _ playerViewController: AVPlayerViewController,
+            failedToStartPictureInPictureWithError error: Error
+        ) {
+            AppLog.error(.player, "pip: failed start error=\(error.localizedDescription)")
+            onPictureInPictureChanged(false)
         }
     }
 
