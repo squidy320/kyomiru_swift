@@ -81,11 +81,11 @@ private struct AVPlayerScreen: View {
                     .foregroundColor(.white)
             }
 
-            if let activeSkip {
+            if player != nil {
                 Button {
-                    seekToSkipEnd(activeSkip)
+                    handleOverlaySkipAction()
                 } label: {
-                    Text(skipButtonTitle(for: activeSkip))
+                    Text(overlaySkipButtonTitle)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 14)
@@ -267,6 +267,7 @@ private struct AVPlayerScreen: View {
         }
         if let cached = appState.services.downloadManager.cachedSkipSegments(malId: malId, episode: episode.number) {
             skipSegments = cached
+            updateActiveSkip(at: currentPlaybackTime)
             AppLog.debug(.player, "aniskip: cache hit malId=\(malId) ep=\(episode.number) count=\(cached.count)")
         } else {
             skipSegments = []
@@ -280,6 +281,7 @@ private struct AVPlayerScreen: View {
             }
             await MainActor.run {
                 skipSegments = segments
+                updateActiveSkip(at: currentPlaybackTime)
                 AppLog.debug(.player, "aniskip: fetched malId=\(malId) ep=\(episode.number) count=\(segments.count)")
             }
             appState.services.downloadManager.storeSkipSegments(segments, malId: malId, episode: episode.number)
@@ -305,6 +307,11 @@ private struct AVPlayerScreen: View {
     private func seekToSkipEnd(_ segment: AniSkipSegment) {
         activeSkip = nil
         requestSeek(to: segment.end, reason: "skip:\(segment.type)")
+    }
+
+    private func seekForwardByDefaultInterval() {
+        let target = currentPlaybackTime + 85
+        requestSeek(to: target, reason: "skip:+85")
     }
 
     private func requestSeek(to seconds: Double, reason: String) {
@@ -338,6 +345,26 @@ private struct AVPlayerScreen: View {
             return "Skip Preview"
         default:
             return "Skip"
+        }
+    }
+
+    private var overlaySkipButtonTitle: String {
+        if let activeSkip {
+            return skipButtonTitle(for: activeSkip)
+        }
+        return "+85s"
+    }
+
+    private var currentPlaybackTime: Double {
+        let seconds = player?.currentTime().seconds ?? 0
+        return seconds.isFinite ? seconds : 0
+    }
+
+    private func handleOverlaySkipAction() {
+        if let activeSkip {
+            seekToSkipEnd(activeSkip)
+        } else {
+            seekForwardByDefaultInterval()
         }
     }
 }
