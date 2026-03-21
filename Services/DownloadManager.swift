@@ -542,6 +542,14 @@ final class DownloadManager: NSObject, ObservableObject {
 
     @MainActor
     func importEpisodes(media: MediaItem, candidates: [EpisodeImportCandidate]) async -> (imported: Int, skipped: Int, failed: [String]) {
+        struct StagedImport {
+            let candidate: EpisodeImportCandidate
+            let episodeNumber: Int
+            let ext: String
+            let tempURL: URL
+            let outputURL: URL
+        }
+
         var bgTaskId = UIBackgroundTaskIdentifier.invalid
         bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "kyomiru.import") {
             UIApplication.shared.endBackgroundTask(bgTaskId)
@@ -561,6 +569,7 @@ final class DownloadManager: NSObject, ObservableObject {
         var imported = 0
         var skipped = 0
         var failed: [String] = []
+        var staged: [StagedImport] = []
 
         for candidate in sorted {
             guard let episodeNumber = candidate.episodeNumber else { continue }
@@ -619,35 +628,45 @@ final class DownloadManager: NSObject, ObservableObject {
                 failed.append("\(candidate.fileName) (copy failed)")
                 continue
             }
+            staged.append(StagedImport(
+                candidate: candidate,
+                episodeNumber: episodeNumber,
+                ext: ext,
+                tempURL: tempURL,
+                outputURL: outputURL
+            ))
+        }
 
+        for item in staged {
             do {
-                if ["mp4", "m4v", "mov"].contains(ext) {
-                    let asset = AVAsset(url: tempURL)
+                if ["mp4", "m4v", "mov"].contains(item.ext) {
+                    let asset = AVAsset(url: item.tempURL)
                     let hasVideo = !asset.tracks(withMediaType: .video).isEmpty
-                    let canDirectCopy = await MediaConversionManager.shared.canUseImportedFileDirectly(inputURL: tempURL)
+                    let canDirectCopy = await MediaConversionManager.shared.canUseImportedFileDirectly(inputURL: item.tempURL)
                     if asset.isPlayable && hasVideo && canDirectCopy {
-                        if fm.fileExists(atPath: outputURL.path) {
-                            try fm.removeItem(at: outputURL)
+                        if fm.fileExists(atPath: item.outputURL.path) {
+                            try fm.removeItem(at: item.outputURL)
                         }
-                        try fm.copyItem(at: tempURL, to: outputURL)
-                        try? fm.removeItem(at: tempURL)
+                        try fm.copyItem(at: item.tempURL, to: item.outputURL)
+                        try? fm.removeItem(at: item.tempURL)
                     } else {
                         _ = try await MediaConversionManager.shared.remuxImportedToMp4(
-                            inputURL: tempURL,
-                            outputURL: outputURL
+                            inputURL: item.tempURL,
+                            outputURL: item.outputURL
                         )
                     }
                 } else {
                     _ = try await MediaConversionManager.shared.remuxToMp4(
-                        inputURL: tempURL,
-                        outputURL: outputURL
+                        inputURL: item.tempURL,
+                        outputURL: item.outputURL
                     )
                 }
-                registerImportedEpisode(media: media, episode: episodeNumber, fileURL: outputURL)
+                try? fm.removeItem(at: item.tempURL)
+                registerImportedEpisode(media: media, episode: item.episodeNumber, fileURL: item.outputURL)
                 imported += 1
             } catch {
-                failed.append("\(candidate.fileName) (convert failed)")
-                try? fm.removeItem(at: tempURL)
+                failed.append("\(item.candidate.fileName) (convert failed)")
+                try? fm.removeItem(at: item.tempURL)
             }
         }
 
