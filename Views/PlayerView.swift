@@ -53,6 +53,7 @@ struct PlayerView: View {
 
 #if os(iOS)
 private struct AVPlayerScreen: View {
+    private static let minimumSavedResumeSeconds: Double = 5
     let episode: SoraEpisode
     let sources: [SoraSource]
     let mediaId: Int
@@ -221,8 +222,15 @@ private struct AVPlayerScreen: View {
     }
 
     private func addObservers(to player: AVPlayer, item: AVPlayerItem) {
-        let startTime = startAt ?? (PlaybackHistoryStore.shared.position(for: episode.id) ?? 0)
-        pendingResumeTime = startTime > 0 ? startTime : nil
+        if let explicitStart = startAt, explicitStart > 0 {
+            pendingResumeTime = explicitStart
+        } else if let savedPosition = PlaybackHistoryStore.shared.position(for: episode.id),
+                  savedPosition >= Self.minimumSavedResumeSeconds {
+            pendingResumeTime = savedPosition
+        } else {
+            pendingResumeTime = nil
+            PlaybackHistoryStore.shared.clearEpisode(episodeId: episode.id)
+        }
 
         statusObserver = item.observe(\.status, options: [.initial, .new]) { observed, _ in
             switch observed.status {
@@ -309,8 +317,13 @@ private struct AVPlayerScreen: View {
                         duration: duration
                     )
                     if !didMarkWatched {
-                        PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
                         PlaybackHistoryStore.shared.saveDuration(duration, for: episode.id)
+                        if seconds >= Self.minimumSavedResumeSeconds {
+                            PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
+                        } else {
+                            PlaybackHistoryStore.shared.clearEpisode(episodeId: episode.id)
+                            PlaybackHistoryStore.shared.saveDuration(duration, for: episode.id)
+                        }
                     }
                 }
             }
