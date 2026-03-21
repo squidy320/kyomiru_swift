@@ -1499,6 +1499,10 @@ actor MediaConversionManager {
 
     func canUseImportedFileDirectly(inputURL: URL) async -> Bool {
         let probe = await probeMedia(path: inputURL.path)
+        if probe.format.contains("mpegts") {
+            AppLog.debug(.downloads, "import preflight requires remux path=\(inputURL.path) reason=format=\(probe.format)")
+            return false
+        }
         guard let videoCodec = probe.videoCodec, isMp4VideoCodecCompatible(videoCodec) else {
             AppLog.debug(.downloads, "import preflight requires remux path=\(inputURL.path) reason=video codec=\(probe.videoCodec ?? "none")")
             return false
@@ -1596,6 +1600,7 @@ actor MediaConversionManager {
             let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 192k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
             let canCopyVideo = probe.videoCodec.map(isMp4VideoCodecCompatible) ?? false
             let canCopyAudio = probe.audioCodec.map(isAVPlayerSafeMp4AudioCodec) ?? false
+            let needsTsAudioBitstreamFix = probe.format.contains("mpegts")
 
             AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count) format=\(probe.format) vcodec=\(probe.videoCodec ?? "none") acodec=\(probe.audioCodec ?? "none")")
 
@@ -1646,18 +1651,22 @@ actor MediaConversionManager {
                 logCopyFailure(label: "hls audio reencode", result: third)
             }
 
-            let instant = await runFFmpeg(commandInstantMux, duration: duration, progress: progress)
-            if ReturnCode.isSuccess(instant.code) {
-                try? FileManager.default.removeItem(at: outputURL)
-                try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-                AppLog.debug(.downloads, "ffmpeg hls success (instant mux) output=\(outputPath)")
-                return outputURL
+            if !needsTsAudioBitstreamFix {
+                let instant = await runFFmpeg(commandInstantMux, duration: duration, progress: progress)
+                if ReturnCode.isSuccess(instant.code) {
+                    try? FileManager.default.removeItem(at: outputURL)
+                    try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
+                    AppLog.debug(.downloads, "ffmpeg hls success (instant mux) output=\(outputPath)")
+                    return outputURL
+                }
+                if ReturnCode.isCancel(instant.code) {
+                    AppLog.error(.downloads, "ffmpeg hls cancelled (instant mux) input=\(playlistPath)")
+                    throw ConversionError.cancelled
+                }
+                logCopyFailure(label: "hls instant mux", result: instant)
+            } else {
+                AppLog.debug(.downloads, "ffmpeg hls skipping instant mux due to mpegts input; requiring AAC bitstream fix")
             }
-            if ReturnCode.isCancel(instant.code) {
-                AppLog.error(.downloads, "ffmpeg hls cancelled (instant mux) input=\(playlistPath)")
-                throw ConversionError.cancelled
-            }
-            logCopyFailure(label: "hls instant mux", result: instant)
 
             let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
             if ReturnCode.isSuccess(first.code) {
@@ -1686,7 +1695,7 @@ actor MediaConversionManager {
             }
             logCopyFailure(label: "hls copy", result: second)
 
-            if isAudioIncompatible(second.logs) || isAudioIncompatible(first.logs) || isAudioIncompatible(instant.logs) {
+            if isAudioIncompatible(second.logs) || isAudioIncompatible(first.logs) {
                 AppLog.error(.downloads, "ffmpeg hls detected incompatible audio, retrying with audio transcode input=\(playlistPath)")
             } else {
                 AppLog.error(.downloads, "ffmpeg hls copy path failed, retrying with audio reencode input=\(playlistPath)")
@@ -1729,7 +1738,7 @@ actor MediaConversionManager {
                 throw ConversionError.cancelled
             }
 
-            let message = fifth.logs ?? fourth.logs ?? third.logs ?? second.logs ?? first.logs ?? instant.logs ?? "ffmpeg hls conversion failed"
+            let message = fifth.logs ?? fourth.logs ?? third.logs ?? second.logs ?? first.logs ?? "ffmpeg hls conversion failed"
             AppLog.error(.downloads, "ffmpeg hls failed input=\(playlistPath) error=\(message)")
             try? FileManager.default.removeItem(at: outputURL)
             throw ConversionError.exportFailed(message)
@@ -1772,6 +1781,7 @@ actor MediaConversionManager {
         let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 192k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
         let canCopyVideo = probe.videoCodec.map(isMp4VideoCodecCompatible) ?? false
         let canCopyAudio = probe.audioCodec.map(isAVPlayerSafeMp4AudioCodec) ?? false
+        let needsTsAudioBitstreamFix = probe.format.contains("mpegts")
 
         AppLog.debug(.downloads, "ffmpeg remux start input=\(inputPath) output=\(outputPath) duration=\(duration) format=\(probe.format) vcodec=\(probe.videoCodec ?? "none") acodec=\(probe.audioCodec ?? "none")")
 
@@ -1832,21 +1842,25 @@ actor MediaConversionManager {
             logCopyFailure(label: "audio reencode", result: third)
         }
 
-        let instant = await runFFmpeg(commandInstantMux, duration: duration, progress: progress)
-        if ReturnCode.isSuccess(instant.code) {
-            if inputURL.pathExtension.lowercased() == "ts" {
-                try? FileManager.default.removeItem(at: inputURL)
+        if !needsTsAudioBitstreamFix {
+            let instant = await runFFmpeg(commandInstantMux, duration: duration, progress: progress)
+            if ReturnCode.isSuccess(instant.code) {
+                if inputURL.pathExtension.lowercased() == "ts" {
+                    try? FileManager.default.removeItem(at: inputURL)
+                }
+                try? FileManager.default.removeItem(at: outputURL)
+                try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
+                AppLog.debug(.downloads, "ffmpeg remux success (instant mux) output=\(outputPath)")
+                return outputURL
             }
-            try? FileManager.default.removeItem(at: outputURL)
-            try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-            AppLog.debug(.downloads, "ffmpeg remux success (instant mux) output=\(outputPath)")
-            return outputURL
+            if ReturnCode.isCancel(instant.code) {
+                AppLog.error(.downloads, "ffmpeg remux cancelled (instant mux) input=\(inputPath)")
+                throw ConversionError.cancelled
+            }
+            logCopyFailure(label: "instant mux", result: instant)
+        } else {
+            AppLog.debug(.downloads, "ffmpeg remux skipping instant mux due to mpegts input; requiring AAC bitstream fix")
         }
-        if ReturnCode.isCancel(instant.code) {
-            AppLog.error(.downloads, "ffmpeg remux cancelled (instant mux) input=\(inputPath)")
-            throw ConversionError.cancelled
-        }
-        logCopyFailure(label: "instant mux", result: instant)
 
         let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
         if ReturnCode.isSuccess(first.code) {
@@ -1881,7 +1895,7 @@ actor MediaConversionManager {
         }
         logCopyFailure(label: "copy", result: second)
 
-        if canCopyAudio == false || isAudioIncompatible(second.logs) || isAudioIncompatible(first.logs) || isAudioIncompatible(instant.logs) {
+        if canCopyAudio == false || isAudioIncompatible(second.logs) || isAudioIncompatible(first.logs) {
             AppLog.error(.downloads, "ffmpeg remux detected incompatible audio, retrying with audio transcode input=\(inputPath)")
         } else {
             AppLog.error(.downloads, "ffmpeg remux copy path failed, retrying with audio reencode input=\(inputPath)")
