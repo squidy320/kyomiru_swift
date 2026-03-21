@@ -17,7 +17,6 @@ struct LibraryView: View {
     @State private var selectedContinueEpisode: SoraEpisode?
     @State private var selectedContinueMedia: AniListMedia?
     @State private var continueSources: [SoraSource] = []
-    @State private var showContinuePlayer = false
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -165,19 +164,6 @@ struct LibraryView: View {
             LibrarySettingsSheet(manager: librarySettings)
                 .presentationDetents([.medium, .large])
         }
-        .fullScreenCover(isPresented: $showContinuePlayer) {
-            if let episode = selectedContinueEpisode,
-               let media = selectedContinueMedia,
-               !continueSources.isEmpty {
-                PlayerView(
-                    episode: episode,
-                    sources: continueSources,
-                    mediaId: media.id,
-                    malId: media.idMal,
-                    mediaTitle: media.title.best
-                )
-            }
-        }
         .overlay(alignment: .bottom) {
             if continueLoading {
                 GlassCard {
@@ -220,7 +206,6 @@ struct LibraryView: View {
                 selectedContinueEpisode = nil
                 selectedContinueMedia = nil
                 continueSources = []
-                showContinuePlayer = false
                 return
             }
             Task {
@@ -473,7 +458,7 @@ struct LibraryView: View {
                     selectedContinueEpisode = episode
                     selectedContinueMedia = media
                     continueSources = [source]
-                    showContinuePlayer = true
+                    presentContinuePlayer()
                     continueLoading = false
                     return
                 }
@@ -484,7 +469,7 @@ struct LibraryView: View {
                     selectedContinueEpisode = episode
                     selectedContinueMedia = media
                     continueSources = sources
-                    showContinuePlayer = true
+                    presentContinuePlayer()
                 }
             } catch {
                 continueError = "Failed to load stream."
@@ -492,6 +477,19 @@ struct LibraryView: View {
             }
             continueLoading = false
         }
+    }
+
+    private func presentContinuePlayer() {
+        guard let episode = selectedContinueEpisode,
+              let media = selectedContinueMedia,
+              !continueSources.isEmpty else { return }
+        appState.presentPlayer(
+            episode: episode,
+            sources: continueSources,
+            mediaId: media.id,
+            malId: media.idMal,
+            mediaTitle: media.title.best
+        )
     }
 
     private func formatRemaining(_ seconds: TimeInterval) -> String {

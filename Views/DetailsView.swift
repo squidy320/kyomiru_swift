@@ -11,7 +11,6 @@ struct DetailsView: View {
     @State private var errorMessage: String?
     @State private var selectedEpisode: SoraEpisode?
     @State private var sources: [SoraSource] = []
-    @State private var showPlayer = false
     @State private var isLoadingSources = false
     @State private var showSourceSheet = false
     @State private var showMatchSheet = false
@@ -82,18 +81,6 @@ struct DetailsView: View {
             await loadRelated()
             isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
         }
-        .fullScreenCover(isPresented: $showPlayer) {
-            if let episode = selectedEpisode, !sources.isEmpty {
-                PlayerView(
-                    episode: episode,
-                    sources: sources,
-                    mediaId: media.id,
-                    malId: media.idMal,
-                    mediaTitle: media.title.best,
-                    startAt: playerStartAt
-                )
-            }
-        }
         .sheet(isPresented: $showSourceSheet) {
             SourcePickerSheet(
                 media: media,
@@ -103,7 +90,7 @@ struct DetailsView: View {
                     if let picked {
                         self.sources = [picked]
                     }
-                    showPlayer = true
+                    presentSelectedEpisode()
                 },
                 onDownload: { source in
                     if source.format.lowercased() == "m3u8" {
@@ -764,7 +751,7 @@ struct DetailsView: View {
                         headers: [:]
                     )
                     sources = [source]
-                    showPlayer = true
+                    presentSelectedEpisode()
                     isLoadingSources = false
                     return
                 }
@@ -827,6 +814,18 @@ struct DetailsView: View {
             return
         }
         playFirstEpisode()
+    }
+
+    private func presentSelectedEpisode() {
+        guard let episode = selectedEpisode, !sources.isEmpty else { return }
+        appState.presentPlayer(
+            episode: episode,
+            sources: sources,
+            mediaId: media.id,
+            malId: media.idMal,
+            mediaTitle: media.title.best,
+            startAt: playerStartAt
+        )
     }
 
     private func episodeCards() -> [EpisodeCardModel] {
