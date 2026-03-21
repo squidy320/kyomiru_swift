@@ -68,12 +68,25 @@ private struct AVPlayerScreen: View {
     @State private var seekToken: UUID?
     @State private var isSeeking: Bool = false
     @State private var shouldLogBufferState: Bool = true
+    @State private var currentTime: Double = 0
+    @State private var duration: Double = 0
+    @State private var isPlaying: Bool = false
+    @State private var isScrubbing: Bool = false
+    @State private var scrubPosition: Double = 0
+    @State private var areControlsVisible: Bool = true
+    @State private var controlsHideTask: Task<Void, Never>?
+    @State private var playerStateObserver: NSKeyValueObservation?
+    @State private var bufferObservers: [NSKeyValueObservation] = []
 
     var body: some View {
         ZStack {
             if let player {
-                AVPlayerViewControllerRepresentable(player: player)
+                AVPlayerLayerView(player: player)
                     .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        handlePlayerSurfaceTap()
+                    }
             } else {
                 Color.black.ignoresSafeArea()
                 ProgressView("Loading player...")
@@ -81,26 +94,25 @@ private struct AVPlayerScreen: View {
                     .foregroundColor(.white)
             }
 
-            if player != nil {
-                Button {
-                    handleOverlaySkipAction()
-                } label: {
-                    Text(overlaySkipButtonTitle)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(Color.black.opacity(0.7))
-                        )
-                }
-                .padding(.trailing, 16)
-                .padding(.bottom, 22)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .buttonStyle(.plain)
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(areControlsVisible ? 0.32 : 0),
+                    Color.clear,
+                    Color.black.opacity(areControlsVisible ? 0.4 : 0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+
+            if player != nil, areControlsVisible {
+                controlsOverlay
+                    .transition(.opacity)
             }
         }
+        .background(Color.black.ignoresSafeArea())
+        .animation(.easeInOut(duration: 0.2), value: areControlsVisible)
         .onAppear {
             loadSkipSegments()
             startPlayback()
@@ -116,6 +128,98 @@ private struct AVPlayerScreen: View {
         } message: {
             Text(errorMessage ?? "Unknown error")
         }
+    }
+
+    private var controlsOverlay: some View {
+        VStack(spacing: 0) {
+            topControls
+            Spacer()
+            centerControls
+            Spacer()
+            bottomControls
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 18)
+        .ignoresSafeArea()
+    }
+
+    private var topControls: some View {
+        HStack(spacing: 12) {
+            liquidGlassIconButton(systemName: "chevron.backward", size: 16) {
+                dismiss()
+            }
+            Spacer()
+            VStack(alignment: .center, spacing: 2) {
+                Text(mediaTitle ?? "Now Playing")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text("Episode \(episode.number)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.78))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(liquidGlassBackground(cornerRadius: 18))
+            Spacer()
+            Color.clear
+                .frame(width: 40, height: 40)
+        }
+    }
+
+    private var centerControls: some View {
+        HStack(spacing: 18) {
+            liquidGlassIconButton(systemName: "gobackward.15", size: 20, diameter: 52) {
+                seekRelative(by: -15)
+            }
+            liquidGlassIconButton(systemName: isPlaying ? "pause.fill" : "play.fill", size: 24, diameter: 66) {
+                togglePlayback()
+            }
+            liquidGlassIconButton(systemName: "goforward.15", size: 20, diameter: 52) {
+                seekRelative(by: 15)
+            }
+        }
+    }
+
+    private var bottomControls: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Text(formatTime(displayedCurrentTime))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.82))
+
+                Slider(
+                    value: Binding(
+                        get: { sliderValue },
+                        set: { newValue in
+                            scrubPosition = newValue
+                        }
+                    ),
+                    in: 0...sliderUpperBound,
+                    onEditingChanged: handleScrubbingChanged
+                )
+                .tint(.white)
+
+                Text(formatTime(duration))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.82))
+            }
+
+            HStack(alignment: .center, spacing: 12) {
+                Text(playbackStatusText)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.68))
+                    .lineLimit(1)
+                Spacer()
+                liquidGlassTextButton(title: overlaySkipButtonTitle) {
+                    handleOverlaySkipAction()
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(liquidGlassBackground(cornerRadius: 26))
     }
 
     private func startPlayback() {
@@ -168,9 +272,15 @@ private struct AVPlayerScreen: View {
         let avPlayer = AVPlayer(playerItem: item)
         avPlayer.automaticallyWaitsToMinimizeStalling = true
         self.player = avPlayer
+        self.isPlaying = true
+        self.currentTime = 0
+        self.duration = 0
+        self.scrubPosition = 0
+        self.areControlsVisible = true
 
         addObservers(to: avPlayer, item: item)
         avPlayer.play()
+        scheduleControlsAutoHide()
     }
 
     private func stopPlayback() {
@@ -181,11 +291,19 @@ private struct AVPlayerScreen: View {
         }
         statusObserver?.invalidate()
         statusObserver = nil
+        playerStateObserver?.invalidate()
+        playerStateObserver = nil
+        bufferObservers.forEach { $0.invalidate() }
+        bufferObservers.removeAll()
+        controlsHideTask?.cancel()
+        controlsHideTask = nil
         seekToken = nil
         isSeeking = false
         shouldLogBufferState = true
         activeSkip = nil
         didMarkWatched = false
+        isScrubbing = false
+        isPlaying = false
         player.pause()
         player.replaceCurrentItem(with: nil)
         self.player = nil
@@ -208,19 +326,32 @@ private struct AVPlayerScreen: View {
             }
         }
 
-        item.observe(\.isPlaybackBufferEmpty, options: [.new]) { observed, _ in
+        let bufferEmptyObserver = item.observe(\.isPlaybackBufferEmpty, options: [.new]) { observed, _ in
             if observed.isPlaybackBufferEmpty {
                 AppLog.debug(.player, "buffer: empty")
             }
         }
-        item.observe(\.isPlaybackBufferFull, options: [.new]) { observed, _ in
+        let bufferFullObserver = item.observe(\.isPlaybackBufferFull, options: [.new]) { observed, _ in
             if observed.isPlaybackBufferFull {
                 AppLog.debug(.player, "buffer: full")
             }
         }
-        item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { observed, _ in
+        let keepUpObserver = item.observe(\.isPlaybackLikelyToKeepUp, options: [.new]) { observed, _ in
             if shouldLogBufferState {
                 AppLog.debug(.player, "buffer: likelyToKeepUp=\(observed.isPlaybackLikelyToKeepUp)")
+            }
+        }
+        bufferObservers = [bufferEmptyObserver, bufferFullObserver, keepUpObserver]
+
+        playerStateObserver = player.observe(\.timeControlStatus, options: [.initial, .new]) { observed, _ in
+            Task { @MainActor in
+                isPlaying = observed.timeControlStatus == .playing
+                if isPlaying {
+                    scheduleControlsAutoHide()
+                } else {
+                    controlsHideTask?.cancel()
+                    areControlsVisible = true
+                }
             }
         }
 
@@ -228,10 +359,15 @@ private struct AVPlayerScreen: View {
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             let seconds = time.seconds
             guard seconds.isFinite else { return }
+            currentTime = seconds
+            if !isScrubbing {
+                scrubPosition = seconds
+            }
             updateActiveSkip(at: seconds)
             if isSeeking { return }
-            let duration = player.currentItem?.duration.seconds ?? 0
-            if duration.isFinite && duration > 0 {
+            let itemDuration = player.currentItem?.duration.seconds ?? 0
+            duration = itemDuration.isFinite && itemDuration > 0 ? itemDuration : 0
+            if duration > 0 {
                 let fraction = seconds / duration
                 if !didMarkWatched, fraction >= 0.85 {
                     didMarkWatched = true
@@ -316,19 +452,24 @@ private struct AVPlayerScreen: View {
 
     private func requestSeek(to seconds: Double, reason: String) {
         guard let player else { return }
+        let resolvedTarget = max(0, min(seconds, duration > 0 ? duration : seconds))
         let token = UUID()
         seekToken = token
         isSeeking = true
-        let target = CMTime(seconds: seconds, preferredTimescale: 600)
+        currentTime = resolvedTarget
+        if !isScrubbing {
+            scrubPosition = resolvedTarget
+        }
+        let target = CMTime(seconds: resolvedTarget, preferredTimescale: 600)
         let tolerance = CMTime(seconds: 0.35, preferredTimescale: 600)
-        AppLog.debug(.player, "seek: request time=\(seconds) reason=\(reason)")
+        AppLog.debug(.player, "seek: request time=\(resolvedTarget) reason=\(reason)")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
             guard seekToken == token else { return }
             player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { finished in
                 if seekToken == token {
                     isSeeking = false
                 }
-                AppLog.debug(.player, "seek: finished=\(finished) time=\(seconds)")
+                AppLog.debug(.player, "seek: finished=\(finished) time=\(resolvedTarget)")
             }
         }
     }
@@ -361,30 +502,168 @@ private struct AVPlayerScreen: View {
     }
 
     private func handleOverlaySkipAction() {
+        noteControlsInteraction()
         if let activeSkip {
             seekToSkipEnd(activeSkip)
         } else {
             seekForwardByDefaultInterval()
         }
     }
-}
 
-private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentable {
-    let player: AVPlayer
-
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let controller = AVPlayerViewController()
-        controller.player = player
-        controller.allowsPictureInPicturePlayback = true
-        if #available(iOS 14.2, *) {
-            controller.canStartPictureInPictureAutomaticallyFromInline = true
+    private func togglePlayback() {
+        guard let player else { return }
+        noteControlsInteraction()
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+            areControlsVisible = true
+            controlsHideTask?.cancel()
+        } else {
+            player.play()
+            isPlaying = true
+            scheduleControlsAutoHide()
         }
-        return controller
     }
 
-    func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {
-        if uiViewController.player !== player {
-            uiViewController.player = player
+    private func seekRelative(by delta: Double) {
+        noteControlsInteraction()
+        requestSeek(to: currentPlaybackTime + delta, reason: "relative:\(delta)")
+    }
+
+    private func handlePlayerSurfaceTap() {
+        if areControlsVisible {
+            areControlsVisible = false
+            controlsHideTask?.cancel()
+        } else {
+            areControlsVisible = true
+            scheduleControlsAutoHide()
+        }
+    }
+
+    private func noteControlsInteraction() {
+        areControlsVisible = true
+        scheduleControlsAutoHide()
+    }
+
+    private func scheduleControlsAutoHide() {
+        controlsHideTask?.cancel()
+        guard isPlaying, !isScrubbing else { return }
+        controlsHideTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled, isPlaying, !isScrubbing else { return }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                areControlsVisible = false
+            }
+        }
+    }
+
+    private func handleScrubbingChanged(_ editing: Bool) {
+        isScrubbing = editing
+        if editing {
+            noteControlsInteraction()
+        } else {
+            requestSeek(to: scrubPosition, reason: "scrub")
+            scheduleControlsAutoHide()
+        }
+    }
+
+    private func formatTime(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds > 0 else { return "0:00" }
+        let total = Int(seconds.rounded(.down))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        }
+        return String(format: "%d:%02d", minutes, secs)
+    }
+
+    private func liquidGlassBackground(cornerRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.24), radius: 18, x: 0, y: 10)
+    }
+
+    private func liquidGlassTextButton(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(liquidGlassBackground(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func liquidGlassIconButton(
+        systemName: String,
+        size: CGFloat,
+        diameter: CGFloat = 40,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: diameter, height: diameter)
+                .background(liquidGlassBackground(cornerRadius: diameter / 2))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var sliderUpperBound: Double {
+        max(duration, 1)
+    }
+
+    private var sliderValue: Double {
+        min(max(isScrubbing ? scrubPosition : currentTime, 0), sliderUpperBound)
+    }
+
+    private var displayedCurrentTime: Double {
+        isScrubbing ? scrubPosition : currentTime
+    }
+
+    private var playbackStatusText: String {
+        if let activeSkip {
+            return skipButtonTitle(for: activeSkip)
+        }
+        return isPlaying ? "Playing" : "Paused"
+    }
+}
+
+private struct AVPlayerLayerView: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> PlayerContainerUIView {
+        let view = PlayerContainerUIView()
+        view.player = player
+        return view
+    }
+
+    func updateUIView(_ uiView: PlayerContainerUIView, context: Context) {
+        if uiView.playerLayer.player !== player {
+            uiView.player = player
+        }
+    }
+}
+
+private final class PlayerContainerUIView: UIView {
+    override static var layerClass: AnyClass { AVPlayerLayer.self }
+
+    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+
+    var player: AVPlayer? {
+        get { playerLayer.player }
+        set {
+            playerLayer.player = newValue
+            playerLayer.videoGravity = .resizeAspect
+            backgroundColor = .black
         }
     }
 }
