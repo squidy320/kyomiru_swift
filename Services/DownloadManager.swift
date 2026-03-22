@@ -865,28 +865,8 @@ final class DownloadManager: NSObject, ObservableObject {
                 AppLog.error(.downloads, "hls local package failed id=\(id) error=\(error.localizedDescription) fallback=mp4")
             }
 
-            AppLog.debug(.downloads, "hls direct remux start id=\(id)")
-            updateStatus(id: id, status: "Remuxing", localFile: nil)
-            do {
-                let output = try await MediaConversionManager.shared.convertHlsToMp4(
-                    playlistURL: url,
-                    headers: headerPayload,
-                    outputURL: directMp4
-                ) { [weak self] value in
-                    Task { @MainActor in
-                        self?.updateProgress(id: id, progress: value)
-                    }
-                }
-                updateProgress(id: id, progress: 1)
-                updateStatus(id: id, status: "Completed", localFile: output)
-                AppLog.debug(.downloads, "hls direct remux complete id=\(id) output=\(output.path)")
-                // download completion no longer marks watched
-                return
-            } catch {
-                AppLog.error(.downloads, "hls direct remux failed id=\(id) error=\(error.localizedDescription) fallback=merge")
-            }
-
             let output = localMergedHLSFileURL(for: item.title, episode: item.episode)
+            AppLog.debug(.downloads, "hls local package unavailable, falling back to merged transport stream id=\(id)")
             let localFile = try await offlineManager.downloadAndMerge(
                 playlistURL: url,
                 headers: headerPayload,
