@@ -1638,6 +1638,7 @@ actor MediaConversionManager {
             let canCopyVideo = probe.videoCodec.map(isMp4VideoCodecCompatible) ?? true
             let canCopyAudio = probe.audioCodec.map(isAVPlayerSafeMp4AudioCodec) ?? true
             let needsTsAudioBitstreamFix = probe.format.contains("mpegts")
+            let preferAacBitstreamFix = needsTsAudioBitstreamFix || probe.audioCodec == "aac"
 
             AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count) format=\(probe.format) vcodec=\(probe.videoCodec ?? "none") acodec=\(probe.audioCodec ?? "none")")
 
@@ -1647,7 +1648,7 @@ actor MediaConversionManager {
                 throw ConversionError.exportFailed(reason)
             }
 
-            if !needsTsAudioBitstreamFix {
+            if !preferAacBitstreamFix {
                 let instant = await runFFmpeg(commandInstantMux, duration: duration, progress: progress)
                 if ReturnCode.isSuccess(instant.code) {
                     try? FileManager.default.removeItem(at: outputURL)
@@ -1661,14 +1662,14 @@ actor MediaConversionManager {
                 }
                 logCopyFailure(label: "hls instant mux", result: instant)
             } else {
-                AppLog.debug(.downloads, "ffmpeg hls skipping instant mux due to mpegts input; requiring AAC bitstream fix")
+                AppLog.debug(.downloads, "ffmpeg hls skipping instant mux; preferring AAC bitstream fix")
             }
 
             let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
             if ReturnCode.isSuccess(first.code) {
                 try? FileManager.default.removeItem(at: outputURL)
                 try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-                AppLog.debug(.downloads, "ffmpeg hls success output=\(outputPath)")
+                AppLog.debug(.downloads, "ffmpeg hls success (copy+bsf) output=\(outputPath)")
                 return outputURL
             }
             if ReturnCode.isCancel(first.code) {
