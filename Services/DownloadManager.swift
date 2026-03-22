@@ -1631,8 +1631,8 @@ actor MediaConversionManager {
             let headerArg = headerString.isEmpty ? "" : "-headers \(quoted(value: headerString))"
             let duration = await probeDurationSeconds(path: playlistPath)
             let probe = await probeMedia(path: playlistPath)
-            let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(headerArg) -i \(quoted(value: playlistPath)) -map 0 -map -0:d -map -0:s"
-            let commandInstantMux = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL \(headerArg) -i \(quoted(value: playlistPath)) -map 0 -map -0:d -map -0:s -dn -sn -c copy -movflags +faststart \(quoted(path: tempOutput.path))"
+            let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v:0? -map 0:a:0?"
+            let commandInstantMux = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v:0? -map 0:a:0? -dn -sn -c copy -movflags +faststart \(quoted(path: tempOutput.path))"
             let commandWithBsf = "\(baseArgs) -c:v copy -c:a copy -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
             let commandNoBsf = "\(baseArgs) -c:v copy -c:a copy -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
             let canCopyVideo = probe.videoCodec.map(isMp4VideoCodecCompatible) ?? true
