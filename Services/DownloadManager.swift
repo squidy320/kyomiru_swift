@@ -2245,9 +2245,11 @@ actor MediaConversionManager {
             AVURLAssetPreferPreciseDurationAndTimingKey: false
         ])
         let height = (try? await asset.loadTracks(withMediaType: .video).first?.load(.naturalSize).height) ?? 0
-        let cap = height >= 900 ? 2_000_000 : 1_600_000
-        let base = sourceRate > 0 ? sourceRate : estimated
-        return min(max(800_000, base), cap)
+        let cap = bitrateCap(forVideoHeight: height)
+        if sourceRate > 0 {
+            return min(max(1_000_000, Int(Double(sourceRate) * 0.95)), cap)
+        }
+        return min(max(1_000_000, estimated), cap)
     }
 
     private func probeVideoBitrate(path: String) async -> Int {
@@ -2416,17 +2418,31 @@ actor MediaConversionManager {
             AVURLAssetPreferPreciseDurationAndTimingKey: false
         ])
         guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first else {
-            return 3_500_000
+            return 5_000_000
         }
         let estimatedFloat = (try? await videoTrack.load(.estimatedDataRate)) ?? 0
         let estimated = Double(estimatedFloat)
+        let height = (try? await videoTrack.load(.naturalSize).height) ?? 0
         let minRate = 1_000_000.0
-        let maxRate = 3_000_000.0
+        let maxRate = Double(bitrateCap(forVideoHeight: height))
         if estimated > 0 {
-            let target = max(minRate, min(maxRate, estimated * 0.6))
+            let target = max(minRate, min(maxRate, estimated * 0.9))
             return Int(target)
         }
-        return 2_500_000
+        return Int(max(minRate, min(maxRate, 5_000_000)))
+    }
+
+    private func bitrateCap(forVideoHeight height: CGFloat) -> Int {
+        switch height {
+        case 1800...:
+            return 12_000_000
+        case 900...:
+            return 8_000_000
+        case 700...:
+            return 5_000_000
+        default:
+            return 3_000_000
+        }
     }
 }
 
