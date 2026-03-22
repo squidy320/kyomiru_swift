@@ -830,66 +830,26 @@ final class DownloadManager: NSObject, ObservableObject {
             updateProgress(id: id, progress: 0)
             let headerPayload = item.headers ?? headers
             let directMp4 = localFileURL(for: item.title, episode: item.episode)
-            let hlsFolder = localHLSFolder(title: item.title, episode: item.episode)
             if fm.fileExists(atPath: directMp4.path) {
                 AppLog.debug(.downloads, "hls direct mp4 exists id=\(id) path=\(directMp4.path)")
                 updateStatus(id: id, status: "Completed", localFile: directMp4)
-                // download completion no longer marks watched
                 return
             }
 
-            do {
-                AppLog.debug(.downloads, "hls local package start id=\(id) folder=\(hlsFolder.path)")
-                updateStatus(id: id, status: "Downloading HLS", localFile: nil)
-                let output = try await offlineManager.downloadAndMerge(
-                    playlistURL: url,
-                    headers: headerPayload,
-                    outputURL: localMergedHLSFileURL(for: item.title, episode: item.episode),
-                    outputFolder: hlsFolder,
-                    progress: { [weak self] value in
-                        Task { @MainActor in
-                            self?.updateProgress(id: id, progress: value)
-                        }
-                    },
-                    preferLocalHLS: true
-                )
-                let resolved = resolvePlayableURL(localFile: output, item: item)
-                if isVerifiedPlayablePath(resolved, item: item) {
-                    updateProgress(id: id, progress: 1)
-                    updateStatus(id: id, status: "Completed", localFile: resolved)
-                    AppLog.debug(.downloads, "hls local package complete id=\(id) output=\(resolved.path)")
-                    return
-                }
-                AppLog.error(.downloads, "hls local package invalid id=\(id) output=\(output.path) fallback=mp4")
-            } catch {
-                AppLog.error(.downloads, "hls local package failed id=\(id) error=\(error.localizedDescription) fallback=mp4")
-            }
-
-            let output = localMergedHLSFileURL(for: item.title, episode: item.episode)
-            AppLog.debug(.downloads, "hls local package unavailable, falling back to merged transport stream id=\(id)")
-            let localFile = try await offlineManager.downloadAndMerge(
+            AppLog.debug(.downloads, "hls direct remux start id=\(id)")
+            updateStatus(id: id, status: "Remuxing", localFile: nil)
+            let output = try await MediaConversionManager.shared.convertHlsToMp4(
                 playlistURL: url,
                 headers: headerPayload,
-                outputURL: output,
-                outputFolder: nil,
-                progress: { [weak self] value in
-                    Task { @MainActor in
-                        self?.updateProgress(id: id, progress: value)
-                    }
-                },
-                preferLocalHLS: false
-            )
-            updateStatus(id: id, status: "Remuxing", localFile: localFile)
-            AppLog.debug(.downloads, "hls download complete id=\(id) starting remux")
-            Task { @MainActor in
-                await remuxIfNeeded(id: id, localFile: localFile)
+                outputURL: directMp4
+            ) { [weak self] value in
+                Task { @MainActor in
+                    self?.updateProgress(id: id, progress: value)
+                }
             }
-            let segmentFolder = localHLSFolder(title: item.title, episode: item.episode)
-            if fm.fileExists(atPath: segmentFolder.path) {
-                try? fm.removeItem(at: segmentFolder)
-                AppLog.debug(.downloads, "hls cleanup removed segment folder=\(segmentFolder.path)")
-            }
-            // download completion no longer marks watched
+            updateProgress(id: id, progress: 1)
+            updateStatus(id: id, status: "Completed", localFile: output)
+            AppLog.debug(.downloads, "hls direct remux complete id=\(id) output=\(output.path)")
         } catch {
             updateStatus(id: id, status: "Failed")
             AppLog.error(.downloads, "hls download failed id=\(id) error=\(error.localizedDescription)")
@@ -1671,70 +1631,20 @@ actor MediaConversionManager {
             let headerArg = headerString.isEmpty ? "" : "-headers \(quoted(value: headerString))"
             let duration = await probeDurationSeconds(path: playlistPath)
             let probe = await probeMedia(path: playlistPath)
-            let isLocalHls = playlistURL.isFileURL && (headers == nil || headerString.isEmpty)
-            let allowHwDecode = isLocalHls && ensureFFmpegBuildconfLogged()
-            let hwDecodeArgs = allowHwDecode ? "-hwaccel videotoolbox -hwaccel_output_format videotoolbox" : ""
-            let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(hwDecodeArgs) \(headerArg) -i \(quoted(value: playlistPath)) -map 0 -map -0:d -map -0:s"
-            let limitedBitrate = await limitedTranscodeBitrate(inputURL: playlistURL)
+            let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(headerArg) -i \(quoted(value: playlistPath)) -map 0 -map -0:d -map -0:s"
             let commandInstantMux = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL \(headerArg) -i \(quoted(value: playlistPath)) -map 0 -map -0:d -map -0:s -dn -sn -c copy -movflags +faststart \(quoted(path: tempOutput.path))"
             let commandWithBsf = "\(baseArgs) -c:v copy -c:a copy -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
             let commandNoBsf = "\(baseArgs) -c:v copy -c:a copy -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
-            let commandAudioReencode = "\(baseArgs) -c:v copy -c:a aac -b:a 192k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
-            let commandFullTranscodeVT = "\(baseArgs) -c:v h264_videotoolbox -realtime true -preset veryfast -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 192k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
-            let commandFullTranscode = "\(baseArgs) -c:v libx264 -preset veryfast -crf 21 -b:v \(limitedBitrate) -maxrate \(limitedBitrate) -bufsize \(limitedBitrate * 2) -pix_fmt yuv420p -c:a aac -b:a 192k -ac 2 -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
             let canCopyVideo = probe.videoCodec.map(isMp4VideoCodecCompatible) ?? true
             let canCopyAudio = probe.audioCodec.map(isAVPlayerSafeMp4AudioCodec) ?? true
-            let requiresVideoTranscode = probe.videoCodec.map { !isMp4VideoCodecCompatible($0) } ?? false
-            let requiresAudioReencode = probe.audioCodec.map { !isAVPlayerSafeMp4AudioCodec($0) } ?? false
             let needsTsAudioBitstreamFix = probe.format.contains("mpegts")
 
             AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count) format=\(probe.format) vcodec=\(probe.videoCodec ?? "none") acodec=\(probe.audioCodec ?? "none")")
 
-            if requiresVideoTranscode {
-                AppLog.debug(.downloads, "ffmpeg hls preflight: video codec requires full transcode")
-                let fourth = await runFFmpeg(commandFullTranscodeVT, duration: duration, progress: progress)
-                if ReturnCode.isSuccess(fourth.code) {
-                    try? FileManager.default.removeItem(at: outputURL)
-                    try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-                    AppLog.debug(.downloads, "ffmpeg hls success (vt transcode) output=\(outputPath)")
-                    return outputURL
-                }
-                if ReturnCode.isCancel(fourth.code) {
-                    AppLog.error(.downloads, "ffmpeg hls cancelled (vt transcode) input=\(playlistPath)")
-                    throw ConversionError.cancelled
-                }
-                AppLog.error(.downloads, "ffmpeg hls failed vt transcode, retrying libx264 input=\(playlistPath)")
-                let fifth = await runFFmpeg(commandFullTranscode, duration: duration, progress: progress)
-                if ReturnCode.isSuccess(fifth.code) {
-                    try? FileManager.default.removeItem(at: outputURL)
-                    try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-                    AppLog.debug(.downloads, "ffmpeg hls success (libx264) output=\(outputPath)")
-                    return outputURL
-                }
-                if ReturnCode.isCancel(fifth.code) {
-                    AppLog.error(.downloads, "ffmpeg hls cancelled (libx264) input=\(playlistPath)")
-                    throw ConversionError.cancelled
-                }
-                let message = fifth.logs ?? fourth.logs ?? "ffmpeg hls conversion failed"
-                AppLog.error(.downloads, "ffmpeg hls failed input=\(playlistPath) error=\(message)")
-                try? FileManager.default.removeItem(at: outputURL)
-                throw ConversionError.exportFailed(message)
-            }
-
-            if requiresAudioReencode {
-                AppLog.debug(.downloads, "ffmpeg hls preflight: audio codec requires AV-compatible AAC")
-                let third = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
-                if ReturnCode.isSuccess(third.code) {
-                    try? FileManager.default.removeItem(at: outputURL)
-                    try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-                    AppLog.debug(.downloads, "ffmpeg hls success (audio reencode) output=\(outputPath)")
-                    return outputURL
-                }
-                if ReturnCode.isCancel(third.code) {
-                    AppLog.error(.downloads, "ffmpeg hls cancelled (audio reencode) input=\(playlistPath)")
-                    throw ConversionError.cancelled
-                }
-                logCopyFailure(label: "hls audio reencode", result: third)
+            if !canCopyVideo || !canCopyAudio {
+                let reason = "hls remux requires mp4-safe codecs vcodec=\(probe.videoCodec ?? "unknown") acodec=\(probe.audioCodec ?? "unknown")"
+                AppLog.error(.downloads, reason)
+                throw ConversionError.exportFailed(reason)
             }
 
             if !needsTsAudioBitstreamFix {
@@ -1780,51 +1690,7 @@ actor MediaConversionManager {
                 throw ConversionError.cancelled
             }
             logCopyFailure(label: "hls copy", result: second)
-
-            if isAudioIncompatible(second.logs) || isAudioIncompatible(first.logs) {
-                AppLog.error(.downloads, "ffmpeg hls detected incompatible audio, retrying with audio transcode input=\(playlistPath)")
-            } else {
-                AppLog.error(.downloads, "ffmpeg hls copy path failed, retrying with audio reencode input=\(playlistPath)")
-            }
-            let third = await runFFmpeg(commandAudioReencode, duration: duration, progress: progress)
-            if ReturnCode.isSuccess(third.code) {
-                try? FileManager.default.removeItem(at: outputURL)
-                try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-                AppLog.debug(.downloads, "ffmpeg hls success (audio reencode) output=\(outputPath)")
-                return outputURL
-            }
-            if ReturnCode.isCancel(third.code) {
-                AppLog.error(.downloads, "ffmpeg hls cancelled (audio reencode) input=\(playlistPath)")
-                throw ConversionError.cancelled
-            }
-
-            AppLog.error(.downloads, "ffmpeg hls failed audio reencode, retrying full transcode (videotoolbox) input=\(playlistPath)")
-            let fourth = await runFFmpeg(commandFullTranscodeVT, duration: duration, progress: progress)
-            if ReturnCode.isSuccess(fourth.code) {
-                try? FileManager.default.removeItem(at: outputURL)
-                try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-                AppLog.debug(.downloads, "ffmpeg hls success (vt transcode) output=\(outputPath)")
-                return outputURL
-            }
-            if ReturnCode.isCancel(fourth.code) {
-                AppLog.error(.downloads, "ffmpeg hls cancelled (vt transcode) input=\(playlistPath)")
-                throw ConversionError.cancelled
-            }
-
-            AppLog.error(.downloads, "ffmpeg hls failed vt transcode, retrying libx264 input=\(playlistPath)")
-            let fifth = await runFFmpeg(commandFullTranscode, duration: duration, progress: progress)
-            if ReturnCode.isSuccess(fifth.code) {
-                try? FileManager.default.removeItem(at: outputURL)
-                try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-                AppLog.debug(.downloads, "ffmpeg hls success (libx264) output=\(outputPath)")
-                return outputURL
-            }
-            if ReturnCode.isCancel(fifth.code) {
-                AppLog.error(.downloads, "ffmpeg hls cancelled (libx264) input=\(playlistPath)")
-                throw ConversionError.cancelled
-            }
-
-            let message = fifth.logs ?? fourth.logs ?? third.logs ?? second.logs ?? first.logs ?? "ffmpeg hls conversion failed"
+            let message = second.logs ?? first.logs ?? "ffmpeg hls remux failed"
             AppLog.error(.downloads, "ffmpeg hls failed input=\(playlistPath) error=\(message)")
             try? FileManager.default.removeItem(at: outputURL)
             throw ConversionError.exportFailed(message)
