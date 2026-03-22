@@ -1604,13 +1604,10 @@ actor MediaConversionManager {
             let duration = await probeDurationSeconds(path: playlistPath)
             let probe = await probeMedia(path: playlistPath)
             let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v:0? -map 0:a:0?"
-            let commandInstantMux = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v:0? -map 0:a:0? -dn -sn -c copy -movflags +faststart \(quoted(path: tempOutput.path))"
             let commandWithBsf = "\(baseArgs) -c:v copy -c:a copy -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
             let commandNoBsf = "\(baseArgs) -c:v copy -c:a copy -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
             let canCopyVideo = probe.videoCodec.map(isMp4VideoCodecCompatible) ?? true
             let canCopyAudio = probe.audioCodec.map(isAVPlayerSafeMp4AudioCodec) ?? true
-            let needsTsAudioBitstreamFix = probe.format.contains("mpegts")
-            let preferAacBitstreamFix = needsTsAudioBitstreamFix || probe.audioCodec == "aac"
 
             AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count) format=\(probe.format) vcodec=\(probe.videoCodec ?? "none") acodec=\(probe.audioCodec ?? "none")")
 
@@ -1620,22 +1617,7 @@ actor MediaConversionManager {
                 throw ConversionError.exportFailed(reason)
             }
 
-            if !preferAacBitstreamFix {
-                let instant = await runFFmpeg(commandInstantMux, duration: duration, progress: progress)
-                if ReturnCode.isSuccess(instant.code) {
-                    try? FileManager.default.removeItem(at: outputURL)
-                    try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-                    AppLog.debug(.downloads, "ffmpeg hls success (instant mux) output=\(outputPath)")
-                    return outputURL
-                }
-                if ReturnCode.isCancel(instant.code) {
-                    AppLog.error(.downloads, "ffmpeg hls cancelled (instant mux) input=\(playlistPath)")
-                    throw ConversionError.cancelled
-                }
-                logCopyFailure(label: "hls instant mux", result: instant)
-            } else {
-                AppLog.debug(.downloads, "ffmpeg hls skipping instant mux; preferring AAC bitstream fix")
-            }
+            AppLog.debug(.downloads, "ffmpeg hls skipping instant mux; using AAC bitstream fix first")
 
             let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
             if ReturnCode.isSuccess(first.code) {
