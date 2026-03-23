@@ -379,7 +379,7 @@ private struct AVPlayerScreen: View {
             AppLog.debug(.player, "seek: ignored until ready time=\(seconds) reason=\(reason)")
             return
         }
-        let shouldResume = shouldResumePlayback ?? (player?.timeControlStatus != .paused || player?.rate ?? 0 > 0)
+        let shouldResume = shouldResumePlayback ?? (player.timeControlStatus != .paused || player.rate > 0)
         performDirectSeek(
             player: player,
             item: item,
