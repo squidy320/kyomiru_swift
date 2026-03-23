@@ -389,7 +389,6 @@
             name = Kyomiru;
 			packageProductDependencies = (
 				B3E8C6D4F1A24B7C9E0F1A2B /* Kingfisher */,
-				C4D5E6F708192A3B4C5D6E7F /* MPVKit */,
 			);
             productName = Kyomiru;
             productReference = 72071117F02B492EA7D8D08E /* Kyomiru.app */;
@@ -407,7 +406,6 @@
             mainGroup = A1F6688393CD43E789FC9C3D;
 			packageReferences = (
 				A2D7F5B1C4A84D9E8F1B2C3D /* Kingfisher */,
-				C3D4E5F60718293A4B5C6D7E /* MPVKit */,
 			);
             productRefGroup = A1F6688393CD43E789FC9C3D;
             projectDirPath = "";
@@ -521,18 +519,9 @@
 			package = A2D7F5B1C4A84D9E8F1B2C3D /* Kingfisher */;
 			productName = Kingfisher;
 		};
-		C4D5E6F708192A3B4C5D6E7F /* MPVKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = C3D4E5F60718293A4B5C6D7E /* MPVKit */;
-			productName = MPVKit;
-		};
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		C3D4E5F60718293A4B5C6D7E /* MPVKit */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Vendor/MPVKit;
-		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCBuildConfiguration section */
