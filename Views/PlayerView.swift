@@ -2,6 +2,10 @@ import SwiftUI
 #if os(iOS)
 import AVFoundation
 import AVKit
+import UIKit
+#if canImport(Libmpv)
+import Libmpv
+#endif
 #endif
 
 struct PlayerView: View {
@@ -35,15 +39,39 @@ struct PlayerView: View {
     var body: some View {
         Group {
 #if os(iOS)
-            AVPlayerScreen(
-                episode: episode,
-                sources: sources,
-                mediaId: mediaId,
-                malId: malId,
-                mediaTitle: mediaTitle,
-                startAt: startAt,
-                onRestoreAfterPictureInPicture: onRestoreAfterPictureInPicture
-            )
+            if appState.settings.playerEngine == .mpv {
+#if canImport(Libmpv)
+                MPVPlayerScreen(
+                    episode: episode,
+                    sources: sources,
+                    mediaId: mediaId,
+                    malId: malId,
+                    mediaTitle: mediaTitle,
+                    startAt: startAt,
+                    onRestoreAfterPictureInPicture: onRestoreAfterPictureInPicture
+                )
+#else
+                AVPlayerScreen(
+                    episode: episode,
+                    sources: sources,
+                    mediaId: mediaId,
+                    malId: malId,
+                    mediaTitle: mediaTitle,
+                    startAt: startAt,
+                    onRestoreAfterPictureInPicture: onRestoreAfterPictureInPicture
+                )
+#endif
+            } else {
+                AVPlayerScreen(
+                    episode: episode,
+                    sources: sources,
+                    mediaId: mediaId,
+                    malId: malId,
+                    mediaTitle: mediaTitle,
+                    startAt: startAt,
+                    onRestoreAfterPictureInPicture: onRestoreAfterPictureInPicture
+                )
+            }
 #else
             Text("Playback is only supported on iOS.")
 #endif
@@ -842,4 +870,773 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         }
     }
 }
+
+#if canImport(Libmpv)
+private struct MPVPlayerScreen: View {
+    private static let minimumSavedResumeSeconds: Double = 5
+
+    let episode: SoraEpisode
+    let sources: [SoraSource]
+    let mediaId: Int
+    let malId: Int?
+    let mediaTitle: String?
+    let startAt: Double?
+    let onRestoreAfterPictureInPicture: (() -> Void)?
+
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    @StateObject private var playbackState: MPVPlaybackState
+    @State private var skipSegments: [AniSkipSegment] = []
+    @State private var activeSkip: AniSkipSegment?
+    @State private var didMarkWatched = false
+    @State private var controlsVisible = true
+    @State private var sliderValue: Double = 0
+    @State private var isScrubbing = false
+    @State private var pendingResumeTime: Double?
+    @State private var didApplyInitialResumeSeek = false
+    @State private var hideControlsTask: DispatchWorkItem?
+    @State private var holdSpeedActive = false
+
+    init(
+        episode: SoraEpisode,
+        sources: [SoraSource],
+        mediaId: Int,
+        malId: Int?,
+        mediaTitle: String?,
+        startAt: Double?,
+        onRestoreAfterPictureInPicture: (() -> Void)?
+    ) {
+        self.episode = episode
+        self.sources = sources
+        self.mediaId = mediaId
+        self.malId = malId
+        self.mediaTitle = mediaTitle
+        self.startAt = startAt
+        self.onRestoreAfterPictureInPicture = onRestoreAfterPictureInPicture
+        _playbackState = StateObject(wrappedValue: MPVPlaybackState())
+    }
+
+    private var selectedSource: SoraSource? {
+        sources.first
+    }
+
+    private var resolvedPlaybackURL: URL? {
+        guard let source = selectedSource else { return nil }
+        return PlaybackService.resolvePlayableURL(for: source.url, title: mediaTitle, episode: episode.number)
+    }
+
+    private var resolvedHeaders: [String: String] {
+        guard let source = selectedSource, let resolvedPlaybackURL else { return [:] }
+        return resolvedPlaybackURL.isFileURL ? [:] : source.headers
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let resolvedPlaybackURL {
+                MPVPlayerContainer(
+                    playbackState: playbackState,
+                    url: resolvedPlaybackURL,
+                    headers: resolvedHeaders
+                )
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    toggleControls()
+                }
+                .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 24, pressing: { pressing in
+                    handleHoldSpeedChanged(pressing)
+                }, perform: {})
+            } else {
+                ProgressView("Loading player...")
+                    .tint(.white)
+                    .foregroundColor(.white)
+            }
+
+            if playbackState.isBuffering {
+                ProgressView()
+                    .scaleEffect(1.2)
+                    .tint(.white)
+            }
+
+            if controlsVisible {
+                controlsOverlay
+                    .transition(.opacity)
+            }
+        }
+        .animation(appState.settings.reduceMotion ? nil : .easeInOut(duration: 0.18), value: controlsVisible)
+        .statusBarHidden(true)
+        .onAppear(perform: handleAppear)
+        .onDisappear(perform: handleDisappear)
+        .onChange(of: playbackState.currentTime) { newValue in
+            handlePlaybackTimeChanged(newValue)
+        }
+        .onChange(of: playbackState.duration) { _ in
+            applyPendingResumeIfNeeded(reason: "duration")
+        }
+        .onChange(of: playbackState.isReady) { isReady in
+            if isReady {
+                applyPendingResumeIfNeeded(reason: "ready")
+            }
+        }
+        .alert("Playback Error", isPresented: Binding(
+            get: { playbackState.errorMessage != nil },
+            set: { _ in playbackState.errorMessage = nil }
+        )) {
+            Button("OK", role: .cancel) {
+                dismiss()
+            }
+        } message: {
+            Text(playbackState.errorMessage ?? "Unknown error")
+        }
+    }
+
+    private var controlsOverlay: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 42, height: 42)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+
+                Spacer()
+
+                Text("MPV")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 18)
+
+            Spacer()
+
+            VStack(spacing: 12) {
+                HStack(spacing: 14) {
+                    controlButton(systemName: "gobackward.15") {
+                        playbackState.seekBy(-15)
+                        resetControlsAutoHide()
+                    }
+
+                    controlButton(systemName: playbackState.isPaused ? "play.fill" : "pause.fill") {
+                        playbackState.togglePause()
+                        resetControlsAutoHide()
+                    }
+
+                    controlButton(systemName: "goforward.15") {
+                        playbackState.seekBy(15)
+                        resetControlsAutoHide()
+                    }
+
+                    Spacer()
+
+                    if let activeSkip {
+                        Button {
+                            seekToSkipEnd(activeSkip)
+                        } label: {
+                            Text(skipButtonTitle(for: activeSkip))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(.ultraThinMaterial, in: Capsule())
+                        }
+                    }
+                }
+
+                GlassCard {
+                    VStack(spacing: 10) {
+                        Slider(
+                            value: Binding(
+                                get: { isScrubbing ? sliderValue : playbackState.currentTime },
+                                set: { sliderValue = $0 }
+                            ),
+                            in: 0...max(playbackState.duration, 1),
+                            onEditingChanged: { editing in
+                                isScrubbing = editing
+                                if editing {
+                                    sliderValue = playbackState.currentTime
+                                    resetControlsAutoHide()
+                                } else {
+                                    playbackState.seek(to: sliderValue)
+                                    resetControlsAutoHide()
+                                }
+                            }
+                        )
+                        .tint(Theme.accent)
+
+                        HStack {
+                            Text(formattedTime(isScrubbing ? sliderValue : playbackState.currentTime))
+                            Spacer()
+                            Text(formattedTime(playbackState.duration))
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Theme.textSecondary)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
+        }
+    }
+
+    private func controlButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+    }
+
+    private func handleAppear() {
+        guard selectedSource != nil else {
+            playbackState.errorMessage = "No playable sources available."
+            return
+        }
+
+        PlaybackHistoryStore.shared.saveLastEpisode(
+            mediaId: mediaId,
+            episodeId: episode.id,
+            episodeNumber: episode.number
+        )
+
+        if let explicitStart = startAt, explicitStart > 0 {
+            pendingResumeTime = explicitStart
+        } else if let savedPosition = PlaybackHistoryStore.shared.position(for: episode.id),
+                  savedPosition >= Self.minimumSavedResumeSeconds {
+            pendingResumeTime = savedPosition
+        } else {
+            pendingResumeTime = nil
+        }
+
+        loadSkipSegments()
+        resetControlsAutoHide()
+    }
+
+    private func handleDisappear() {
+        hideControlsTask?.cancel()
+        playbackState.stop()
+    }
+
+    private func handlePlaybackTimeChanged(_ seconds: Double) {
+        guard seconds.isFinite else { return }
+        if !isScrubbing {
+            sliderValue = seconds
+        }
+        updateActiveSkip(at: seconds)
+        applyPendingResumeIfNeeded(reason: "time")
+
+        let duration = playbackState.duration
+        guard duration > 0 else { return }
+
+        let fraction = seconds / duration
+        if !didMarkWatched, fraction >= 0.85 {
+            didMarkWatched = true
+            Task { await appState.markEpisodeWatched(mediaId: mediaId, episodeNumber: episode.number) }
+            PlaybackHistoryStore.shared.clearMedia(mediaId: mediaId)
+        }
+
+        Task { @MainActor in
+            appState.services.playbackEngine.updateProgress(
+                for: String(mediaId),
+                currentTime: seconds,
+                duration: duration
+            )
+            appState.services.playbackEngine.updateProgress(
+                for: "episode:\(episode.id)",
+                currentTime: seconds,
+                duration: duration
+            )
+            if !didMarkWatched {
+                PlaybackHistoryStore.shared.saveDuration(duration, for: episode.id)
+                if seconds >= Self.minimumSavedResumeSeconds {
+                    PlaybackHistoryStore.shared.save(position: seconds, for: episode.id)
+                }
+            }
+        }
+    }
+
+    private func applyPendingResumeIfNeeded(reason: String) {
+        guard let pendingResumeTime, !didApplyInitialResumeSeek else { return }
+        guard playbackState.isReady, playbackState.duration > 0 else { return }
+        if playbackState.currentTime > 2 {
+            didApplyInitialResumeSeek = true
+            self.pendingResumeTime = nil
+            return
+        }
+
+        didApplyInitialResumeSeek = true
+        self.pendingResumeTime = nil
+        AppLog.debug(.player, "mpv seek: resume time=\(pendingResumeTime) reason=\(reason)")
+        playbackState.seek(to: pendingResumeTime)
+    }
+
+    private func toggleControls() {
+        controlsVisible.toggle()
+        if controlsVisible {
+            resetControlsAutoHide()
+        } else {
+            hideControlsTask?.cancel()
+        }
+    }
+
+    private func resetControlsAutoHide() {
+        hideControlsTask?.cancel()
+        guard !appState.settings.reduceMotion else { return }
+        let task = DispatchWorkItem {
+            controlsVisible = false
+        }
+        hideControlsTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5, execute: task)
+    }
+
+    private func handleHoldSpeedChanged(_ isActive: Bool) {
+        guard playbackState.isReady else { return }
+        if isActive {
+            guard !playbackState.isPaused, !holdSpeedActive else { return }
+            holdSpeedActive = true
+            playbackState.setSpeed(appState.settings.playerHoldSpeed.rawValue)
+        } else if holdSpeedActive {
+            holdSpeedActive = false
+            playbackState.setSpeed(1.0)
+        }
+    }
+
+    private func loadSkipSegments() {
+        guard let malId else {
+            skipSegments = []
+            activeSkip = nil
+            return
+        }
+        if let cached = appState.services.downloadManager.cachedSkipSegments(malId: malId, episode: episode.number) {
+            skipSegments = cached
+            updateActiveSkip(at: playbackState.currentTime)
+        } else {
+            skipSegments = []
+        }
+        Task {
+            let segments = await appState.services.aniSkipService.fetchSkipSegments(malId: malId, episode: episode.number)
+            guard !segments.isEmpty else { return }
+            await MainActor.run {
+                skipSegments = segments
+                updateActiveSkip(at: playbackState.currentTime)
+            }
+            appState.services.downloadManager.storeSkipSegments(segments, malId: malId, episode: episode.number)
+        }
+    }
+
+    private func updateActiveSkip(at time: Double) {
+        guard !skipSegments.isEmpty else {
+            activeSkip = nil
+            return
+        }
+        let matches = skipSegments.filter { time >= $0.start && time <= $0.end }
+        activeSkip = matches.min(by: { $0.end < $1.end })
+    }
+
+    private func seekToSkipEnd(_ segment: AniSkipSegment) {
+        activeSkip = nil
+        playbackState.seek(to: segment.end)
+        resetControlsAutoHide()
+    }
+
+    private func skipButtonTitle(for segment: AniSkipSegment) -> String {
+        switch segment.type.lowercased() {
+        case "op":
+            return "Skip Intro"
+        case "ed":
+            return "Skip Outro"
+        case "recap":
+            return "Skip Recap"
+        case "preview":
+            return "Skip Preview"
+        default:
+            return "Skip"
+        }
+    }
+
+    private func formattedTime(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds > 0 else { return "0:00" }
+        let total = Int(seconds.rounded(.down))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        }
+        return String(format: "%d:%02d", minutes, secs)
+    }
+}
+
+private final class MPVPlaybackState: ObservableObject {
+    @Published var currentTime: Double = 0
+    @Published var duration: Double = 0
+    @Published var isPaused: Bool = false
+    @Published var isBuffering: Bool = false
+    @Published var isReady: Bool = false
+    @Published var errorMessage: String?
+
+    weak var controller: MPVMetalViewController?
+
+    func attach(controller: MPVMetalViewController) {
+        self.controller = controller
+    }
+
+    func togglePause() {
+        controller?.togglePause()
+    }
+
+    func seek(to seconds: Double) {
+        controller?.seek(to: seconds)
+    }
+
+    func seekBy(_ delta: Double) {
+        controller?.seekBy(delta)
+    }
+
+    func setSpeed(_ speed: Double) {
+        controller?.setPlaybackSpeed(speed)
+    }
+
+    func stop() {
+        controller?.stop()
+    }
+}
+
+private struct MPVPlayerContainer: UIViewControllerRepresentable {
+    @ObservedObject var playbackState: MPVPlaybackState
+    let url: URL
+    let headers: [String: String]
+
+    func makeUIViewController(context: Context) -> MPVMetalViewController {
+        let controller = MPVMetalViewController(playbackState: playbackState, url: url, headers: headers)
+        playbackState.attach(controller: controller)
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: MPVMetalViewController, context: Context) {
+        uiViewController.updateSource(url: url, headers: headers)
+        playbackState.attach(controller: uiViewController)
+    }
+}
+
+private final class MPVMetalRenderView: UIView {
+    let playerLayer = MPVMetalLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        commonInit()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+
+    private func commonInit() {
+        backgroundColor = .black
+        layer.addSublayer(playerLayer)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        playerLayer.frame = bounds
+    }
+}
+
+private final class MPVMetalLayer: CAMetalLayer {
+    override var drawableSize: CGSize {
+        get { super.drawableSize }
+        set {
+            if Int(newValue.width) > 1 && Int(newValue.height) > 1 {
+                super.drawableSize = newValue
+            }
+        }
+    }
+}
+
+private final class MPVMetalViewController: UIViewController {
+    private let playbackState: MPVPlaybackState
+    private let renderView = MPVMetalRenderView()
+    private var metalLayer: MPVMetalLayer
+    private var currentURL: URL
+    private var currentHeaders: [String: String]
+    private var mpv: OpaquePointer?
+    private let queue = DispatchQueue(label: "kyomiru.mpv", qos: .userInitiated)
+    private var hasLoadedSource = false
+
+    init(playbackState: MPVPlaybackState, url: URL, headers: [String: String]) {
+        self.playbackState = playbackState
+        self.currentURL = url
+        self.currentHeaders = headers
+        self.metalLayer = renderView.playerLayer
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() {
+        view = renderView
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        metalLayer.contentsScale = UIScreen.main.nativeScale
+        metalLayer.framebufferOnly = true
+        metalLayer.backgroundColor = UIColor.black.cgColor
+        setupMpv()
+        loadCurrentSourceIfNeeded()
+    }
+
+    deinit {
+        teardown()
+    }
+
+    func updateSource(url: URL, headers: [String: String]) {
+        let didChange = currentURL != url || currentHeaders != headers
+        currentURL = url
+        currentHeaders = headers
+        if didChange, mpv != nil {
+            loadCurrentSourceIfNeeded(force: true)
+        }
+    }
+
+    func togglePause() {
+        getFlag("pause") ? play() : pause()
+    }
+
+    func play() {
+        setFlag("pause", false)
+    }
+
+    func pause() {
+        setFlag("pause", true)
+    }
+
+    func seek(to seconds: Double) {
+        let clamped = max(0, seconds)
+        command("seek", args: [String(clamped), "absolute+exact"])
+    }
+
+    func seekBy(_ delta: Double) {
+        command("seek", args: [String(delta), "relative+exact"])
+    }
+
+    func setPlaybackSpeed(_ speed: Double) {
+        var value = speed
+        guard let mpv else { return }
+        mpv_set_property(mpv, "speed", MPV_FORMAT_DOUBLE, &value)
+    }
+
+    func stop() {
+        teardown()
+    }
+
+    private func setupMpv() {
+        let player = mpv_create()
+        guard let player else {
+            playbackState.errorMessage = "Failed to create MPV player."
+            return
+        }
+        mpv = player
+
+#if DEBUG
+        _ = mpv_request_log_messages(player, "debug")
+#else
+        _ = mpv_request_log_messages(player, "warn")
+#endif
+
+        _ = mpv_set_option(player, "wid", MPV_FORMAT_INT64, &metalLayer)
+        _ = mpv_set_option_string(player, "vo", "gpu-next")
+        _ = mpv_set_option_string(player, "gpu-api", "vulkan")
+        _ = mpv_set_option_string(player, "gpu-context", "moltenvk")
+        _ = mpv_set_option_string(player, "hwdec", "videotoolbox")
+        _ = mpv_set_option_string(player, "video-rotate", "no")
+        _ = mpv_set_option_string(player, "force-seekable", "yes")
+        _ = mpv_set_option_string(player, "cache", "yes")
+        _ = mpv_set_option_string(player, "demuxer-seekable-cache", "yes")
+        _ = mpv_set_option_string(player, "profile", "fast")
+
+        let initializeResult = mpv_initialize(player)
+        if initializeResult < 0 {
+            playbackState.errorMessage = String(cString: mpv_error_string(initializeResult))
+            teardown()
+            return
+        }
+
+        mpv_observe_property(player, 0, "time-pos", MPV_FORMAT_DOUBLE)
+        mpv_observe_property(player, 0, "duration", MPV_FORMAT_DOUBLE)
+        mpv_observe_property(player, 0, "pause", MPV_FORMAT_FLAG)
+        mpv_observe_property(player, 0, "paused-for-cache", MPV_FORMAT_FLAG)
+
+        mpv_set_wakeup_callback(player, { context in
+            guard let context else { return }
+            let controller = Unmanaged<MPVMetalViewController>.fromOpaque(context).takeUnretainedValue()
+            controller.readEvents()
+        }, UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()))
+    }
+
+    private func loadCurrentSourceIfNeeded(force: Bool = false) {
+        guard let mpv else { return }
+        guard force || !hasLoadedSource else { return }
+        hasLoadedSource = true
+
+        applyHeaders(currentHeaders, to: mpv)
+
+        let target = currentURL.absoluteString
+        let result = command("loadfile", args: [target, "replace"], checkForErrors: false)
+        if result < 0 {
+            playbackState.errorMessage = String(cString: mpv_error_string(result))
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.playbackState.isReady = true
+            }
+        }
+    }
+
+    private func applyHeaders(_ headers: [String: String], to mpv: OpaquePointer) {
+        let normalized = Dictionary(uniqueKeysWithValues: headers.map { ($0.key.lowercased(), $0.value) })
+        if let userAgent = normalized["user-agent"] {
+            _ = mpv_set_option_string(mpv, "user-agent", userAgent)
+        }
+        if let referer = normalized["referer"] {
+            _ = mpv_set_option_string(mpv, "referrer", referer)
+        }
+
+        let headerFields = headers
+            .filter {
+                $0.key.caseInsensitiveCompare("user-agent") != .orderedSame &&
+                $0.key.caseInsensitiveCompare("referer") != .orderedSame
+            }
+            .map { "\($0.key): \($0.value)" }
+            .joined(separator: ",")
+        if !headerFields.isEmpty {
+            _ = mpv_set_option_string(mpv, "http-header-fields", headerFields)
+        }
+    }
+
+    private func teardown() {
+        guard let mpv else { return }
+        mpv_set_wakeup_callback(mpv, nil, nil)
+        mpv_terminate_destroy(mpv)
+        self.mpv = nil
+    }
+
+    private func readEvents() {
+        queue.async { [weak self] in
+            guard let self, let mpv = self.mpv else { return }
+
+            while true {
+                guard let event = mpv_wait_event(mpv, 0) else { break }
+                if event.pointee.event_id == MPV_EVENT_NONE {
+                    break
+                }
+
+                switch event.pointee.event_id {
+                case MPV_EVENT_PROPERTY_CHANGE:
+                    guard let property = UnsafePointer<mpv_event_property>(OpaquePointer(event.pointee.data))?.pointee else {
+                        continue
+                    }
+                    let name = String(cString: property.name)
+                    switch name {
+                    case "time-pos", "duration":
+                        let value = UnsafePointer<Double>(OpaquePointer(property.data))?.pointee ?? 0
+                        DispatchQueue.main.async {
+                            if name == "time-pos" {
+                                self.playbackState.currentTime = value
+                            } else {
+                                self.playbackState.duration = value
+                            }
+                        }
+                    case "pause", "paused-for-cache":
+                        let flagValue = (UnsafePointer<Int64>(OpaquePointer(property.data))?.pointee ?? 0) > 0
+                        DispatchQueue.main.async {
+                            if name == "pause" {
+                                self.playbackState.isPaused = flagValue
+                            } else {
+                                self.playbackState.isBuffering = flagValue
+                            }
+                        }
+                    default:
+                        break
+                    }
+                case MPV_EVENT_FILE_LOADED:
+                    DispatchQueue.main.async {
+                        self.playbackState.isReady = true
+                        self.playbackState.errorMessage = nil
+                    }
+                case MPV_EVENT_END_FILE:
+                    DispatchQueue.main.async {
+                        self.playbackState.isPaused = true
+                    }
+                case MPV_EVENT_SHUTDOWN:
+                    return
+                case MPV_EVENT_LOG_MESSAGE:
+                    if let message = UnsafeMutablePointer<mpv_event_log_message>(OpaquePointer(event.pointee.data)) {
+                        let prefix = message.pointee.prefix.map { String(cString: $0) } ?? "mpv"
+                        let level = message.pointee.level.map { String(cString: $0) } ?? "info"
+                        let text = message.pointee.text.map { String(cString: $0) } ?? ""
+                        AppLog.debug(.player, "[\(prefix)] \(level): \(text)")
+                    }
+                default:
+                    break
+                }
+            }
+        }
+    }
+
+    @discardableResult
+    private func command(_ command: String, args: [String?] = [], checkForErrors: Bool = true) -> Int32 {
+        guard let mpv else { return Int32.min }
+        var cargs = makeCArgs(command, args).map { $0.flatMap { UnsafePointer<CChar>(strdup($0)) } }
+        defer {
+            for pointer in cargs where pointer != nil {
+                free(UnsafeMutablePointer(mutating: pointer))
+            }
+        }
+        let result = mpv_command(mpv, &cargs)
+        if checkForErrors, result < 0 {
+            let message = String(cString: mpv_error_string(result))
+            DispatchQueue.main.async {
+                self.playbackState.errorMessage = message
+            }
+        }
+        return result
+    }
+
+    private func makeCArgs(_ command: String, _ args: [String?]) -> [String?] {
+        var values = args
+        values.insert(command, at: 0)
+        values.append(nil)
+        return values
+    }
+
+    private func getFlag(_ name: String) -> Bool {
+        guard let mpv else { return true }
+        var data = Int64()
+        mpv_get_property(mpv, name, MPV_FORMAT_FLAG, &data)
+        return data > 0
+    }
+
+    private func setFlag(_ name: String, _ value: Bool) {
+        guard let mpv else { return }
+        var data: Int64 = value ? 1 : 0
+        mpv_set_property(mpv, name, MPV_FORMAT_FLAG, &data)
+    }
+}
+#endif
 #endif

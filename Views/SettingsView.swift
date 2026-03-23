@@ -109,6 +109,18 @@ struct SettingsView: View {
 
     private var playerTab: some View {
         VStack(alignment: .leading, spacing: sectionSpacing) {
+            SettingsSectionCard(title: "Playback Engine", subtitle: "Switch between the native Apple player and the MPV backend.") {
+                Picker("Player Engine", selection: Binding(
+                    get: { appState.settings.playerEngine },
+                    set: { appState.settings.playerEngine = $0 }
+                )) {
+                    ForEach(PlayerEngine.allCases) { engine in
+                        Text(engine.title).tag(engine)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             SettingsSectionCard(title: "Streaming Defaults", subtitle: "Applied automatically when a matching source exists.") {
                 settingsPickerRow(
                     title: "Default Audio",
