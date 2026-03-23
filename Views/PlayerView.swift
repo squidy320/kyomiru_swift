@@ -75,8 +75,8 @@ private struct AVPlayerScreen: View {
     @State private var activeSkip: AniSkipSegment?
     @State private var didMarkWatched = false
     @State private var isSeeking = false
+    @State private var didApplyInitialResumeSeek = false
     @State private var shouldLogBufferState = true
-    @State private var pendingSeekRequest: PendingSeekRequest?
     @State private var pendingResumeTime: Double?
     @State private var isRemoteStream = false
     @State private var isPictureInPictureActive = false
@@ -202,9 +202,9 @@ private struct AVPlayerScreen: View {
             NotificationCenter.default.removeObserver(playbackStallObserver)
             self.playbackStallObserver = nil
         }
-        pendingSeekRequest = nil
         pendingResumeTime = nil
         isSeeking = false
+        didApplyInitialResumeSeek = false
         shouldLogBufferState = true
         isRemoteStream = false
         activeSkip = nil
@@ -222,6 +222,7 @@ private struct AVPlayerScreen: View {
     }
 
     private func addObservers(to player: AVPlayer, item: AVPlayerItem) {
+        didApplyInitialResumeSeek = false
         if let explicitStart = startAt, explicitStart > 0 {
             pendingResumeTime = explicitStart
         } else if let savedPosition = PlaybackHistoryStore.shared.position(for: episode.id),
@@ -235,10 +236,7 @@ private struct AVPlayerScreen: View {
         statusObserver = item.observe(\.status, options: [.initial, .new]) { observed, _ in
             switch observed.status {
             case .readyToPlay:
-                if !isRemoteStream {
-                    applyPendingResumeIfNeeded(reason: "readyToPlay")
-                }
-                performPendingSeekIfPossible(reason: "statusReady")
+                applyPendingResumeIfNeeded(reason: "readyToPlay")
             case .failed:
                 errorMessage = observed.error?.localizedDescription ?? "Playback failed."
             default:
@@ -263,14 +261,12 @@ private struct AVPlayerScreen: View {
                 }
                 if observed.isPlaybackLikelyToKeepUp, !isRemoteStream {
                     applyPendingResumeIfNeeded(reason: "likelyToKeepUp")
-                    performPendingSeekIfPossible(reason: "keepUp")
                 }
             },
             item.observe(\.seekableTimeRanges, options: [.initial, .new]) { _, _ in
                 if !isRemoteStream {
                     applyPendingResumeIfNeeded(reason: "seekableRanges")
                 }
-                performPendingSeekIfPossible(reason: "seekableRanges")
             }
         ]
 
@@ -281,11 +277,7 @@ private struct AVPlayerScreen: View {
         ) { _ in
             AppLog.debug(.player, "buffer: stalled remote=\(isRemoteStream) seeking=\(isSeeking)")
             guard isRemoteStream else { return }
-            if pendingSeekRequest != nil {
-                performPendingSeekIfPossible(reason: "stall")
-            } else {
-                player.play()
-            }
+            player.play()
         }
 
         let interval = CMTime(seconds: 1.0, preferredTimescale: 2)
@@ -382,83 +374,69 @@ private struct AVPlayerScreen: View {
     }
 
     private func requestSeek(to seconds: Double, reason: String, shouldResumePlayback: Bool? = nil) {
+        guard let player, let item = player.currentItem else { return }
+        guard item.status == .readyToPlay else {
+            AppLog.debug(.player, "seek: ignored until ready time=\(seconds) reason=\(reason)")
+            return
+        }
         let shouldResume = shouldResumePlayback ?? (player?.timeControlStatus != .paused || player?.rate ?? 0 > 0)
-        pendingSeekRequest = PendingSeekRequest(seconds: seconds, reason: reason, shouldResumePlayback: shouldResume)
-        AppLog.debug(.player, "seek: queued time=\(seconds) reason=\(reason)")
-        performPendingSeekIfPossible(reason: "request")
+        performDirectSeek(
+            player: player,
+            item: item,
+            seconds: seconds,
+            reason: reason,
+            shouldResumePlayback: shouldResume
+        )
     }
 
     private func applyPendingResumeIfNeeded(reason: String) {
         guard let seconds = pendingResumeTime else { return }
         guard let item = playerItem, item.status == .readyToPlay else { return }
-        guard isSeekable(item: item, targetSeconds: seconds) else { return }
-        pendingResumeTime = nil
-        requestSeek(to: seconds, reason: "resume:\(reason)", shouldResumePlayback: true)
-    }
-
-    private func performPendingSeekIfPossible(reason: String) {
-        guard !isSeeking else { return }
-        guard let request = pendingSeekRequest else { return }
-        guard let player, let item = player.currentItem else { return }
-        guard item.status == .readyToPlay else { return }
-        guard isSeekable(item: item, targetSeconds: request.seconds) else {
-            AppLog.debug(.player, "seek: waiting seekable time=\(request.seconds) reason=\(request.reason) trigger=\(reason)")
+        guard let player else { return }
+        if didApplyInitialResumeSeek {
+            pendingResumeTime = nil
             return
         }
-
-        let clampedSeconds = clampedSeekTime(request.seconds, item: item)
-        pendingSeekRequest = nil
-        isSeeking = true
-        let tolerance = CMTime(seconds: isRemoteStream ? 3.0 : 0.25, preferredTimescale: 600)
-        let target = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
-        let shouldResume = request.shouldResumePlayback
-
-        item.cancelPendingSeeks()
-        AppLog.debug(.player, "seek: perform time=\(clampedSeconds) reason=\(request.reason) trigger=\(reason)")
-        player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { finished in
-            AppLog.debug(.player, "seek: finished=\(finished) time=\(clampedSeconds) reason=\(request.reason)")
-            isSeeking = false
-
-            if let next = pendingSeekRequest {
-                AppLog.debug(.player, "seek: chaining next time=\(next.seconds) reason=\(next.reason)")
-                performPendingSeekIfPossible(reason: "chain")
-                return
-            }
-
-            if shouldResume {
-                resumePlaybackAfterSeek(player: player)
-            }
+        if isRemoteStream && currentPlaybackTime > 3 {
+            pendingResumeTime = nil
+            didApplyInitialResumeSeek = true
+            return
         }
-
-        if shouldResume, isRemoteStream {
-            DispatchQueue.main.async {
-                resumePlaybackAfterSeek(player: player)
-            }
-        }
+        pendingResumeTime = nil
+        didApplyInitialResumeSeek = true
+        performDirectSeek(
+            player: player,
+            item: item,
+            seconds: seconds,
+            reason: "resume:\(reason)",
+            shouldResumePlayback: true
+        )
     }
 
-    private func isSeekable(item: AVPlayerItem, targetSeconds: Double) -> Bool {
-        guard item.status == .readyToPlay else { return false }
-        if !isRemoteStream {
-            return true
+    private func performDirectSeek(
+        player: AVPlayer,
+        item: AVPlayerItem,
+        seconds: Double,
+        reason: String,
+        shouldResumePlayback: Bool
+    ) {
+        let clampedSeconds = clampedSeekTime(seconds, item: item)
+        let tolerance = CMTime(seconds: isRemoteStream ? 1.0 : 0.25, preferredTimescale: 600)
+        let target = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
+
+        isSeeking = true
+        item.cancelPendingSeeks()
+        AppLog.debug(.player, "seek: perform time=\(clampedSeconds) reason=\(reason)")
+        player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { finished in
+            AppLog.debug(.player, "seek: finished=\(finished) time=\(clampedSeconds) reason=\(reason)")
+            isSeeking = false
+            if shouldResumePlayback {
+                resumePlaybackAfterSeek(player: player)
+            }
         }
 
-        let ranges = item.seekableTimeRanges.compactMap { value -> ClosedRange<Double>? in
-            let range = value.timeRangeValue
-            let start = range.start.seconds
-            let duration = range.duration.seconds
-            guard start.isFinite, duration.isFinite else { return nil }
-            let end = start + duration
-            guard end > start else { return nil }
-            return start...end
-        }
-
-        if ranges.isEmpty {
-            return false
-        }
-
-        return ranges.contains { range in
-            targetSeconds >= max(0, range.lowerBound - 2) && targetSeconds <= range.upperBound + 2
+        if shouldResumePlayback {
+            resumePlaybackAfterSeek(player: player)
         }
     }
 
@@ -562,11 +540,6 @@ private struct AVPlayerScreen: View {
         didRequestRestoreAfterPictureInPicture = false
     }
 
-    private struct PendingSeekRequest: Equatable {
-        let seconds: Double
-        let reason: String
-        let shouldResumePlayback: Bool
-    }
 }
 
 private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentable {
