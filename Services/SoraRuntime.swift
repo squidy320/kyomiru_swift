@@ -233,16 +233,17 @@ final class SoraRuntime {
     }
 
     private func buildSource(urlString: String, referer: URL) -> SoraSource? {
-        guard let url = URL(string: urlString) else { return nil }
-        let quality = qualityFrom(urlString: urlString)
-        let audio = audioLabel(from: urlString)
+        let preferredURLString = preferredAnimePaheStreamURLString(from: urlString)
+        guard let url = URL(string: preferredURLString) else { return nil }
+        let quality = qualityFrom(urlString: preferredURLString)
+        let audio = audioLabel(from: preferredURLString)
         let format = url.pathExtension.lowercased()
         let headers = [
             "Referer": referer.absoluteString,
             "Origin": "\(referer.scheme ?? "https")://\(referer.host ?? "")"
         ]
         return SoraSource(
-            id: "\(urlString)|\(quality)|\(audio)",
+            id: "\(preferredURLString)|\(quality)|\(audio)",
             url: url,
             quality: quality,
             subOrDub: audio,
@@ -270,10 +271,11 @@ final class SoraRuntime {
     }
 
     private func sourceFromJS(dict: [String: Any], referer: URL) -> SoraSource? {
-        let urlString = (dict["streamUrl"] as? String) ??
+        let originalURLString = (dict["streamUrl"] as? String) ??
             (dict["url"] as? String) ??
             (dict["stream"] as? String) ??
             ""
+        let urlString = preferredAnimePaheStreamURLString(from: originalURLString)
         guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
 
         let title = (dict["title"] as? String) ?? ""
@@ -333,6 +335,19 @@ final class SoraRuntime {
             out.append(s)
         }
         return out
+    }
+
+    private func preferredAnimePaheStreamURLString(from urlString: String) -> String {
+        guard
+            let components = URLComponents(string: urlString),
+            let host = components.host?.lowercased(),
+            host.contains("owocdn"),
+            components.path.lowercased().hasSuffix("/uwu.m3u8")
+        else {
+            return urlString
+        }
+
+        return urlString.replacingOccurrences(of: "/uwu.m3u8", with: "/owo.m3u8")
     }
 
     private func get(url: URL, referer: URL? = nil) async throws -> Data {
