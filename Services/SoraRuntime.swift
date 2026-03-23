@@ -1,11 +1,15 @@
 import Foundation
 
-final class SoraRuntime {
-    private let baseURL = URL(string: "https://animepahe.si")!
+struct AnimePaheModuleStreamResult {
+    let streams: [String]?
+    let subtitles: [String]?
+    let sources: [[String: Any]]?
+}
+
+final class AnimePaheModuleService {
     private let session: URLSession
-    private var cookieHeader: String?
-    private let js = JSController.shared
     private let manifestURL = URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.json")!
+    private let js = JSController.shared
     private var loadedService: Service?
     private var loadedAt: Date?
 
@@ -13,18 +17,127 @@ final class SoraRuntime {
         self.session = session
     }
 
+    func search(query: String) async throws -> [SearchItem] {
+        let service = try await loadServiceIfNeeded()
+        AppLog.debug(.network, "animepahe module search using manifest=\(manifestURL.absoluteString)")
+        return await withCheckedContinuation { cont in
+            js.fetchJsSearchResults(keyword: query, module: service) { results in
+                cont.resume(returning: results)
+            }
+        }
+    }
+
+    func episodes(animeURL: URL) async throws -> [EpisodeLink] {
+        _ = try await loadServiceIfNeeded()
+        return await withCheckedContinuation { cont in
+            js.fetchEpisodesJS(url: animeURL.absoluteString) { results in
+                cont.resume(returning: results)
+            }
+        }
+    }
+
+    func sources(episodeURL: URL) async throws -> AnimePaheModuleStreamResult {
+        let service = try await loadServiceIfNeeded()
+        let result = await withCheckedContinuation { cont in
+            js.fetchStreamUrlJS(episodeUrl: episodeURL.absoluteString, module: service) { result in
+                cont.resume(returning: result)
+            }
+        }
+        return AnimePaheModuleStreamResult(
+            streams: result.streams,
+            subtitles: result.subtitles,
+            sources: result.sources
+        )
+    }
+
+    private func loadServiceIfNeeded() async throws -> Service {
+        let now = Date()
+        if let service = loadedService,
+           let loadedAt,
+           now.timeIntervalSince(loadedAt) < 1800 {
+            AppLog.debug(.network, "animepahe module cache hit")
+            return service
+        }
+
+        AppLog.debug(.network, "animepahe module manifest load start url=\(manifestURL.absoluteString)")
+        var manifestRequest = URLRequest(url: manifestURL)
+        manifestRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
+        manifestRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (manifestData, _) = try await fetch(manifestRequest, label: "animepahe-module-manifest")
+        let metadata = try JSONDecoder().decode(ServiceMetadata.self, from: manifestData)
+        AppLog.debug(.network, "animepahe module manifest loaded name=\(metadata.sourceName) version=\(metadata.version)")
+
+        guard let scriptURL = URL(string: metadata.scriptUrl) else {
+            throw URLError(.badURL)
+        }
+
+        var scriptRequest = URLRequest(url: scriptURL)
+        scriptRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
+        scriptRequest.setValue("text/javascript,*/*", forHTTPHeaderField: "Accept")
+        let (scriptData, _) = try await fetch(scriptRequest, label: "animepahe-module-script")
+        var script = String(data: scriptData, encoding: .utf8) ?? ""
+        if script.isEmpty {
+            throw URLError(.cannotDecodeContentData)
+        }
+
+        script = script
+            .replacingOccurrences(
+                of: "match(/<div class=\"anime-synopsis\">(.*?)<\\/div>/s)",
+                with: "match(/<div class=\\\"anime-synopsis\\\">([\\s\\S]*?)<\\/div>/)"
+            )
+            .replacingOccurrences(
+                of: "match(/<strong>Aired:<\\/strong>(.*?)<\\/p>/s)",
+                with: "match(/<strong>Aired:<\\/strong>([\\s\\S]*?)<\\/p>/)"
+            )
+            .replacingOccurrences(
+                of: "match(/<script>(.*?)<\\/script>/s)",
+                with: "match(/<script>([\\s\\S]*?)<\\/script>/)"
+            )
+
+        let service = Service(
+            id: UUID(),
+            metadata: metadata,
+            jsScript: script,
+            url: manifestURL.absoluteString,
+            isActive: true,
+            sortIndex: 0
+        )
+
+        loadedService = service
+        loadedAt = now
+        js.loadScript(script)
+        AppLog.debug(.network, "animepahe module script loaded into JSContext size=\(script.count)")
+        return service
+    }
+
+    private func fetch(_ request: URLRequest, label: String) async throws -> (Data, URLResponse) {
+        try await NetworkRetry.withRetries(label: label) { [session] in
+            let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode >= 500 || http.statusCode == 429 {
+                throw URLError(.badServerResponse)
+            }
+            return (data, response)
+        }
+    }
+}
+
+final class SoraRuntime {
+    private let baseURL = URL(string: "https://animepahe.si")!
+    private let session: URLSession
+    private var cookieHeader: String?
+    private let moduleService: AnimePaheModuleService
+
+    init(session: URLSession = .custom) {
+        self.session = session
+        self.moduleService = AnimePaheModuleService(session: session)
+    }
+
     func searchAnime(query: String) async throws -> [SoraAnimeMatch] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         AppLog.debug(.network, "animepahe search start query=\(trimmed)")
         do {
-            let service = try await loadServiceIfNeeded()
-            AppLog.debug(.network, "animepahe search using luna manifest=\(manifestURL.absoluteString)")
-            let items: [SearchItem] = await withCheckedContinuation { cont in
-                js.fetchJsSearchResults(keyword: trimmed, module: service) { results in
-                    cont.resume(returning: results)
-                }
-            }
+            let items = try await moduleService.search(query: trimmed)
             let matches = items.compactMap { item -> SoraAnimeMatch? in
                 let sessionId = URL(string: item.href)?.lastPathComponent ?? ""
                 guard !sessionId.isEmpty else { return nil }
@@ -100,13 +213,8 @@ final class SoraRuntime {
     func episodes(for match: SoraAnimeMatch) async throws -> [SoraEpisode] {
         AppLog.debug(.network, "episodes list start session=\(match.session)")
         do {
-            _ = try await loadServiceIfNeeded()
             let animeURL = baseURL.appendingPathComponent("anime/\(match.session)")
-            let links: [EpisodeLink] = await withCheckedContinuation { cont in
-                js.fetchEpisodesJS(url: animeURL.absoluteString) { results in
-                    cont.resume(returning: results)
-                }
-            }
+            let links = try await moduleService.episodes(animeURL: animeURL)
             AppLog.debug(.network, "episodes luna links count=\(links.count) session=\(match.session)")
             let episodes: [SoraEpisode] = links.compactMap { link in
                 guard link.number > 0 else { return nil }
@@ -164,12 +272,7 @@ final class SoraRuntime {
     func sources(for episode: SoraEpisode) async throws -> [SoraSource] {
         AppLog.debug(.network, "sources scrape start episode=\(episode.number)")
         do {
-            let service = try await loadServiceIfNeeded()
-            let result = await withCheckedContinuation { cont in
-                js.fetchStreamUrlJS(episodeUrl: episode.playURL.absoluteString, module: service) { result in
-                    cont.resume(returning: result)
-                }
-            }
+            let result = try await moduleService.sources(episodeURL: episode.playURL)
 
             var sources: [SoraSource] = []
             if let sourceDicts = result.sources {
@@ -180,8 +283,8 @@ final class SoraRuntime {
                 }
             } else if let urls = result.streams {
                 for url in urls {
-                    if let src = buildSource(urlString: url, referer: episode.playURL) {
-                        sources.append(src)
+                    if let source = buildSource(urlString: url, referer: episode.playURL) {
+                        sources.append(source)
                     }
                 }
             }
@@ -223,8 +326,8 @@ final class SoraRuntime {
         for link in directLinks {
             let linkString = link.absoluteString.lowercased()
             if linkString.contains(".m3u8") || linkString.contains(".mp4") {
-                if let src = buildSource(urlString: link.absoluteString, referer: url) {
-                    out.append(src)
+                if let source = buildSource(urlString: link.absoluteString, referer: url) {
+                    out.append(source)
                 }
             }
         }
@@ -232,23 +335,25 @@ final class SoraRuntime {
         return out
     }
 
-    private func buildSource(urlString: String, referer: URL) -> SoraSource? {
-        let preferredURLString = preferredAnimePaheStreamURLString(from: urlString)
-        guard let url = URL(string: preferredURLString) else { return nil }
-        let quality = qualityFrom(urlString: preferredURLString)
-        let audio = audioLabel(from: preferredURLString)
+    private func buildSource(
+        urlString: String,
+        referer: URL,
+        headers: [String: String] = [:],
+        displayText: String? = nil
+    ) -> SoraSource? {
+        guard let url = URL(string: urlString) else { return nil }
+        let quality = qualityFrom(urlString: displayText ?? urlString)
+        let audio = audioLabel(from: displayText ?? urlString)
         let format = url.pathExtension.lowercased()
-        let headers = [
-            "Referer": referer.absoluteString,
-            "Origin": "\(referer.scheme ?? "https")://\(referer.host ?? "")"
-        ]
+        let merged = mergedHeaders(headers, referer: referer)
+        let metadataKey = displayText ?? urlString
         return SoraSource(
-            id: "\(preferredURLString)|\(quality)|\(audio)",
+            id: "\(urlString)|\(quality)|\(audio)|\(metadataKey)|\(headerSignature(merged))",
             url: url,
             quality: quality,
             subOrDub: audio,
             format: format.isEmpty ? "m3u8" : format,
-            headers: headers
+            headers: merged
         )
     }
 
@@ -275,31 +380,22 @@ final class SoraRuntime {
             (dict["url"] as? String) ??
             (dict["stream"] as? String) ??
             ""
-        let urlString = preferredAnimePaheStreamURLString(from: originalURLString)
-        guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
+        guard !originalURLString.isEmpty else { return nil }
 
         let title = (dict["title"] as? String) ?? ""
-        let quality = qualityFrom(urlString: title.isEmpty ? urlString : title)
-        let audio = audioLabel(from: title.isEmpty ? urlString : title)
-        let format = url.pathExtension.isEmpty ? "m3u8" : url.pathExtension.lowercased()
-
-        var headers: [String: String] = [
-            "Referer": referer.absoluteString,
-            "Origin": "\(referer.scheme ?? "https")://\(referer.host ?? "")"
-        ]
+        var headers: [String: String] = [:]
         if let headerDict = dict["headers"] as? [String: Any] {
             for (key, value) in headerDict {
                 headers[key] = String(describing: value)
             }
         }
 
-        return SoraSource(
-            id: "\(urlString)|\(quality)|\(audio)",
-            url: url,
-            quality: quality,
-            subOrDub: audio,
-            format: format,
-            headers: headers
+        let displayText = title.isEmpty ? originalURLString : title
+        return buildSource(
+            urlString: originalURLString,
+            referer: referer,
+            headers: headers,
+            displayText: displayText
         )
     }
 
@@ -329,7 +425,7 @@ final class SoraRuntime {
         var seen = Set<String>()
         var out: [SoraSource] = []
         for s in sources {
-            let key = "\(s.url.absoluteString)|\(s.quality)|\(s.subOrDub)"
+            let key = "\(s.id)|\(s.format)"
             if seen.contains(key) { continue }
             seen.insert(key)
             out.append(s)
@@ -337,17 +433,26 @@ final class SoraRuntime {
         return out
     }
 
-    private func preferredAnimePaheStreamURLString(from urlString: String) -> String {
-        guard
-            let components = URLComponents(string: urlString),
-            let host = components.host?.lowercased(),
-            host.contains("owocdn"),
-            components.path.lowercased().hasSuffix("/uwu.m3u8")
-        else {
-            return urlString
+    private func mergedHeaders(_ headers: [String: String], referer: URL) -> [String: String] {
+        var merged = headers
+        if !hasHeader("Referer", in: merged) {
+            merged["Referer"] = referer.absoluteString
         }
+        if !hasHeader("Origin", in: merged) {
+            merged["Origin"] = "\(referer.scheme ?? "https")://\(referer.host ?? "")"
+        }
+        return merged
+    }
 
-        return urlString.replacingOccurrences(of: "/uwu.m3u8", with: "/owo.m3u8")
+    private func hasHeader(_ name: String, in headers: [String: String]) -> Bool {
+        headers.keys.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    private func headerSignature(_ headers: [String: String]) -> String {
+        headers
+            .map { key, value in "\(key.lowercased())=\(value)" }
+            .sorted()
+            .joined(separator: "&")
     }
 
     private func get(url: URL, referer: URL? = nil) async throws -> Data {
@@ -516,62 +621,5 @@ final class SoraRuntime {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
-    private func loadServiceIfNeeded() async throws -> Service {
-        let now = Date()
-        if let service = loadedService,
-           let loadedAt,
-           now.timeIntervalSince(loadedAt) < 1800 {
-            AppLog.debug(.network, "luna service cache hit")
-            return service
-        }
-
-        AppLog.debug(.network, "luna manifest load start url=\(manifestURL.absoluteString)")
-        var manifestRequest = URLRequest(url: manifestURL)
-        manifestRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
-        manifestRequest.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (manifestData, _) = try await fetch(manifestRequest, label: "luna-manifest")
-        let metadata = try JSONDecoder().decode(ServiceMetadata.self, from: manifestData)
-        AppLog.debug(.network, "luna manifest loaded name=\(metadata.sourceName) version=\(metadata.version)")
-        guard let scriptURL = URL(string: metadata.scriptUrl) else {
-            throw URLError(.badURL)
-        }
-        var scriptRequest = URLRequest(url: scriptURL)
-        scriptRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
-        scriptRequest.setValue("text/javascript,*/*", forHTTPHeaderField: "Accept")
-        let (scriptData, _) = try await fetch(scriptRequest, label: "luna-script")
-        var script = String(data: scriptData, encoding: .utf8) ?? ""
-        if script.isEmpty {
-            throw URLError(.cannotDecodeContentData)
-        }
-        // JSCore on some builds struggles with the dotAll "s" flag; normalize a few known patterns.
-        script = script
-            .replacingOccurrences(
-                of: "match(/<div class=\"anime-synopsis\">(.*?)<\\/div>/s)",
-                with: "match(/<div class=\\\"anime-synopsis\\\">([\\s\\S]*?)<\\/div>/)"
-            )
-            .replacingOccurrences(
-                of: "match(/<strong>Aired:<\\/strong>(.*?)<\\/p>/s)",
-                with: "match(/<strong>Aired:<\\/strong>([\\s\\S]*?)<\\/p>/)"
-            )
-            .replacingOccurrences(
-                of: "match(/<script>(.*?)<\\/script>/s)",
-                with: "match(/<script>([\\s\\S]*?)<\\/script>/)"
-            )
-        AppLog.debug(.network, "luna script loaded size=\(script.count)")
-
-        let service = Service(
-            id: UUID(),
-            metadata: metadata,
-            jsScript: script,
-            url: manifestURL.absoluteString,
-            isActive: true,
-            sortIndex: 0
-        )
-        loadedService = service
-        loadedAt = now
-        js.loadScript(script)
-        AppLog.debug(.network, "luna script loaded into JSContext")
-        return service
-    }
 }
 
