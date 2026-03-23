@@ -22,8 +22,8 @@ enum StreamSourcePreferenceResolver {
 
     static func streamVariantRank(_ source: SoraSource) -> Int {
         let url = source.url.absoluteString.lowercased()
-        if url.contains("/uwu.m3u8") { return 2 }
-        if url.contains("/owo.m3u8") { return 0 }
+        if url.contains("/owo.m3u8") { return 2 }
+        if url.contains("/uwu.m3u8") { return 0 }
         return 1
     }
 
