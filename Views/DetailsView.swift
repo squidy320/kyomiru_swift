@@ -20,11 +20,23 @@ enum StreamSourcePreferenceResolver {
         return Int(digits) ?? 0
     }
 
+    static func streamVariantRank(_ source: SoraSource) -> Int {
+        let url = source.url.absoluteString.lowercased()
+        if url.contains("/uwu.m3u8") { return 2 }
+        if url.contains("/owo.m3u8") { return 0 }
+        return 1
+    }
+
     static func sortedSources(_ sources: [SoraSource]) -> [SoraSource] {
         sources.sorted { lhs, rhs in
             let leftRank = qualityRank(lhs.quality)
             let rightRank = qualityRank(rhs.quality)
             if leftRank == rightRank {
+                let leftVariant = streamVariantRank(lhs)
+                let rightVariant = streamVariantRank(rhs)
+                if leftVariant != rightVariant {
+                    return leftVariant > rightVariant
+                }
                 return lhs.subOrDub.localizedCaseInsensitiveCompare(rhs.subOrDub) == .orderedAscending
             }
             return leftRank > rightRank
