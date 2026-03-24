@@ -92,16 +92,16 @@
 		CC22DD33EE44FF55AA66BC18 /* Libfreetype.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC08 /* Libfreetype.xcframework */; };
 		CC22DD33EE44FF55AA66BC19 /* Libfribidi.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC09 /* Libfribidi.xcframework */; };
 		CC22DD33EE44FF55AA66BC20 /* Libharfbuzz.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC10 /* Libharfbuzz.xcframework */; };
-		CC22DD33EE44FF55AA66BC21 /* Libass.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC21 /* Libass.xcframework */; };
-		CC22DD33EE44FF55AA66BC22 /* Libbluray.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC22 /* Libbluray.xcframework */; };
-		CC22DD33EE44FF55AA66BC23 /* Libuavs3d.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC23 /* Libuavs3d.xcframework */; };
-		CC22DD33EE44FF55AA66BC24 /* Libdovi.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC24 /* Libdovi.xcframework */; };
-		CC22DD33EE44FF55AA66BC25 /* MoltenVK.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC25 /* MoltenVK.xcframework */; };
-		CC22DD33EE44FF55AA66BC26 /* Libshaderc_combined.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC26 /* Libshaderc_combined.xcframework */; };
-		CC22DD33EE44FF55AA66BC27 /* lcms2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC27 /* lcms2.xcframework */; };
-		CC22DD33EE44FF55AA66BC28 /* Libplacebo.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC28 /* Libplacebo.xcframework */; };
-		CC22DD33EE44FF55AA66BC29 /* Libdav1d.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC29 /* Libdav1d.xcframework */; };
-		CC22DD33EE44FF55AA66BC30 /* Libuchardet.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC30 /* Libuchardet.xcframework */; };
+		CC22DD33EE44FF55AA66BE21 /* Libass.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC21 /* Libass.xcframework */; };
+		CC22DD33EE44FF55AA66BE22 /* Libbluray.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC22 /* Libbluray.xcframework */; };
+		CC22DD33EE44FF55AA66BE23 /* Libuavs3d.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC23 /* Libuavs3d.xcframework */; };
+		CC22DD33EE44FF55AA66BE24 /* Libdovi.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC24 /* Libdovi.xcframework */; };
+		CC22DD33EE44FF55AA66BE25 /* MoltenVK.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC25 /* MoltenVK.xcframework */; };
+		CC22DD33EE44FF55AA66BE26 /* Libshaderc_combined.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC26 /* Libshaderc_combined.xcframework */; };
+		CC22DD33EE44FF55AA66BE27 /* lcms2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC27 /* lcms2.xcframework */; };
+		CC22DD33EE44FF55AA66BE28 /* Libplacebo.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC28 /* Libplacebo.xcframework */; };
+		CC22DD33EE44FF55AA66BE29 /* Libdav1d.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC29 /* Libdav1d.xcframework */; };
+		CC22DD33EE44FF55AA66BE30 /* Libuchardet.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC30 /* Libuchardet.xcframework */; };
 		BB11BB22CC33DD44EE55FF21 /* ffmpegkit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF03 /* ffmpegkit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BB11BB22CC33DD44EE55FF22 /* libavcodec.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF04 /* libavcodec.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BB11BB22CC33DD44EE55FF23 /* libavdevice.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF05 /* libavdevice.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -259,16 +259,16 @@
 				CC22DD33EE44FF55AA66BC18 /* Libfreetype.xcframework in Frameworks */,
 				CC22DD33EE44FF55AA66BC19 /* Libfribidi.xcframework in Frameworks */,
 				CC22DD33EE44FF55AA66BC20 /* Libharfbuzz.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC21 /* Libass.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC22 /* Libbluray.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC23 /* Libuavs3d.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC24 /* Libdovi.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC25 /* MoltenVK.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC26 /* Libshaderc_combined.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC27 /* lcms2.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC28 /* Libplacebo.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC29 /* Libdav1d.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC30 /* Libuchardet.xcframework in Frameworks */,
+				CC22DD33EE44FF55AA66BE21 /* Libass.xcframework in Frameworks */,
+				CC22DD33EE44FF55AA66BE22 /* Libbluray.xcframework in Frameworks */,
+				CC22DD33EE44FF55AA66BE23 /* Libuavs3d.xcframework in Frameworks */,
+				CC22DD33EE44FF55AA66BE24 /* Libdovi.xcframework in Frameworks */,
+				CC22DD33EE44FF55AA66BE25 /* MoltenVK.xcframework in Frameworks */,
+				CC22DD33EE44FF55AA66BE26 /* Libshaderc_combined.xcframework in Frameworks */,
+				CC22DD33EE44FF55AA66BE27 /* lcms2.xcframework in Frameworks */,
+				CC22DD33EE44FF55AA66BE28 /* Libplacebo.xcframework in Frameworks */,
+				CC22DD33EE44FF55AA66BE29 /* Libdav1d.xcframework in Frameworks */,
+				CC22DD33EE44FF55AA66BE30 /* Libuchardet.xcframework in Frameworks */,
 			);
             runOnlyForDeploymentPostprocessing = 0;
         };
