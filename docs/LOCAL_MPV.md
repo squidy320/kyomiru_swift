@@ -2,11 +2,18 @@
 
 This repo vendors the `MPVKit` source under `Vendor/MPVKit`, and the app now links local XCFramework files directly from `Vendor/MPVKit/Local/xcframework`.
 
+The intended production model is the same as FFmpeg in this repo:
+
+- generate the local MPV XCFrameworks once
+- place them under `Vendor/MPVKit/Local/xcframework`
+- commit them to the repository
+- let CI build directly against those vendored files
+
 ## What "local MPV" means here
 
 The goal is to link local XCFramework files directly from the Xcode project instead of resolving MPV from a remote Swift package.
 
-The app should only expose an active MPV option after these local artifacts exist and are added to `Kyomiru.xcodeproj`.
+The app should only expose an active MPV option after these local artifacts exist in the repo and are linked in `Kyomiru.xcodeproj`.
 
 ## Build the local artifacts
 
@@ -45,7 +52,7 @@ Choose:
 
 The workflow runs on GitHub's macOS runner, prepares the full local MPV XCFramework set, and uploads a zipped artifact containing `Vendor/MPVKit/Local`.
 
-This solves the "I do not have a Mac" part for artifact generation.
+This solves the "I do not have a Mac" part for artifact generation. After downloading the artifact, extract its contents into `Vendor/MPVKit/Local` and commit those files.
 
 ## Minimum required local XCFrameworks
 
@@ -80,4 +87,4 @@ The current project file expects these directories under `Vendor/MPVKit/Local/xc
 
 ## Next integration step
 
-Once the full local XCFramework set exists, `Kyomiru.xcodeproj` can link the frameworks directly and the MPV player path can compile in production builds.
+Once the full local XCFramework set is committed, CI will use those vendored frameworks directly. The main app workflow no longer rebuilds or downloads MPV dependencies for you.

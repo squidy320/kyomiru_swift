@@ -118,6 +118,9 @@ temp/
 dist/
 *.log
 *.xcframework
+!Local/xcframework/
+!Local/xcframework/*.xcframework
+!Local/xcframework/*.xcframework/**
 Package.resolved
 buildServer.json
 .vscode
