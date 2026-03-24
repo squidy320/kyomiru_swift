@@ -46,6 +46,7 @@ done
 
 if [ "$MISSING" -ne 0 ]; then
   echo "Local MPV xcframework set is incomplete."
+  echo "Generate the artifact with the 'Build Local MPV' workflow, then extract its Local/ folder into Vendor/MPVKit/Local and commit it."
   exit 1
 fi
 

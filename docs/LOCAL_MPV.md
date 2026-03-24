@@ -60,6 +60,12 @@ Vendor/MPVKit/Local
 
 and commit those files.
 
+On Windows, use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-local-mpv-artifact.ps1 -ArtifactZip C:\path\to\Kyomiru-MPV-lgpl.zip
+```
+
 ## Minimum required local XCFrameworks
 
 The current project file expects these directories under `Vendor/MPVKit/Local/xcframework`:
