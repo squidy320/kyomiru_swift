@@ -50,9 +50,15 @@ Choose:
 - `lgpl`
 - `gpl`
 
-The workflow runs on GitHub's macOS runner, prepares the full local MPV XCFramework set, and uploads a zipped artifact containing `Vendor/MPVKit/Local`.
+The workflow runs on GitHub's macOS runner, prepares the full local MPV XCFramework set, and uploads a zipped artifact containing a top-level `Local/` folder.
 
-This solves the "I do not have a Mac" part for artifact generation. After downloading the artifact, extract its contents into `Vendor/MPVKit/Local` and commit those files.
+This solves the "I do not have a Mac" part for artifact generation. After downloading the artifact, extract the `Local/` folder into:
+
+```text
+Vendor/MPVKit/Local
+```
+
+and commit those files.
 
 ## Minimum required local XCFrameworks
 

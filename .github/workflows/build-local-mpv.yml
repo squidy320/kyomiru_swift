@@ -33,12 +33,9 @@ jobs:
         with:
           xcode-version: "latest-stable"
 
-      - name: Restore Local MPV Cache
-        id: mpv-cache
-        uses: actions/cache@v4
-        with:
-          path: Vendor/MPVKit/Local/xcframework
-          key: ${{ runner.os }}-mpv-${{ inputs.variant }}-${{ hashFiles('Vendor/MPVKit/Package.swift', 'Vendor/MPVKit/Makefile', 'scripts/build-mpv.sh', 'scripts/prepare-local-mpv-frameworks.sh') }}
+      - name: Reset Local MPV Output
+        run: |
+          rm -rf Vendor/MPVKit/Local
 
       - name: Build Local MPV Artifacts
         run: |
@@ -50,8 +47,8 @@ jobs:
 
       - name: Package Local MPV Artifacts
         run: |
-          cd Vendor/MPVKit/Local
-          zip -r "$RUNNER_TEMP/Kyomiru-MPV-${{ inputs.variant }}.zip" .
+          cd Vendor/MPVKit
+          zip -r "$RUNNER_TEMP/Kyomiru-MPV-${{ inputs.variant }}.zip" Local
 
       - name: Upload Local MPV Artifact
         uses: actions/upload-artifact@v4
