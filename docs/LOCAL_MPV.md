@@ -49,6 +49,7 @@ Choose:
 
 - `lgpl`
 - `gpl`
+- `commit_to_repo = true` if you want the workflow to commit `Vendor/MPVKit/Local` back to `main`
 
 The workflow runs on GitHub's macOS runner, prepares the full local MPV XCFramework set, and uploads a zipped artifact containing a top-level `Local/` folder.
 
@@ -65,6 +66,8 @@ On Windows, use:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-local-mpv-artifact.ps1 -ArtifactZip C:\path\to\Kyomiru-MPV-lgpl.zip
 ```
+
+If you run the workflow with `commit_to_repo = true`, you can skip the manual download/install step entirely. The workflow will push `Vendor/MPVKit/Local` directly to `main`.
 
 ## Minimum required local XCFrameworks
 
