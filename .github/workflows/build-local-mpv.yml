@@ -1,0 +1,54 @@
+name: "Build Local MPV"
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: "MPV build variant"
+        required: true
+        default: "lgpl"
+        type: choice
+        options:
+          - lgpl
+          - gpl
+
+permissions:
+  contents: read
+
+jobs:
+  build-local-mpv:
+    runs-on: macos-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          lfs: true
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "latest-stable"
+
+      - name: Build Local MPV Artifacts
+        run: |
+          chmod +x scripts/build-mpv.sh
+          chmod +x scripts/check-local-mpv.sh
+          ./scripts/build-mpv.sh "${{ inputs.variant }}"
+          ./scripts/check-local-mpv.sh
+
+      - name: Package Local MPV Artifacts
+        run: |
+          cd Vendor/MPVKit/dist/release
+          zip -r "$RUNNER_TEMP/Kyomiru-MPV-${{ inputs.variant }}.zip" .
+
+      - name: Upload Local MPV Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kyomiru-MPV-${{ inputs.variant }}
+          path: ${{ runner.temp }}/Kyomiru-MPV-${{ inputs.variant }}.zip
+          if-no-files-found: error
+
