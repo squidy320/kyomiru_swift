@@ -81,6 +81,7 @@
 		BB11BB22CC33DD44EE55FF16 /* libavutil.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF08 /* libavutil.xcframework */; };
 		BB11BB22CC33DD44EE55FF17 /* libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF09 /* libswresample.xcframework */; };
 		BB11BB22CC33DD44EE55FF18 /* libswscale.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */; };
+		CC22DD33EE44FF55AA66BB11 /* Libmpv.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BB01 /* Libmpv.xcframework */; };
 		BB11BB22CC33DD44EE55FF21 /* ffmpegkit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF03 /* ffmpegkit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BB11BB22CC33DD44EE55FF22 /* libavcodec.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF04 /* libavcodec.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BB11BB22CC33DD44EE55FF23 /* libavdevice.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF05 /* libavdevice.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -89,6 +90,7 @@
 		BB11BB22CC33DD44EE55FF26 /* libavutil.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF08 /* libavutil.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BB11BB22CC33DD44EE55FF27 /* libswresample.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF09 /* libswresample.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BB11BB22CC33DD44EE55FF28 /* libswscale.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		CC22DD33EE44FF55AA66BB12 /* Libmpv.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BB01 /* Libmpv.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 
 
 /* Begin PBXFileReference section */
@@ -168,6 +170,7 @@
 		AA11BB22CC33DD44EE55FF08 /* libavutil.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libavutil.xcframework; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF09 /* libswresample.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libswresample.xcframework; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libswscale.xcframework; sourceTree = "<group>"; };
+		CC22DD33EE44FF55AA66BB01 /* Libmpv.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libmpv.xcframework; path = Local/xcframework/Libmpv.xcframework; sourceTree = "<group>"; };
 
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -185,6 +188,7 @@
 				BB11BB22CC33DD44EE55FF16 /* libavutil.xcframework in Frameworks */,
 				BB11BB22CC33DD44EE55FF17 /* libswresample.xcframework in Frameworks */,
 				BB11BB22CC33DD44EE55FF18 /* libswscale.xcframework in Frameworks */,
+				CC22DD33EE44FF55AA66BB11 /* Libmpv.xcframework in Frameworks */,
 			);
             runOnlyForDeploymentPostprocessing = 0;
         };
@@ -205,6 +209,7 @@
 				BB11BB22CC33DD44EE55FF26 /* libavutil.xcframework in Embed Frameworks */,
 				BB11BB22CC33DD44EE55FF27 /* libswresample.xcframework in Embed Frameworks */,
 				BB11BB22CC33DD44EE55FF28 /* libswscale.xcframework in Embed Frameworks */,
+				CC22DD33EE44FF55AA66BB12 /* Libmpv.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -235,6 +240,7 @@
 			isa = PBXGroup;
 			children = (
 				AA11BB22CC33DD44EE55FF02 /* FFmpegKit */,
+				CC22DD33EE44FF55AA66BB02 /* MPVKit */,
 			);
 			path = Vendor;
 			sourceTree = "<group>";
@@ -252,6 +258,14 @@
 				AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */,
 			);
 			path = FFmpegKit;
+			sourceTree = "<group>";
+		};
+		CC22DD33EE44FF55AA66BB02 /* MPVKit */ = {
+			isa = PBXGroup;
+			children = (
+				CC22DD33EE44FF55AA66BB01 /* Libmpv.xcframework */,
+			);
+			path = MPVKit;
 			sourceTree = "<group>";
 		};
         1EE5CC4E90AD46AD84E284B2 /* Models */ = {

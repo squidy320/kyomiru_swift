@@ -1,0 +1,14 @@
+prefix=/path/to/workdir/FFmpeg/isimulator/thin/x86_64
+exec_prefix=${prefix}
+libdir=/path/to/workdir/FFmpeg/isimulator/thin/x86_64/lib
+includedir=/path/to/workdir/FFmpeg/isimulator/thin/x86_64/include
+
+Name: libavutil
+Description: FFmpeg utility library
+Version: 60.8.100
+Requires: 
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavutil -lm -framework VideoToolbox -pthread -framework CoreFoundation -framework CoreMedia -framework CoreVideo
+Libs.private: 
+Cflags: -I${includedir}
