@@ -5,6 +5,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCAL_DIR="$ROOT/Vendor/MPVKit/Local/xcframework"
 
 REQUIRED=(
+  "Libavcodec.xcframework"
+  "Libavdevice.xcframework"
+  "Libavfilter.xcframework"
+  "Libavformat.xcframework"
+  "Libavutil.xcframework"
   "Libmpv.xcframework"
   "Libcrypto.xcframework"
   "Libssl.xcframework"
@@ -26,6 +31,8 @@ REQUIRED=(
   "Libplacebo.xcframework"
   "Libdav1d.xcframework"
   "Libuchardet.xcframework"
+  "Libswresample.xcframework"
+  "Libswscale.xcframework"
 )
 
 if [ ! -d "$LOCAL_DIR" ]; then

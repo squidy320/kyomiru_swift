@@ -57,7 +57,9 @@ jobs:
       - name: Verify Vendored MPV Frameworks
         run: |
           set -e
+          chmod +x scripts/expand-local-mpv-xcframework-zips.sh
           chmod +x scripts/check-local-mpv.sh
+          ./scripts/expand-local-mpv-xcframework-zips.sh
           ./scripts/check-local-mpv.sh
 
       - name: Build Archive (Unsigned)
