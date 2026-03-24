@@ -58,25 +58,15 @@ jobs:
         id: mpv-cache
         uses: actions/cache@v4
         with:
-          path: |
-            Vendor/MPVKit/Local/xcframework/Libmpv.xcframework
-            Vendor/MPVKit/dist/release/xcframework/Libmpv.xcframework
-          key: ${{ runner.os }}-mpv-lgpl-${{ hashFiles('Vendor/MPVKit/Package.swift', 'Vendor/MPVKit/Makefile', 'scripts/build-mpv.sh') }}
+          path: Vendor/MPVKit/Local/xcframework
+          key: ${{ runner.os }}-mpv-lgpl-${{ hashFiles('Vendor/MPVKit/Package.swift', 'Vendor/MPVKit/Makefile', 'scripts/build-mpv.sh', 'scripts/prepare-local-mpv-frameworks.sh') }}
 
-      - name: Prepare Local MPV Framework
+      - name: Prepare Local MPV Frameworks
         run: |
           set -e
           chmod +x scripts/build-mpv.sh
-          mkdir -p Vendor/MPVKit/Local/xcframework
-          if [ ! -d "Vendor/MPVKit/Local/xcframework/Libmpv.xcframework" ]; then
-            ./scripts/build-mpv.sh
-            if [ ! -d "Vendor/MPVKit/dist/release/xcframework/Libmpv.xcframework" ]; then
-              echo "Local Libmpv.xcframework was not produced."
-              exit 1
-            fi
-            rm -rf Vendor/MPVKit/Local/xcframework/Libmpv.xcframework
-            cp -R Vendor/MPVKit/dist/release/xcframework/Libmpv.xcframework Vendor/MPVKit/Local/xcframework/
-          fi
+          chmod +x scripts/prepare-local-mpv-frameworks.sh
+          ./scripts/prepare-local-mpv-frameworks.sh
 
       - name: Build Archive (Unsigned)
         run: |

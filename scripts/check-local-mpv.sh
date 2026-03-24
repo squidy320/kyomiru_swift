@@ -2,28 +2,41 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-RELEASE_DIR="$ROOT/Vendor/MPVKit/dist/release"
+LOCAL_DIR="$ROOT/Vendor/MPVKit/Local/xcframework"
 
 REQUIRED=(
-  "Libmpv.xcframework.zip"
-  "Libavcodec.xcframework.zip"
-  "Libavdevice.xcframework.zip"
-  "Libavfilter.xcframework.zip"
-  "Libavformat.xcframework.zip"
-  "Libavutil.xcframework.zip"
-  "Libswresample.xcframework.zip"
-  "Libswscale.xcframework.zip"
+  "Libmpv.xcframework"
+  "Libcrypto.xcframework"
+  "Libssl.xcframework"
+  "gmp.xcframework"
+  "nettle.xcframework"
+  "hogweed.xcframework"
+  "gnutls.xcframework"
+  "Libunibreak.xcframework"
+  "Libfreetype.xcframework"
+  "Libfribidi.xcframework"
+  "Libharfbuzz.xcframework"
+  "Libass.xcframework"
+  "Libbluray.xcframework"
+  "Libuavs3d.xcframework"
+  "Libdovi.xcframework"
+  "MoltenVK.xcframework"
+  "Libshaderc_combined.xcframework"
+  "lcms2.xcframework"
+  "Libplacebo.xcframework"
+  "Libdav1d.xcframework"
+  "Libuchardet.xcframework"
 )
 
-if [ ! -d "$RELEASE_DIR" ]; then
-  echo "Missing release directory: $RELEASE_DIR"
+if [ ! -d "$LOCAL_DIR" ]; then
+  echo "Missing local xcframework directory: $LOCAL_DIR"
   exit 1
 fi
 
 MISSING=0
 for name in "${REQUIRED[@]}"; do
-  path="$RELEASE_DIR/$name"
-  if [ ! -f "$path" ]; then
+  path="$LOCAL_DIR/$name"
+  if [ ! -d "$path" ]; then
     echo "Missing: $path"
     MISSING=1
   else
@@ -32,8 +45,8 @@ for name in "${REQUIRED[@]}"; do
 done
 
 if [ "$MISSING" -ne 0 ]; then
-  echo "Local MPV artifacts are incomplete."
+  echo "Local MPV xcframework set is incomplete."
   exit 1
 fi
 
-echo "Local MPV artifacts look complete."
+echo "Local MPV xcframework set looks complete."

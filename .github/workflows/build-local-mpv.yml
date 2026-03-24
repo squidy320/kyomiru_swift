@@ -37,25 +37,20 @@ jobs:
         id: mpv-cache
         uses: actions/cache@v4
         with:
-          path: |
-            Vendor/MPVKit/Local/xcframework/Libmpv.xcframework
-            Vendor/MPVKit/dist/release/xcframework/Libmpv.xcframework
-          key: ${{ runner.os }}-mpv-${{ inputs.variant }}-${{ hashFiles('Vendor/MPVKit/Package.swift', 'Vendor/MPVKit/Makefile', 'scripts/build-mpv.sh') }}
+          path: Vendor/MPVKit/Local/xcframework
+          key: ${{ runner.os }}-mpv-${{ inputs.variant }}-${{ hashFiles('Vendor/MPVKit/Package.swift', 'Vendor/MPVKit/Makefile', 'scripts/build-mpv.sh', 'scripts/prepare-local-mpv-frameworks.sh') }}
 
       - name: Build Local MPV Artifacts
         run: |
           chmod +x scripts/build-mpv.sh
           chmod +x scripts/check-local-mpv.sh
-          if [ ! -d "Vendor/MPVKit/Local/xcframework/Libmpv.xcframework" ]; then
-            ./scripts/build-mpv.sh "${{ inputs.variant }}"
-            mkdir -p Vendor/MPVKit/Local/xcframework
-            cp -R Vendor/MPVKit/dist/release/xcframework/Libmpv.xcframework Vendor/MPVKit/Local/xcframework/
-          fi
+          chmod +x scripts/prepare-local-mpv-frameworks.sh
+          ./scripts/prepare-local-mpv-frameworks.sh
           ./scripts/check-local-mpv.sh
 
       - name: Package Local MPV Artifacts
         run: |
-          cd Vendor/MPVKit/dist/release
+          cd Vendor/MPVKit/Local
           zip -r "$RUNNER_TEMP/Kyomiru-MPV-${{ inputs.variant }}.zip" .
 
       - name: Upload Local MPV Artifact

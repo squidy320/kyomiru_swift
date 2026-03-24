@@ -1,6 +1,6 @@
 # Local MPV Integration
 
-This repo currently vendors the `MPVKit` source under `Vendor/MPVKit`, but it does not yet contain built local MPV binaries.
+This repo vendors the `MPVKit` source under `Vendor/MPVKit`, and the app now links local XCFramework files directly from `Vendor/MPVKit/Local/xcframework`.
 
 ## What "local MPV" means here
 
@@ -13,7 +13,7 @@ The app should only expose an active MPV option after these local artifacts exis
 On a Mac with Xcode command line tools:
 
 ```bash
-./scripts/build-mpv.sh
+./scripts/prepare-local-mpv-frameworks.sh
 ./scripts/check-local-mpv.sh
 ```
 
@@ -21,12 +21,13 @@ Optional GPL build:
 
 ```bash
 ./scripts/build-mpv.sh gpl
+./scripts/prepare-local-mpv-frameworks.sh
 ```
 
-The expected output directory is:
+The expected linked output directory is:
 
 ```text
-Vendor/MPVKit/dist/release
+Vendor/MPVKit/Local/xcframework
 ```
 
 ## Build them on GitHub instead
@@ -42,28 +43,41 @@ Choose:
 - `lgpl`
 - `gpl`
 
-The workflow runs on GitHub's macOS runner, builds the local MPVKit outputs, and uploads a zipped artifact containing the generated files from `Vendor/MPVKit/dist/release`.
+The workflow runs on GitHub's macOS runner, prepares the full local MPV XCFramework set, and uploads a zipped artifact containing `Vendor/MPVKit/Local`.
 
 This solves the "I do not have a Mac" part for artifact generation.
 
-## Minimum required local outputs
+## Minimum required local XCFrameworks
 
-The current player integration expects at least these files:
+The current project file expects these directories under `Vendor/MPVKit/Local/xcframework`:
 
-- `Libmpv.xcframework.zip`
-- `Libavcodec.xcframework.zip`
-- `Libavdevice.xcframework.zip`
-- `Libavfilter.xcframework.zip`
-- `Libavformat.xcframework.zip`
-- `Libavutil.xcframework.zip`
-- `Libswresample.xcframework.zip`
-- `Libswscale.xcframework.zip`
+- `Libmpv.xcframework`
+- `Libcrypto.xcframework`
+- `Libssl.xcframework`
+- `gmp.xcframework`
+- `nettle.xcframework`
+- `hogweed.xcframework`
+- `gnutls.xcframework`
+- `Libunibreak.xcframework`
+- `Libfreetype.xcframework`
+- `Libfribidi.xcframework`
+- `Libharfbuzz.xcframework`
+- `Libass.xcframework`
+- `Libbluray.xcframework`
+- `Libuavs3d.xcframework`
+- `Libdovi.xcframework`
+- `MoltenVK.xcframework`
+- `Libshaderc_combined.xcframework`
+- `lcms2.xcframework`
+- `Libplacebo.xcframework`
+- `Libdav1d.xcframework`
+- `Libuchardet.xcframework`
 
 ## Current app behavior
 
 - `AVPlayer` remains the only active engine in builds where `Libmpv` is not linked.
-- The MPV setting is intentionally hidden/disabled in that case so the UI does not promise a player backend that is not present.
+- The MPV setting is intentionally hidden or disabled in that case so the UI does not promise a player backend that is not present.
 
 ## Next integration step
 
-Once the local MPV artifacts exist, patch `Kyomiru.xcodeproj` to link the local frameworks directly and then re-enable the MPV player path for production builds.
+Once the full local XCFramework set exists, `Kyomiru.xcodeproj` can link the frameworks directly and the MPV player path can compile in production builds.
