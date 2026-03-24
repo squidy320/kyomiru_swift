@@ -33,11 +33,24 @@ jobs:
         with:
           xcode-version: "latest-stable"
 
+      - name: Restore Local MPV Cache
+        id: mpv-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            Vendor/MPVKit/Local/xcframework/Libmpv.xcframework
+            Vendor/MPVKit/dist/release/xcframework/Libmpv.xcframework
+          key: ${{ runner.os }}-mpv-${{ inputs.variant }}-${{ hashFiles('Vendor/MPVKit/Package.swift', 'Vendor/MPVKit/Makefile', 'scripts/build-mpv.sh') }}
+
       - name: Build Local MPV Artifacts
         run: |
           chmod +x scripts/build-mpv.sh
           chmod +x scripts/check-local-mpv.sh
-          ./scripts/build-mpv.sh "${{ inputs.variant }}"
+          if [ ! -d "Vendor/MPVKit/Local/xcframework/Libmpv.xcframework" ]; then
+            ./scripts/build-mpv.sh "${{ inputs.variant }}"
+            mkdir -p Vendor/MPVKit/Local/xcframework
+            cp -R Vendor/MPVKit/dist/release/xcframework/Libmpv.xcframework Vendor/MPVKit/Local/xcframework/
+          fi
           ./scripts/check-local-mpv.sh
 
       - name: Package Local MPV Artifacts
@@ -51,4 +64,3 @@ jobs:
           name: Kyomiru-MPV-${{ inputs.variant }}
           path: ${{ runner.temp }}/Kyomiru-MPV-${{ inputs.variant }}.zip
           if-no-files-found: error
-
