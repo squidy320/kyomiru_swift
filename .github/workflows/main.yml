@@ -54,6 +54,21 @@ jobs:
         run: |
           python3 scripts/lint_interpolation.py
 
+      - name: Prepare Local MPV Framework
+        run: |
+          set -e
+          chmod +x scripts/build-mpv.sh
+          mkdir -p Vendor/MPVKit/Local/xcframework
+          if [ ! -d "Vendor/MPVKit/Local/xcframework/Libmpv.xcframework" ]; then
+            ./scripts/build-mpv.sh
+            if [ ! -d "Vendor/MPVKit/dist/release/xcframework/Libmpv.xcframework" ]; then
+              echo "Local Libmpv.xcframework was not produced."
+              exit 1
+            fi
+            rm -rf Vendor/MPVKit/Local/xcframework/Libmpv.xcframework
+            cp -R Vendor/MPVKit/dist/release/xcframework/Libmpv.xcframework Vendor/MPVKit/Local/xcframework/
+          fi
+
       - name: Build Archive (Unsigned)
         run: |
           set -e
