@@ -81,37 +81,6 @@
 		BB11BB22CC33DD44EE55FF16 /* libavutil.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF08 /* libavutil.xcframework */; };
 		BB11BB22CC33DD44EE55FF17 /* libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF09 /* libswresample.xcframework */; };
 		BB11BB22CC33DD44EE55FF18 /* libswscale.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */; };
-		CC22DD33EE44FF55AA66C111 /* Libavcodec.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C101 /* Libavcodec.xcframework */; };
-		CC22DD33EE44FF55AA66C112 /* Libavdevice.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C102 /* Libavdevice.xcframework */; };
-		CC22DD33EE44FF55AA66C113 /* Libavfilter.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C103 /* Libavfilter.xcframework */; };
-		CC22DD33EE44FF55AA66C114 /* Libavformat.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C104 /* Libavformat.xcframework */; };
-		CC22DD33EE44FF55AA66C115 /* Libavutil.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C105 /* Libavutil.xcframework */; };
-		CC22DD33EE44FF55AA66C116 /* Libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C106 /* Libswresample.xcframework */; };
-		CC22DD33EE44FF55AA66C117 /* Libswscale.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C107 /* Libswscale.xcframework */; };
-		CC22DD33EE44FF55AA66BB11 /* Libmpv.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BB01 /* Libmpv.xcframework */; };
-		CC22DD33EE44FF55AA66BC11 /* Libcrypto.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC01 /* Libcrypto.xcframework */; };
-		CC22DD33EE44FF55AA66BC12 /* Libssl.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC02 /* Libssl.xcframework */; };
-		CC22DD33EE44FF55AA66BC13 /* gmp.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC03 /* gmp.xcframework */; };
-		CC22DD33EE44FF55AA66BC14 /* nettle.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC04 /* nettle.xcframework */; };
-		CC22DD33EE44FF55AA66BC15 /* hogweed.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC05 /* hogweed.xcframework */; };
-		CC22DD33EE44FF55AA66BC16 /* gnutls.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC06 /* gnutls.xcframework */; };
-		CC22DD33EE44FF55AA66BC17 /* Libunibreak.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC07 /* Libunibreak.xcframework */; };
-		CC22DD33EE44FF55AA66BC18 /* Libfreetype.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC08 /* Libfreetype.xcframework */; };
-		CC22DD33EE44FF55AA66BC19 /* Libfribidi.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC09 /* Libfribidi.xcframework */; };
-		CC22DD33EE44FF55AA66BC20 /* Libharfbuzz.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC10 /* Libharfbuzz.xcframework */; };
-		CC22DD33EE44FF55AA66BE21 /* Libass.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC21 /* Libass.xcframework */; };
-		CC22DD33EE44FF55AA66BE22 /* Libbluray.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC22 /* Libbluray.xcframework */; };
-		CC22DD33EE44FF55AA66BE23 /* Libuavs3d.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC23 /* Libuavs3d.xcframework */; };
-		CC22DD33EE44FF55AA66BE24 /* Libdovi.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC24 /* Libdovi.xcframework */; };
-		CC22DD33EE44FF55AA66BE25 /* MoltenVK.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC25 /* MoltenVK.xcframework */; };
-		CC22DD33EE44FF55AA66BE26 /* Libshaderc_combined.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC26 /* Libshaderc_combined.xcframework */; };
-		CC22DD33EE44FF55AA66BE27 /* lcms2.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC27 /* lcms2.xcframework */; };
-		CC22DD33EE44FF55AA66BE28 /* Libplacebo.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC28 /* Libplacebo.xcframework */; };
-		CC22DD33EE44FF55AA66BE29 /* Libdav1d.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC29 /* Libdav1d.xcframework */; };
-		CC22DD33EE44FF55AA66BE30 /* Libuchardet.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC30 /* Libuchardet.xcframework */; };
-		CC22DD33EE44FF55AA66C211 /* libiconv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C201 /* libiconv.tbd */; };
-		CC22DD33EE44FF55AA66C212 /* libxml2.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C202 /* libxml2.tbd */; };
-		CC22DD33EE44FF55AA66C213 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C203 /* libz.tbd */; };
 		BB11BB22CC33DD44EE55FF21 /* ffmpegkit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF03 /* ffmpegkit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BB11BB22CC33DD44EE55FF22 /* libavcodec.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF04 /* libavcodec.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BB11BB22CC33DD44EE55FF23 /* libavdevice.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF05 /* libavdevice.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -120,34 +89,6 @@
 		BB11BB22CC33DD44EE55FF26 /* libavutil.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF08 /* libavutil.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BB11BB22CC33DD44EE55FF27 /* libswresample.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF09 /* libswresample.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BB11BB22CC33DD44EE55FF28 /* libswscale.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66C121 /* Libavcodec.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C101 /* Libavcodec.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66C122 /* Libavdevice.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C102 /* Libavdevice.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66C123 /* Libavfilter.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C103 /* Libavfilter.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66C124 /* Libavformat.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C104 /* Libavformat.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66C125 /* Libavutil.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C105 /* Libavutil.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66C126 /* Libswresample.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C106 /* Libswresample.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66C127 /* Libswscale.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66C107 /* Libswscale.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BB12 /* Libmpv.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BB01 /* Libmpv.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD11 /* Libcrypto.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC01 /* Libcrypto.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD12 /* Libssl.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC02 /* Libssl.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD13 /* gmp.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC03 /* gmp.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD14 /* nettle.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC04 /* nettle.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD15 /* hogweed.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC05 /* hogweed.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD16 /* gnutls.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC06 /* gnutls.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD17 /* Libunibreak.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC07 /* Libunibreak.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD18 /* Libfreetype.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC08 /* Libfreetype.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD19 /* Libfribidi.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC09 /* Libfribidi.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD20 /* Libharfbuzz.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC10 /* Libharfbuzz.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD21 /* Libass.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC21 /* Libass.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD22 /* Libbluray.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC22 /* Libbluray.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD23 /* Libuavs3d.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC23 /* Libuavs3d.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD24 /* Libdovi.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC24 /* Libdovi.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD25 /* MoltenVK.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC25 /* MoltenVK.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD26 /* Libshaderc_combined.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC26 /* Libshaderc_combined.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD27 /* lcms2.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC27 /* lcms2.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD28 /* Libplacebo.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC28 /* Libplacebo.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD29 /* Libdav1d.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC29 /* Libdav1d.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		CC22DD33EE44FF55AA66BD30 /* Libuchardet.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CC22DD33EE44FF55AA66BC30 /* Libuchardet.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 
 
 /* Begin PBXFileReference section */
@@ -227,37 +168,6 @@
 		AA11BB22CC33DD44EE55FF08 /* libavutil.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libavutil.xcframework; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF09 /* libswresample.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libswresample.xcframework; sourceTree = "<group>"; };
 		AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libswscale.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66C101 /* Libavcodec.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libavcodec.xcframework; path = Local/xcframework/Libavcodec.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66C102 /* Libavdevice.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libavdevice.xcframework; path = Local/xcframework/Libavdevice.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66C103 /* Libavfilter.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libavfilter.xcframework; path = Local/xcframework/Libavfilter.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66C104 /* Libavformat.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libavformat.xcframework; path = Local/xcframework/Libavformat.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66C105 /* Libavutil.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libavutil.xcframework; path = Local/xcframework/Libavutil.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66C106 /* Libswresample.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libswresample.xcframework; path = Local/xcframework/Libswresample.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66C107 /* Libswscale.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libswscale.xcframework; path = Local/xcframework/Libswscale.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BB01 /* Libmpv.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libmpv.xcframework; path = Local/xcframework/Libmpv.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC01 /* Libcrypto.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libcrypto.xcframework; path = Local/xcframework/Libcrypto.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC02 /* Libssl.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libssl.xcframework; path = Local/xcframework/Libssl.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC03 /* gmp.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = gmp.xcframework; path = Local/xcframework/gmp.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC04 /* nettle.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = nettle.xcframework; path = Local/xcframework/nettle.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC05 /* hogweed.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = hogweed.xcframework; path = Local/xcframework/hogweed.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC06 /* gnutls.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = gnutls.xcframework; path = Local/xcframework/gnutls.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC07 /* Libunibreak.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libunibreak.xcframework; path = Local/xcframework/Libunibreak.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC08 /* Libfreetype.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libfreetype.xcframework; path = Local/xcframework/Libfreetype.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC09 /* Libfribidi.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libfribidi.xcframework; path = Local/xcframework/Libfribidi.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC10 /* Libharfbuzz.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libharfbuzz.xcframework; path = Local/xcframework/Libharfbuzz.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC21 /* Libass.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libass.xcframework; path = Local/xcframework/Libass.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC22 /* Libbluray.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libbluray.xcframework; path = Local/xcframework/Libbluray.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC23 /* Libuavs3d.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libuavs3d.xcframework; path = Local/xcframework/Libuavs3d.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC24 /* Libdovi.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libdovi.xcframework; path = Local/xcframework/Libdovi.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC25 /* MoltenVK.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = MoltenVK.xcframework; path = Local/xcframework/MoltenVK.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC26 /* Libshaderc_combined.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libshaderc_combined.xcframework; path = Local/xcframework/Libshaderc_combined.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC27 /* lcms2.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = lcms2.xcframework; path = Local/xcframework/lcms2.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC28 /* Libplacebo.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libplacebo.xcframework; path = Local/xcframework/Libplacebo.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC29 /* Libdav1d.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libdav1d.xcframework; path = Local/xcframework/Libdav1d.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66BC30 /* Libuchardet.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = Libuchardet.xcframework; path = Local/xcframework/Libuchardet.xcframework; sourceTree = "<group>"; };
-		CC22DD33EE44FF55AA66C201 /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.text-based-dylib-definition; name = libiconv.tbd; path = usr/lib/libiconv.tbd; sourceTree = SDKROOT; };
-		CC22DD33EE44FF55AA66C202 /* libxml2.tbd */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.text-based-dylib-definition; name = libxml2.tbd; path = usr/lib/libxml2.tbd; sourceTree = SDKROOT; };
-		CC22DD33EE44FF55AA66C203 /* libz.tbd */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.text-based-dylib-definition; name = libz.tbd; path = usr/lib/libz.tbd; sourceTree = SDKROOT; };
 
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -275,37 +185,6 @@
 				BB11BB22CC33DD44EE55FF16 /* libavutil.xcframework in Frameworks */,
 				BB11BB22CC33DD44EE55FF17 /* libswresample.xcframework in Frameworks */,
 				BB11BB22CC33DD44EE55FF18 /* libswscale.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66C111 /* Libavcodec.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66C112 /* Libavdevice.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66C113 /* Libavfilter.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66C114 /* Libavformat.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66C115 /* Libavutil.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66C116 /* Libswresample.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66C117 /* Libswscale.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BB11 /* Libmpv.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC11 /* Libcrypto.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC12 /* Libssl.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC13 /* gmp.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC14 /* nettle.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC15 /* hogweed.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC16 /* gnutls.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC17 /* Libunibreak.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC18 /* Libfreetype.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC19 /* Libfribidi.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BC20 /* Libharfbuzz.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BE21 /* Libass.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BE22 /* Libbluray.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BE23 /* Libuavs3d.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BE24 /* Libdovi.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BE25 /* MoltenVK.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BE26 /* Libshaderc_combined.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BE27 /* lcms2.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BE28 /* Libplacebo.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BE29 /* Libdav1d.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66BE30 /* Libuchardet.xcframework in Frameworks */,
-				CC22DD33EE44FF55AA66C211 /* libiconv.tbd in Frameworks */,
-				CC22DD33EE44FF55AA66C212 /* libxml2.tbd in Frameworks */,
-				CC22DD33EE44FF55AA66C213 /* libz.tbd in Frameworks */,
 			);
             runOnlyForDeploymentPostprocessing = 0;
         };
@@ -326,34 +205,6 @@
 				BB11BB22CC33DD44EE55FF26 /* libavutil.xcframework in Embed Frameworks */,
 				BB11BB22CC33DD44EE55FF27 /* libswresample.xcframework in Embed Frameworks */,
 				BB11BB22CC33DD44EE55FF28 /* libswscale.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66C121 /* Libavcodec.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66C122 /* Libavdevice.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66C123 /* Libavfilter.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66C124 /* Libavformat.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66C125 /* Libavutil.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66C126 /* Libswresample.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66C127 /* Libswscale.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BB12 /* Libmpv.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD11 /* Libcrypto.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD12 /* Libssl.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD13 /* gmp.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD14 /* nettle.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD15 /* hogweed.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD16 /* gnutls.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD17 /* Libunibreak.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD18 /* Libfreetype.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD19 /* Libfribidi.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD20 /* Libharfbuzz.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD21 /* Libass.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD22 /* Libbluray.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD23 /* Libuavs3d.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD24 /* Libdovi.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD25 /* MoltenVK.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD26 /* Libshaderc_combined.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD27 /* lcms2.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD28 /* Libplacebo.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD29 /* Libdav1d.xcframework in Embed Frameworks */,
-				CC22DD33EE44FF55AA66BD30 /* Libuchardet.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -366,6 +217,7 @@
             children = (
                 B9DBA9411C2F769120D165B0 /* WebKit.framework */,
                   59848050E347612F09813FD7 /* JavaScriptCore.framework */,
+				AA11BB22CC33DD44EE55FF01 /* Vendor */,
 				AA11BB22CC33DD44EE55FF01 /* Vendor */,
                 C591C82493CB4BA0B5125830 /* App */,                 1EE5CC4E90AD46AD84E284B2 /* Models */,                 A56FD437DEE6442B8A5604FA /* Services */,                 ECF9CF9AE044490489714400 /* State */,                 69CBAC85A6A842B8A3C969F4 /* UI */,                 07B7F45882C14BB0849DC0B7 /* Views */,                 9B3569C6E5B54AC38A5FC2DB /* Sources */,                 C3B872E7402442BEA5900710 /* Resources */,                 72071117F02B492EA7D8D08E /* Kyomiru.app */,
             );
@@ -384,7 +236,6 @@
 			isa = PBXGroup;
 			children = (
 				AA11BB22CC33DD44EE55FF02 /* FFmpegKit */,
-				CC22DD33EE44FF55AA66BB02 /* MPVKit */,
 			);
 			path = Vendor;
 			sourceTree = "<group>";
@@ -402,41 +253,6 @@
 				AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */,
 			);
 			path = FFmpegKit;
-			sourceTree = "<group>";
-		};
-		CC22DD33EE44FF55AA66BB02 /* MPVKit */ = {
-			isa = PBXGroup;
- 			children = (
-				CC22DD33EE44FF55AA66C101 /* Libavcodec.xcframework */,
-				CC22DD33EE44FF55AA66C102 /* Libavdevice.xcframework */,
-				CC22DD33EE44FF55AA66C103 /* Libavfilter.xcframework */,
-				CC22DD33EE44FF55AA66C104 /* Libavformat.xcframework */,
-				CC22DD33EE44FF55AA66C105 /* Libavutil.xcframework */,
-				CC22DD33EE44FF55AA66C106 /* Libswresample.xcframework */,
-				CC22DD33EE44FF55AA66C107 /* Libswscale.xcframework */,
- 				CC22DD33EE44FF55AA66BB01 /* Libmpv.xcframework */,
- 				CC22DD33EE44FF55AA66BC01 /* Libcrypto.xcframework */,
-				CC22DD33EE44FF55AA66BC02 /* Libssl.xcframework */,
-				CC22DD33EE44FF55AA66BC03 /* gmp.xcframework */,
-				CC22DD33EE44FF55AA66BC04 /* nettle.xcframework */,
-				CC22DD33EE44FF55AA66BC05 /* hogweed.xcframework */,
-				CC22DD33EE44FF55AA66BC06 /* gnutls.xcframework */,
-				CC22DD33EE44FF55AA66BC07 /* Libunibreak.xcframework */,
-				CC22DD33EE44FF55AA66BC08 /* Libfreetype.xcframework */,
-				CC22DD33EE44FF55AA66BC09 /* Libfribidi.xcframework */,
-				CC22DD33EE44FF55AA66BC10 /* Libharfbuzz.xcframework */,
-				CC22DD33EE44FF55AA66BC21 /* Libass.xcframework */,
-				CC22DD33EE44FF55AA66BC22 /* Libbluray.xcframework */,
-				CC22DD33EE44FF55AA66BC23 /* Libuavs3d.xcframework */,
-				CC22DD33EE44FF55AA66BC24 /* Libdovi.xcframework */,
-				CC22DD33EE44FF55AA66BC25 /* MoltenVK.xcframework */,
-				CC22DD33EE44FF55AA66BC26 /* Libshaderc_combined.xcframework */,
-				CC22DD33EE44FF55AA66BC27 /* lcms2.xcframework */,
-				CC22DD33EE44FF55AA66BC28 /* Libplacebo.xcframework */,
-				CC22DD33EE44FF55AA66BC29 /* Libdav1d.xcframework */,
-				CC22DD33EE44FF55AA66BC30 /* Libuchardet.xcframework */,
-			);
-			path = MPVKit;
 			sourceTree = "<group>";
 		};
         1EE5CC4E90AD46AD84E284B2 /* Models */ = {

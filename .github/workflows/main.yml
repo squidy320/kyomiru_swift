@@ -54,24 +54,6 @@ jobs:
         run: |
           python3 scripts/lint_interpolation.py
 
-      - name: Restore Local MPV Cache
-        id: mpv-cache
-        uses: actions/cache@v4
-        with:
-          path: Vendor/MPVKit/Local
-          key: ${{ runner.os }}-mpv-lgpl-${{ hashFiles('Vendor/MPVKit/Package.swift', 'Vendor/MPVKit/Makefile', 'scripts/build-mpv.sh', 'scripts/prepare-local-mpv-frameworks.sh', 'scripts/expand-local-mpv-xcframework-zips.sh', 'scripts/check-local-mpv.sh') }}
-
-      - name: Prepare Local MPV Frameworks
-        run: |
-          set -e
-          chmod +x scripts/build-mpv.sh
-          chmod +x scripts/prepare-local-mpv-frameworks.sh
-          chmod +x scripts/expand-local-mpv-xcframework-zips.sh
-          chmod +x scripts/check-local-mpv.sh
-          ./scripts/prepare-local-mpv-frameworks.sh
-          ./scripts/expand-local-mpv-xcframework-zips.sh
-          ./scripts/check-local-mpv.sh
-
       - name: Build Archive (Unsigned)
         run: |
           set -e

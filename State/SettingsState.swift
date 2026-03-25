@@ -8,7 +8,6 @@ final class SettingsState: ObservableObject {
     @AppStorage("settings.cardImageSource") private var cardImageSourceRaw: String = CardImageSource.tmdb.rawValue
     @AppStorage("settings.playerSkipIntervalSeconds") private var playerSkipIntervalRaw: Double = 85
     @AppStorage("settings.playerHoldSpeed") private var playerHoldSpeedRaw: Double = PlayerHoldSpeed.twoX.rawValue
-    @AppStorage("settings.playerEngine") private var playerEngineRaw: String = PlayerEngine.avPlayer.rawValue
     @AppStorage("settings.appearanceThemeMode") private var appearanceThemeModeRaw: String = AppearanceThemeMode.system.rawValue
     @AppStorage("settings.reduceMotion") private var reduceMotionRaw: Bool = false
     @AppStorage("settings.useComfortableLayout") private var useComfortableLayoutRaw: Bool = true
@@ -65,14 +64,6 @@ final class SettingsState: ObservableObject {
         get { PlayerHoldSpeed(rawValue: playerHoldSpeedRaw) ?? .twoX }
         set {
             playerHoldSpeedRaw = newValue.rawValue
-            objectWillChange.send()
-        }
-    }
-
-    var playerEngine: PlayerEngine {
-        get { PlayerEngine(rawValue: playerEngineRaw) ?? .avPlayer }
-        set {
-            playerEngineRaw = newValue.rawValue
             objectWillChange.send()
         }
     }
@@ -153,20 +144,6 @@ enum PlayerHoldSpeed: Double, CaseIterable, Identifiable {
         case .twoX: return "2x"
         case .twoPointFive: return "2.5x"
         case .threeX: return "3x"
-        }
-    }
-}
-
-enum PlayerEngine: String, CaseIterable, Identifiable {
-    case avPlayer = "av"
-    case mpv = "mpv"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .avPlayer: return "AVPlayer"
-        case .mpv: return "MPV"
         }
     }
 }

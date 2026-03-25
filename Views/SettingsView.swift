@@ -1,10 +1,5 @@
 import SwiftUI
 import UIKit
-#if canImport(Libmpv)
-private let supportedPlayerEngines: [PlayerEngine] = [.avPlayer, .mpv]
-#else
-private let supportedPlayerEngines: [PlayerEngine] = [.avPlayer]
-#endif
 
 private enum SettingsTab: String, CaseIterable, Identifiable {
     case player
@@ -114,24 +109,6 @@ struct SettingsView: View {
 
     private var playerTab: some View {
         VStack(alignment: .leading, spacing: sectionSpacing) {
-            SettingsSectionCard(title: "Playback Engine", subtitle: "Switch between the native Apple player and the MPV backend.") {
-                Picker("Player Engine", selection: Binding(
-                    get: { appState.settings.playerEngine },
-                    set: { appState.settings.playerEngine = $0 }
-                )) {
-                    ForEach(supportedPlayerEngines) { engine in
-                        Text(engine.title).tag(engine)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-#if !canImport(Libmpv)
-                Text("MPV is unavailable in this build. Local MPV frameworks still need to be built and linked into the Xcode target.")
-                    .font(.system(size: 12))
-                    .foregroundColor(Theme.textSecondary)
-#endif
-            }
-
             SettingsSectionCard(title: "Streaming Defaults", subtitle: "Applied automatically when a matching source exists.") {
                 settingsPickerRow(
                     title: "Default Audio",
