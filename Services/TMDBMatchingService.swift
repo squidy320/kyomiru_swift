@@ -35,7 +35,13 @@ struct TMDBSeasonDetails: Equatable, Codable {
     let episodes: [Episode]
 }
 
+private struct TMDBSeasonMatchNegativeCacheEntry: Codable {
+    let missing: Bool
+}
+
 final class TMDBMatchingService {
+    private static let matchCacheTTL: TimeInterval = 60 * 60 * 12
+    private static let negativeMatchCacheTTL: TimeInterval = 60 * 30
     private let session: URLSession
     private let cacheStore: CacheStore
     private let cacheManager: MetadataCacheManager
@@ -75,13 +81,8 @@ final class TMDBMatchingService {
                 )
             }
         }
-        if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
-           let decoded = try? JSONDecoder().decode(TMDBSeasonMatch.self, from: cached) {
-            if let firstEpisodeNumber, firstEpisodeNumber > 1, decoded.episodeOffset == 0 {
-                AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=offset-zero-cache firstEp=\(firstEpisodeNumber)")
-            } else {
-                return decoded
-            }
+        if let cachedResult = cachedSeasonMatch(forKey: cacheKey, firstEpisodeNumber: firstEpisodeNumber, mediaId: media.id) {
+            return cachedResult
         }
 
         let requestKey = "\(media.id):\(franchiseStartYear ?? 0):\(firstEpisodeNumber ?? 1)"
@@ -97,22 +98,23 @@ final class TMDBMatchingService {
                     )
                 }
             }
-            if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
-               let decoded = try? JSONDecoder().decode(TMDBSeasonMatch.self, from: cached) {
-                if let firstEpisodeNumber, firstEpisodeNumber > 1, decoded.episodeOffset == 0 {
-                    AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=offset-zero-cache firstEp=\(firstEpisodeNumber)")
-                } else {
-                    return decoded
-                }
+            if let cachedResult = cachedSeasonMatch(forKey: cacheKey, firstEpisodeNumber: firstEpisodeNumber, mediaId: media.id) {
+                return cachedResult
             }
 
             let title = media.title.english ?? media.title.romaji ?? media.title.native ?? media.title.best
             let startYear = franchiseStartYear
                 ?? media.startDate?.year
                 ?? media.seasonYear
-            guard let showId = await findShowId(title: title, startYear: startYear) else { return nil }
+            guard let showId = await findShowId(title: title, startYear: startYear) else {
+                writeNegativeSeasonMatchCache(forKey: cacheKey)
+                return nil
+            }
             let aniFirstEpisode = max(firstEpisodeNumber ?? 1, 1)
-            guard let seasonMatch = await matchSeason(showId: showId, media: media, aniFirstEpisode: aniFirstEpisode) else { return nil }
+            guard let seasonMatch = await matchSeason(showId: showId, media: media, aniFirstEpisode: aniFirstEpisode) else {
+                writeNegativeSeasonMatchCache(forKey: cacheKey)
+                return nil
+            }
             let match = TMDBSeasonMatch(
                 showId: showId,
                 seasonNumber: seasonMatch.seasonNumber,
@@ -352,6 +354,30 @@ final class TMDBMatchingService {
             return nil
         }
         return nil
+    }
+
+    private func cachedSeasonMatch(forKey key: String, firstEpisodeNumber: Int?, mediaId: Int) -> TMDBSeasonMatch?? {
+        if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.matchCacheTTL),
+           let decoded = try? JSONDecoder().decode(TMDBSeasonMatch.self, from: cached) {
+            if let firstEpisodeNumber, firstEpisodeNumber > 1, decoded.episodeOffset == 0 {
+                AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(mediaId) reason=offset-zero-cache firstEp=\(firstEpisodeNumber)")
+            } else {
+                return decoded
+            }
+        }
+        if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.negativeMatchCacheTTL),
+           let negative = try? JSONDecoder().decode(TMDBSeasonMatchNegativeCacheEntry.self, from: cached),
+           negative.missing {
+            return nil
+        }
+        return nil
+    }
+
+    private func writeNegativeSeasonMatchCache(forKey key: String) {
+        let entry = TMDBSeasonMatchNegativeCacheEntry(missing: true)
+        if let data = try? JSONEncoder().encode(entry) {
+            cacheStore.writeJSON(data, forKey: key)
+        }
     }
 }
 

@@ -26,7 +26,13 @@ struct TMDBMetadata: Equatable, Codable {
     let logoURL: URL?
 }
 
+private struct TMDBMetadataNegativeCacheEntry: Codable {
+    let missing: Bool
+}
+
 final class MetadataService {
+    private static let metadataCacheTTL: TimeInterval = 60 * 60 * 24
+    private static let negativeMetadataCacheTTL: TimeInterval = 60 * 30
     private let session: URLSession
     private let cacheStore: CacheStore
     private let apiKey: String?
@@ -43,15 +49,13 @@ final class MetadataService {
 
     func fetchTMDBMetadata(for media: AniListMedia) async -> TMDBMetadata? {
         let cacheKey = "tmdb:media:\(media.id)"
-        if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 24),
-           let decoded = try? JSONDecoder().decode(TMDBMetadata.self, from: cached) {
-            return decoded
+        if let cachedResult = cachedMetadata(forKey: cacheKey) {
+            return cachedResult
         }
 
         return await metadataRequests.value(for: media.id) { [self] in
-            if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 24),
-               let decoded = try? JSONDecoder().decode(TMDBMetadata.self, from: cached) {
-                return decoded
+            if let cachedResult = cachedMetadata(forKey: cacheKey) {
+                return cachedResult
             }
 
             guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
@@ -59,8 +63,14 @@ final class MetadataService {
                 return nil
             }
 
-            guard let tmdbId = await resolveTMDBShowId(media: media) else { return nil }
-            guard let details = await fetchTMDBDetails(showId: tmdbId, apiKey: apiKey) else { return nil }
+            guard let tmdbId = await resolveTMDBShowId(media: media) else {
+                writeNegativeMetadataCache(forKey: cacheKey)
+                return nil
+            }
+            guard let details = await fetchTMDBDetails(showId: tmdbId, apiKey: apiKey) else {
+                writeNegativeMetadataCache(forKey: cacheKey)
+                return nil
+            }
             if let data = try? JSONEncoder().encode(details) {
                 cacheStore.writeJSON(data, forKey: cacheKey)
             }
@@ -231,6 +241,26 @@ final class MetadataService {
     private func yearFrom(_ dateString: String?) -> Int? {
         guard let dateString, dateString.count >= 4 else { return nil }
         return Int(dateString.prefix(4))
+    }
+
+    private func cachedMetadata(forKey key: String) -> TMDBMetadata?? {
+        if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.metadataCacheTTL),
+           let decoded = try? JSONDecoder().decode(TMDBMetadata.self, from: cached) {
+            return decoded
+        }
+        if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.negativeMetadataCacheTTL),
+           let negative = try? JSONDecoder().decode(TMDBMetadataNegativeCacheEntry.self, from: cached),
+           negative.missing {
+            return nil
+        }
+        return nil
+    }
+
+    private func writeNegativeMetadataCache(forKey key: String) {
+        let entry = TMDBMetadataNegativeCacheEntry(missing: true)
+        if let data = try? JSONEncoder().encode(entry) {
+            cacheStore.writeJSON(data, forKey: key)
+        }
     }
 }
 
