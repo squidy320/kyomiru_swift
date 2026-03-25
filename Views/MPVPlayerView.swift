@@ -327,6 +327,7 @@ private final class MPVPlaybackController: ObservableObject {
     }
 }
 
+@MainActor
 private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureControllerDelegate {
     static let shared = MPVPictureInPictureSession()
 
@@ -396,7 +397,11 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
         hostController.view.layer.addSublayer(playerLayer)
         self.playerLayer = playerLayer
 
-        let pip = AVPictureInPictureController(playerLayer: playerLayer)
+        guard let pip = AVPictureInPictureController(playerLayer: playerLayer) else {
+            onError("Picture in Picture could not be created for this source.")
+            stopInternal()
+            return
+        }
         pip.delegate = self
         if #available(iOS 14.2, *) {
             pip.canStartPictureInPictureAutomaticallyFromInline = true
@@ -805,6 +810,7 @@ struct MPVPlayerScreen: View {
     }
 }
 
+@MainActor
 private protocol MPVViewControllerDelegate: AnyObject {
     func mpvViewControllerDidBecomeReady(_ controller: MPVViewController)
     func mpvViewController(_ controller: MPVViewController, didUpdateTime time: Double)
@@ -815,6 +821,7 @@ private protocol MPVViewControllerDelegate: AnyObject {
     func mpvViewController(_ controller: MPVViewController, didFailWithError message: String)
 }
 
+@MainActor
 extension MPVPlaybackController: MPVViewControllerDelegate {
     func mpvViewControllerDidBecomeReady(_ controller: MPVViewController) {
         handleReady()
@@ -942,8 +949,8 @@ private final class MPVViewController: UIViewController {
         mpv_set_option_string(handle, "sub-auto", "fuzzy")
 
         var wid = Int64(bitPattern: UInt64(UInt(bitPattern: Unmanaged.passUnretained(renderLayer).toOpaque())))
-        withUnsafePointer(to: &wid) { ptr in
-            _ = mpv_set_option(handle, "wid", MPV_FORMAT_INT64, UnsafeRawPointer(ptr))
+        withUnsafeMutablePointer(to: &wid) { ptr in
+            _ = mpv_set_option(handle, "wid", MPV_FORMAT_INT64, ptr)
         }
 
         let result = mpv_initialize(handle)
