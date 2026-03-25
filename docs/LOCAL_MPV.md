@@ -1,19 +1,18 @@
 # Local MPV Integration
 
-This repo vendors the `MPVKit` source under `Vendor/MPVKit`, and the app now links local XCFramework files directly from `Vendor/MPVKit/Local/xcframework`.
+This repo vendors the `MPVKit` source under `Vendor/MPVKit`, and the app links local XCFramework files from `Vendor/MPVKit/Local/xcframework`.
 
-The intended production model is the same as FFmpeg in this repo:
+The intended default model is CI-managed:
 
-- generate the local MPV XCFrameworks once
-- place them under `Vendor/MPVKit/Local/xcframework`
-- commit them to the repository
-- let CI build directly against those vendored files
+- the Xcode project points at `Vendor/MPVKit/Local/xcframework`
+- GitHub Actions prepares that folder on the macOS runner before the archive build
+- Actions cache is used so MPV does not need to be rebuilt every run
 
 ## What "local MPV" means here
 
 The goal is to link local XCFramework files directly from the Xcode project instead of resolving MPV from a remote Swift package.
 
-The app should only expose an active MPV option after these local artifacts exist in the repo and are linked in `Kyomiru.xcodeproj`.
+The app should only expose an active MPV option after those local artifacts exist at build time and are linked in `Kyomiru.xcodeproj`.
 
 ## Build the local artifacts
 
@@ -53,7 +52,9 @@ Choose:
 
 The workflow runs on GitHub's macOS runner, prepares the full local MPV XCFramework set, and uploads a zipped artifact containing a top-level `Local/` folder.
 
-This solves the "I do not have a Mac" part for artifact generation. After downloading the artifact, extract the `Local/` folder into:
+This solves the "I do not have a Mac" part for artifact generation. You can still download the artifact if you want to inspect or reuse the generated frameworks locally.
+
+If you want to install the artifact manually, extract the `Local/` folder into:
 
 ```text
 Vendor/MPVKit/Local
@@ -100,6 +101,6 @@ The current project file expects these directories under `Vendor/MPVKit/Local/xc
 - `AVPlayer` remains the only active engine in builds where `Libmpv` is not linked.
 - The MPV setting is intentionally hidden or disabled in that case so the UI does not promise a player backend that is not present.
 
-## Next integration step
+## CI behavior
 
-Once the full local XCFramework set is committed, CI will use those vendored frameworks directly. The main app workflow no longer rebuilds or downloads MPV dependencies for you.
+The main app workflow now prepares the MPV frameworks automatically on GitHub's macOS runner before building the app. If MPV build inputs do not change, the Actions cache should keep later runs much faster.
