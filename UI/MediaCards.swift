@@ -41,8 +41,11 @@ struct MediaPosterCard: View {
 
     var body: some View {
         let useTMDB = appState.settings.cardImageSource == .tmdb
+        let useComfortableLayout = appState.settings.useComfortableLayout
         let cardWidth = size?.width ?? UIConstants.posterCardWidth
         let cardHeight = size?.height ?? UIConstants.posterCardHeight
+        let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
+        let textSpacing = UIConstants.tinyPadding + (useComfortableLayout ? 1 : 0)
         let resolvedURL: URL? = {
             if useTMDB {
                 if tmdbLookupComplete {
@@ -77,18 +80,18 @@ struct MediaPosterCard: View {
                 )
                 .frame(height: 120)
 
-                VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
+                VStack(alignment: .leading, spacing: textSpacing) {
                     Text(title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: useComfortableLayout ? 15 : 14, weight: .semibold))
                         .foregroundColor(.white)
                         .lineLimit(2)
                     if let subtitle {
                         Text(subtitle)
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.system(size: useComfortableLayout ? 13 : 12, weight: .regular))
                             .foregroundColor(Theme.textSecondary)
                     }
                 }
-                .padding(UIConstants.rowPadding)
+                .padding(rowPadding)
             }
             .frame(maxWidth: .infinity, maxHeight: cardHeight)
             .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
@@ -127,6 +130,11 @@ struct MediaPosterCard: View {
         }
         .frame(width: cardWidth, height: cardHeight)
         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
+        .transaction { transaction in
+            if appState.settings.reduceMotion {
+                transaction.animation = nil
+            }
+        }
         .task(id: "\(media?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
             guard let media else { return }
             if useTMDB {
@@ -153,6 +161,8 @@ struct ContinueWatchingCard: View {
     @State private var tmdbLookupComplete = false
     var body: some View {
         let useTMDB = appState.settings.cardImageSource == .tmdb
+        let useComfortableLayout = appState.settings.useComfortableLayout
+        let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
         let resolvedURL: URL? = {
             if useTMDB {
                 return tmdbLookupComplete ? (imdbImageURL ?? imageURL) : imdbImageURL
@@ -164,9 +174,9 @@ struct ContinueWatchingCard: View {
                 .fill(Color.white.opacity(0.06))
 
             if let resolved = resolvedURL {
-                CachedImage(
-                    url: resolved,
-                    targetSize: CGSize(width: UIConstants.continueCardWidth, height: UIConstants.continueCardHeight)
+                    CachedImage(
+                        url: resolved,
+                        targetSize: CGSize(width: UIConstants.continueCardWidth, height: UIConstants.continueCardHeight)
                 ) { img in
                     img.resizable().scaledToFill()
                 } placeholder: {
@@ -186,11 +196,11 @@ struct ContinueWatchingCard: View {
 
             VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: useComfortableLayout ? 14 : 13, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                 Text(episodeText)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: useComfortableLayout ? 13 : 12, weight: .regular))
                     .foregroundColor(Theme.textSecondary)
 
                 ProgressView(value: progress)
@@ -201,7 +211,7 @@ struct ContinueWatchingCard: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(Theme.textSecondary)
             }
-            .padding(UIConstants.rowPadding)
+            .padding(rowPadding)
         }
         .frame(width: UIConstants.continueCardWidth, height: UIConstants.continueCardHeight)
         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
@@ -216,7 +226,12 @@ struct ContinueWatchingCard: View {
                         Capsule(style: .continuous)
                             .fill(Color.black.opacity(0.6))
                     )
-                    .padding(UIConstants.mediumPadding)
+                    .padding(UIConstants.mediumPadding + (useComfortableLayout ? 1 : 0))
+            }
+        }
+        .transaction { transaction in
+            if appState.settings.reduceMotion {
+                transaction.animation = nil
             }
         }
         .task(id: "\(media?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
@@ -243,28 +258,33 @@ struct EpisodeRowView: View {
     let isDownloaded: Bool
     let isNew: Bool
     let onTap: (() -> Void)?
+    @EnvironmentObject private var appState: AppState
     @State private var isExpanded = false
 
     var body: some View {
+        let useComfortableLayout = appState.settings.useComfortableLayout
+        let thumbWidth = UIConstants.episodeThumbWidth + (useComfortableLayout ? 12 : 0)
+        let thumbHeight = thumbWidth * 0.57
+        let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
         Button(action: {
             onTap?()
             isExpanded.toggle()
         }) {
-            HStack(alignment: .top, spacing: UIConstants.interCardSpacing) {
+            HStack(alignment: .top, spacing: UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)) {
                 ZStack(alignment: .topLeading) {
                     RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous)
                         .fill(Color.white.opacity(0.06))
-                        .frame(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
+                        .frame(width: thumbWidth, height: thumbHeight)
                     if let thumbnailURL {
                         CachedImage(
                             url: thumbnailURL,
-                            targetSize: CGSize(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
+                            targetSize: CGSize(width: thumbWidth, height: thumbHeight)
                         ) { img in
                             img.resizable().aspectRatio(contentMode: .fill)
                         } placeholder: {
                             Color.white.opacity(0.08)
                         }
-                        .frame(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
+                        .frame(width: thumbWidth, height: thumbHeight)
                         .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous))
                     }
@@ -300,35 +320,40 @@ struct EpisodeRowView: View {
                 VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
                     HStack(spacing: 8) {
                         Text("Episode \(episodeNumber)")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: useComfortableLayout ? 13 : 12, weight: .semibold))
                             .foregroundColor(Theme.textSecondary)
                         if let ratingText {
                             Text(ratingText)
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: useComfortableLayout ? 13 : 12, weight: .semibold))
                                 .foregroundColor(Theme.textSecondary)
                         }
                     }
                     Text(title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: useComfortableLayout ? 15 : 14, weight: .semibold))
                         .foregroundColor(.white)
                         .opacity(isWatched ? 0.45 : 1.0)
                         .lineLimit(isExpanded ? 3 : 2)
                     if let description, !description.isEmpty {
                         Text(description)
-                            .font(.system(size: 12))
+                            .font(.system(size: useComfortableLayout ? 13 : 12))
                             .foregroundColor(Theme.textSecondary)
                             .lineLimit(isExpanded ? 4 : 2)
                     }
                 }
                 Spacer(minLength: 0)
             }
-            .padding(UIConstants.rowPadding)
+            .padding(rowPadding)
             .background(
                 RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
                     .fill(Color.white.opacity(0.06))
             )
         }
         .buttonStyle(.plain)
+        .transaction { transaction in
+            if appState.settings.reduceMotion {
+                transaction.animation = nil
+            }
+        }
     }
 }
 

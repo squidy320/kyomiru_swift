@@ -1,15 +1,129 @@
 import SwiftUI
 
 final class SettingsState: ObservableObject {
-    @Published var defaultAudio: String = "Sub"
-    @Published var defaultQuality: String = "Auto"
-    @Published var autoSyncAniList: Bool = true
-    @Published var showPlayerDebugOverlay: Bool = false
+    @AppStorage("settings.defaultAudio") private var defaultAudioRaw: String = "Sub"
+    @AppStorage("settings.defaultQuality") private var defaultQualityRaw: String = "Auto"
+    @AppStorage("settings.playerBackend") private var playerBackendRaw: String = PlayerBackend.avPlayer.rawValue
+    @AppStorage("settings.autoSyncAniList") private var autoSyncAniListRaw: Bool = true
+    @AppStorage("settings.showPlayerDebugOverlay") private var showPlayerDebugOverlayRaw: Bool = false
     @AppStorage("settings.cardImageSource") private var cardImageSourceRaw: String = CardImageSource.tmdb.rawValue
+    @AppStorage("settings.playerSkipIntervalSeconds") private var playerSkipIntervalRaw: Double = 85
+    @AppStorage("settings.playerHoldSpeed") private var playerHoldSpeedRaw: Double = PlayerHoldSpeed.twoX.rawValue
+    @AppStorage("settings.appearanceThemeMode") private var appearanceThemeModeRaw: String = AppearanceThemeMode.system.rawValue
+    @AppStorage("settings.reduceMotion") private var reduceMotionRaw: Bool = false
+    @AppStorage("settings.useComfortableLayout") private var useComfortableLayoutRaw: Bool = true
+
+    var defaultAudio: String {
+        get { defaultAudioRaw }
+        set {
+            defaultAudioRaw = newValue
+            objectWillChange.send()
+        }
+    }
+
+    var defaultQuality: String {
+        get { defaultQualityRaw }
+        set {
+            defaultQualityRaw = newValue
+            objectWillChange.send()
+        }
+    }
+
+    var playerBackend: PlayerBackend {
+        get { PlayerBackend(rawValue: playerBackendRaw) ?? .avPlayer }
+        set {
+            playerBackendRaw = newValue.rawValue
+            objectWillChange.send()
+        }
+    }
+
+    var autoSyncAniList: Bool {
+        get { autoSyncAniListRaw }
+        set {
+            autoSyncAniListRaw = newValue
+            objectWillChange.send()
+        }
+    }
+
+    var showPlayerDebugOverlay: Bool {
+        get { showPlayerDebugOverlayRaw }
+        set {
+            showPlayerDebugOverlayRaw = newValue
+            objectWillChange.send()
+        }
+    }
 
     var cardImageSource: CardImageSource {
         get { CardImageSource(rawValue: cardImageSourceRaw) ?? .tmdb }
-        set { cardImageSourceRaw = newValue.rawValue }
+        set {
+            cardImageSourceRaw = newValue.rawValue
+            objectWillChange.send()
+        }
+    }
+
+    var playerSkipIntervalSeconds: Double {
+        get { playerSkipIntervalRaw }
+        set {
+            playerSkipIntervalRaw = newValue
+            objectWillChange.send()
+        }
+    }
+
+    var playerHoldSpeed: PlayerHoldSpeed {
+        get { PlayerHoldSpeed(rawValue: playerHoldSpeedRaw) ?? .twoX }
+        set {
+            playerHoldSpeedRaw = newValue.rawValue
+            objectWillChange.send()
+        }
+    }
+
+    var appearanceThemeMode: AppearanceThemeMode {
+        get { AppearanceThemeMode(rawValue: appearanceThemeModeRaw) ?? .system }
+        set {
+            appearanceThemeModeRaw = newValue.rawValue
+            objectWillChange.send()
+        }
+    }
+
+    var reduceMotion: Bool {
+        get { reduceMotionRaw }
+        set {
+            reduceMotionRaw = newValue
+            objectWillChange.send()
+        }
+    }
+
+    var useComfortableLayout: Bool {
+        get { useComfortableLayoutRaw }
+        set {
+            useComfortableLayoutRaw = newValue
+            objectWillChange.send()
+        }
+    }
+}
+
+enum PlayerBackend: String, CaseIterable, Identifiable {
+    case avPlayer
+    case mpv
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .avPlayer:
+            return "AVPlayer"
+        case .mpv:
+            return "mpv"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .avPlayer:
+            return "Best iOS integration with Picture in Picture support."
+        case .mpv:
+            return "Advanced playback pipeline with broader codec and subtitle handling."
+        }
     }
 }
 
@@ -22,6 +136,48 @@ enum CardImageSource: String, CaseIterable, Identifiable {
         switch self {
         case .tmdb: return "TMDB"
         case .anilist: return "AniList"
+        }
+    }
+}
+
+enum AppearanceThemeMode: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
+enum PlayerHoldSpeed: Double, CaseIterable, Identifiable {
+    case onePointFive = 1.5
+    case twoX = 2.0
+    case twoPointFive = 2.5
+    case threeX = 3.0
+
+    var id: Double { rawValue }
+
+    var title: String {
+        switch self {
+        case .onePointFive: return "1.5x"
+        case .twoX: return "2x"
+        case .twoPointFive: return "2.5x"
+        case .threeX: return "3x"
         }
     }
 }

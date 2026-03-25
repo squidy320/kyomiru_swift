@@ -5,20 +5,57 @@ import Foundation
 import ImageIO
 
 enum Theme {
-    static let baseBackground = Color(red: 0.04, green: 0.04, blue: 0.06)
-    static let surface = Color(red: 0.08, green: 0.09, blue: 0.12)
-    static let accent = Color(red: 0.47, green: 0.72, blue: 1.0)
-    static let textPrimary = Color.white
-    static let textSecondary = Color(red: 0.63, green: 0.66, blue: 0.74)
+    private static func adaptiveColor(light: UIColor, dark: UIColor) -> Color {
+        Color(UIColor { traitCollection in
+            traitCollection.userInterfaceStyle == .dark ? dark : light
+        })
+    }
 
-    static let backgroundGradient = LinearGradient(
-        colors: [
-            Color(red: 0.08, green: 0.09, blue: 0.12),
-            Color(red: 0.03, green: 0.03, blue: 0.05)
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
+    static var baseBackground: Color {
+        adaptiveColor(
+            light: UIColor(red: 0.17, green: 0.18, blue: 0.22, alpha: 1.0),
+            dark: UIColor(red: 0.04, green: 0.04, blue: 0.06, alpha: 1.0)
+        )
+    }
+
+    static var surface: Color {
+        adaptiveColor(
+            light: UIColor(red: 0.22, green: 0.24, blue: 0.30, alpha: 1.0),
+            dark: UIColor(red: 0.08, green: 0.09, blue: 0.12, alpha: 1.0)
+        )
+    }
+
+    static let accent = Color(red: 0.47, green: 0.72, blue: 1.0)
+    static var textPrimary: Color {
+        adaptiveColor(
+            light: .white,
+            dark: .white
+        )
+    }
+
+    static var textSecondary: Color {
+        adaptiveColor(
+            light: UIColor(red: 0.79, green: 0.82, blue: 0.89, alpha: 1.0),
+            dark: UIColor(red: 0.63, green: 0.66, blue: 0.74, alpha: 1.0)
+        )
+    }
+
+    static var backgroundGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                adaptiveColor(
+                    light: UIColor(red: 0.23, green: 0.25, blue: 0.31, alpha: 1.0),
+                    dark: UIColor(red: 0.08, green: 0.09, blue: 0.12, alpha: 1.0)
+                ),
+                adaptiveColor(
+                    light: UIColor(red: 0.14, green: 0.15, blue: 0.20, alpha: 1.0),
+                    dark: UIColor(red: 0.03, green: 0.03, blue: 0.05, alpha: 1.0)
+                )
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
 }
 
 actor ImageCache {

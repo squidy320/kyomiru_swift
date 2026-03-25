@@ -28,14 +28,17 @@ struct DiscoveryView: View {
     }
 
     var body: some View {
+        let useComfortableLayout = appState.settings.useComfortableLayout
+        let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
+        let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
             Theme.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                    VStack(alignment: .leading, spacing: screenSpacing) {
                         heroHeader
 
-                        VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                        VStack(alignment: .leading, spacing: screenSpacing) {
                             SearchField(placeholder: "Search anime...", text: $query)
                             GenreFilterCarousel(genres: GenreFilterCarousel.defaultGenres)
 
@@ -57,7 +60,7 @@ struct DiscoveryView: View {
                                 }
                             } else {
                                 ForEach(coreSections) { section in
-                                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                                    VStack(alignment: .leading, spacing: screenSpacing) {
                                         HStack {
                                             Text(section.title)
                                                 .font(.system(size: 18, weight: .bold))
@@ -77,7 +80,7 @@ struct DiscoveryView: View {
                                             .buttonStyle(.plain)
                                         }
                                         ScrollView(.horizontal, showsIndicators: false) {
-                                            LazyHStack(spacing: UIConstants.interCardSpacing) {
+                                            LazyHStack(spacing: screenSpacing) {
                                                 ForEach(section.items, id: \.id) { media in
                                                     NavigationLink {
                                                         DetailsView(media: media)
@@ -104,7 +107,7 @@ struct DiscoveryView: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, UIConstants.standardPadding)
+                        .padding(.horizontal, screenPadding)
                         .padding(.top, -12)
                     }
                     .padding(.top, UIConstants.smallPadding)
@@ -185,8 +188,12 @@ struct DiscoveryView: View {
             .padding(.top, UIConstants.heroTopPadding)
             .onReceive(heroTimer) { _ in
                 guard !items.isEmpty else { return }
-                withAnimation(.easeInOut(duration: 0.4)) {
+                if appState.settings.reduceMotion {
                     heroIndex = (heroIndex + 1) % items.count
+                } else {
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        heroIndex = (heroIndex + 1) % items.count
+                    }
                 }
             }
         )
@@ -596,7 +603,7 @@ struct GenreDetailGridView: View {
 
     private let gridSpacing = UIConstants.interCardSpacing
     private var gridItems: [GridItem] {
-        [GridItem(.adaptive(minimum: 100), spacing: gridSpacing)]
+        [GridItem(.adaptive(minimum: UIConstants.posterCardWidth, maximum: UIConstants.posterCardWidth), spacing: gridSpacing, alignment: .top)]
     }
 
     var body: some View {
@@ -606,8 +613,16 @@ struct GenreDetailGridView: View {
                     NavigationLink {
                         DetailsView(media: media)
                     } label: {
-                        GenrePosterCard(media: media, size: cardSize())
-                            .frame(maxWidth: .infinity)
+                        MediaPosterCard(
+                            title: media.title.best,
+                            subtitle: nil,
+                            imageURL: media.coverURL,
+                            media: media,
+                            score: media.averageScore,
+                            statusBadge: nil,
+                            cornerBadge: nil
+                        )
+                        .frame(width: UIConstants.posterCardWidth)
                     }
                     .buttonStyle(.plain)
                     .onAppear {
@@ -677,57 +692,6 @@ struct GenreDetailGridView: View {
         await MainActor.run { isLoading = false }
     }
 
-    private func cardSize() -> CGSize {
-        let isPad = UIDevice.current.userInterfaceIdiom == .pad
-        let width: CGFloat = isPad ? 150 : 120
-        return CGSize(width: width, height: width * 1.47)
-    }
-}
-
-private struct GenrePosterCard: View {
-    let media: AniListMedia
-    let size: CGSize
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-
-                if let url = media.coverURL {
-                    KFImage(url)
-                        .cancelOnDisappear(true)
-                        .cacheOriginalImage()
-                        .loadDiskFileSynchronously()
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: size.width, height: size.height)
-                        .clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
-                }
-
-                LinearGradient(
-                    colors: [Color.black.opacity(0.85), Color.clear],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-                .frame(height: 120)
-
-                Text(media.title.best)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .padding(UIConstants.rowPadding)
-            }
-            .frame(width: size.width, height: size.height)
-            .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
-
-            RatingBadge(score: media.averageScore)
-                .padding(UIConstants.mediumPadding)
-        }
-        .frame(width: size.width, height: size.height)
-        .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
-    }
 }
 
 // Card components moved to UI/MediaCards.swift
@@ -826,6 +790,7 @@ private struct DiscoverySectionView: View {
                                 statusBadge: statusBadge(for: media),
                                 cornerBadge: nil
                             )
+                            .frame(width: UIConstants.posterCardWidth)
                         }
                         .buttonStyle(.plain)
                         .onAppear {
@@ -852,8 +817,7 @@ private struct DiscoverySectionView: View {
     }
 
     private var gridColumns: [GridItem] {
-        let count = isPad ? 5 : 2
-        return Array(repeating: GridItem(.flexible(), spacing: UIConstants.interCardSpacing), count: count)
+        [GridItem(.adaptive(minimum: UIConstants.posterCardWidth, maximum: UIConstants.posterCardWidth), spacing: UIConstants.interCardSpacing, alignment: .top)]
     }
 
     private func statusBadge(for media: AniListMedia) -> String? {

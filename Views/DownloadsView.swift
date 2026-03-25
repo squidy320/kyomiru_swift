@@ -18,11 +18,14 @@ struct DownloadsView: View {
     }
 
     var body: some View {
+        let useComfortableLayout = appState.settings.useComfortableLayout
+        let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
+        let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
             Theme.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                    VStack(alignment: .leading, spacing: screenSpacing) {
                         if UIDevice.current.userInterfaceIdiom != .pad {
                             Text("Downloads")
                                 .font(.system(size: 28, weight: .heavy))
@@ -67,7 +70,7 @@ struct DownloadsView: View {
                             )
                         }
                     }
-                    .padding(.horizontal, UIConstants.standardPadding)
+                    .padding(.horizontal, screenPadding)
                     .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
@@ -453,7 +456,8 @@ private struct DownloadsGridView: View {
                                     media: nil,
                                     score: nil,
                                     statusBadge: watched ? "Watched" : mediaItem?.status.badgeTitle,
-                                    cornerBadge: nil
+                                    cornerBadge: nil,
+                                    allowFallbackWhileLoading: true
                                 )
                                 .overlay(alignment: .topTrailing) {
                                     Image(systemName: selection.contains(group.title) ? "checkmark.circle.fill" : "circle")
@@ -478,7 +482,8 @@ private struct DownloadsGridView: View {
                                     media: nil,
                                     score: nil,
                                     statusBadge: watched ? "Watched" : mediaItem?.status.badgeTitle,
-                                    cornerBadge: nil
+                                    cornerBadge: nil,
+                                    allowFallbackWhileLoading: true
                                 )
                             }
                             .buttonStyle(.plain)
@@ -519,6 +524,7 @@ private struct DownloadsDetailView: View {
     let title: String
     let items: [DownloadItem]
     let mediaItem: MediaItem?
+    @StateObject private var manager = DownloadManager.shared
     @EnvironmentObject private var appState: AppState
     @State private var selectedItem: DownloadItem?
     @State private var showPlayer = false
@@ -533,7 +539,7 @@ private struct DownloadsDetailView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Theme.baseBackground.ignoresSafeArea()
             downloadsBody
         }
         .navigationTitle(title)
@@ -557,7 +563,16 @@ private struct DownloadsDetailView: View {
                     headers: [:]
                 )
                 let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
-                PlayerView(episode: episode, sources: [source], mediaId: mediaId, malId: nil, mediaTitle: title)
+                PlayerView(
+                    episode: episode,
+                    sources: [source],
+                    mediaId: mediaId,
+                    malId: nil,
+                    mediaTitle: title,
+                    onRestoreAfterPictureInPicture: {
+                        showPlayer = true
+                    }
+                )
             } else {
                 VStack(spacing: 12) {
                     Text("Unable to play this download.")
@@ -613,19 +628,19 @@ private struct DownloadsDetailView: View {
 
     private var mediaId: Int {
         if let external = mediaItem?.externalId, external > 0 { return external }
-        return items.first?.mediaId ?? 0
+        return currentItems.first?.mediaId ?? 0
     }
 
     private var posterURL: URL? {
-        mediaItem?.posterImageURL ?? items.first?.posterURL
+        mediaItem?.posterImageURL ?? currentItems.first?.posterURL
     }
 
     private var bannerURL: URL? {
-        mediaItem?.heroImageURL ?? items.first?.bannerURL ?? posterURL
+        mediaItem?.heroImageURL ?? currentItems.first?.bannerURL ?? posterURL
     }
 
     private var totalEpisodes: Int? {
-        mediaItem?.totalEpisodes ?? items.first?.totalEpisodes
+        mediaItem?.totalEpisodes ?? currentItems.first?.totalEpisodes
     }
 
     private var importMedia: MediaItem {
@@ -633,7 +648,7 @@ private struct DownloadsDetailView: View {
             return mediaItem
         }
         return MediaItem(
-            externalId: items.first?.mediaId,
+            externalId: currentItems.first?.mediaId,
             title: title,
             posterImageURL: posterURL,
             heroImageURL: bannerURL,
@@ -641,49 +656,89 @@ private struct DownloadsDetailView: View {
         )
     }
 
+    private var currentItems: [DownloadItem] {
+        let originalIDs = Set(items.map(\.id))
+        let liveMatches = manager.items.filter { originalIDs.contains($0.id) }
+        if !liveMatches.isEmpty {
+            return liveMatches
+        }
+        let key = normalizedTitle(title)
+        let fallbackMatches = manager.items.filter {
+            normalizedTitle($0.title) == key && $0.status == "Completed"
+        }
+        return fallbackMatches.isEmpty ? items : fallbackMatches
+    }
+
     private var sortedItems: [DownloadItem] {
-        items.sorted { $0.episode < $1.episode }
+        currentItems.sorted { $0.episode < $1.episode }
     }
 
     @ViewBuilder
     private var downloadsBody: some View {
         if isPad {
-            ipadEpisodeCarousel
+            ipadDownloadsLayout
         } else {
-            episodeList
+            iphoneDownloadsLayout
         }
     }
 
-    private var episodeList: some View {
+    private var iphoneDownloadsLayout: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                ForEach(sortedItems) { item in
-                    let meta = episodeMetadata[item.episode]
-                    EpisodeRowView(
-                        episodeNumber: item.episode,
-                        title: meta?.title ?? "Episode \(item.episode)",
-                        ratingText: nil,
-                        description: nil,
-                        thumbnailURL: meta?.thumbnailURL,
-                        isPlayable: true,
-                        isWatched: isEpisodeWatched(item.episode),
-                        isDownloaded: true,
-                        isNew: false,
-                        onTap: {
-                            play(item)
-                        }
-                    )
-                    .contextMenu {
-                        Button("Delete") {
-                            DownloadManager.shared.delete(itemId: item.id)
-                        }
+                detailHeroHeader
+
+                episodeListContent
+            }
+            .padding(.bottom, UIConstants.bottomBarHeight)
+        }
+    }
+
+    private var ipadDownloadsLayout: some View {
+        ZStack(alignment: .bottomLeading) {
+            detailHeroBackdropFull
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                    Spacer(minLength: UIScreen.main.bounds.height * 0.35)
+
+                    ipadMetaBlock
+
+                    ipadEpisodeCarousel
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, UIConstants.bottomBarHeight)
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private var episodeListContent: some View {
+        VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+            ForEach(sortedItems) { item in
+                let meta = episodeMetadata[item.episode]
+                EpisodeRowView(
+                    episodeNumber: item.episode,
+                    title: meta?.title ?? "Episode \(item.episode)",
+                    ratingText: nil,
+                    description: nil,
+                    thumbnailURL: meta?.thumbnailURL,
+                    isPlayable: true,
+                    isWatched: isEpisodeWatched(item.episode),
+                    isDownloaded: true,
+                    isNew: false,
+                    onTap: {
+                        play(item)
+                    }
+                )
+                .contextMenu {
+                    Button("Delete") {
+                        DownloadManager.shared.delete(itemId: item.id)
                     }
                 }
             }
-            .padding(.horizontal, UIConstants.standardPadding)
-            .padding(.top, UIConstants.smallPadding)
-            .padding(.bottom, UIConstants.bottomBarHeight)
         }
+        .padding(.horizontal, UIConstants.standardPadding)
+        .padding(.top, UIConstants.smallPadding)
     }
 
     private var ipadEpisodeCarousel: some View {
@@ -716,6 +771,159 @@ private struct DownloadsDetailView: View {
             .padding(.vertical, UIConstants.heroTopPadding)
         }
         .scrollClipDisabled()
+    }
+
+    private var ipadMetaBlock: some View {
+        VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
+            Text(title)
+                .font(.system(size: 34, weight: .bold))
+                .foregroundColor(.white)
+                .lineLimit(2)
+
+            HStack(spacing: UIConstants.tinyPadding) {
+                Text("\(sortedItems.count) EPS")
+                if let totalEpisodes, totalEpisodes > 0 {
+                    Text("OF \(totalEpisodes)")
+                }
+                Text("OFFLINE")
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(Theme.textSecondary)
+        }
+    }
+
+    private var detailHeroBackdropFull: some View {
+        let height = UIScreen.main.bounds.height
+        let topInset = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
+            .first ?? 0
+        return GeometryReader { proxy in
+            let width = proxy.size.width
+            let insetTop = proxy.safeAreaInsets.top
+            let topFeatherHeight = max(24.0, insetTop * 0.6)
+            let fallbackBackdrop = bannerURL ?? posterURL
+            ZStack {
+                Group {
+                    if let url = fallbackBackdrop {
+                        CachedImage(
+                            url: url,
+                            targetSize: CGSize(width: width, height: height + insetTop)
+                        ) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
+                        Theme.surface
+                    }
+                }
+                .frame(width: width, height: height + insetTop)
+                .clipped()
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [Color.clear, Color.black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: topFeatherHeight)
+                        Color.black
+                    }
+                )
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(width: width, height: height + insetTop)
+            }
+            .frame(width: width, height: height + insetTop)
+            .clipped()
+        }
+        .frame(height: height)
+        .offset(y: -topInset)
+    }
+
+    private var detailHeroHeader: some View {
+        let height = UIScreen.main.bounds.height * 0.5
+        let topInset = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
+            .first ?? 0
+        return GeometryReader { proxy in
+            let width = proxy.size.width
+            let insetTop = proxy.safeAreaInsets.top
+            let topFeatherHeight = max(24.0, insetTop * 0.6)
+            let fallbackBackdrop = bannerURL ?? posterURL
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let url = fallbackBackdrop {
+                        CachedImage(
+                            url: url,
+                            targetSize: CGSize(width: width, height: height + insetTop)
+                        ) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
+                        Theme.surface
+                    }
+                }
+                .frame(width: width, height: height + insetTop)
+                .clipped()
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [Color.clear, Color.black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: topFeatherHeight)
+                        Color.black
+                    }
+                )
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.clear, Color.black.opacity(0.9)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: 120)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(title)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+
+                    Text("\(sortedItems.count) Downloaded Episode\(sortedItems.count == 1 ? "" : "s")")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, 24)
+            }
+            .frame(width: width, height: height + insetTop)
+            .clipped()
+        }
+        .frame(height: height)
+        .offset(y: -topInset)
     }
 
     private func loadCachedMetadata() {
@@ -813,9 +1021,10 @@ private struct DownloadsDetailView: View {
     }
 
     private func play(_ item: DownloadItem) {
-        var fileURL = DownloadManager.shared.playableURL(for: item) ?? item.localFile
+        let latestItem = DownloadManager.shared.downloadedItem(title: item.title, episode: item.episode) ?? item
+        var fileURL = DownloadManager.shared.playableURL(for: latestItem) ?? latestItem.localFile
         if fileURL == nil {
-            let fallback = DownloadManager.shared.localFileURL(for: item.title, episode: item.episode)
+            let fallback = DownloadManager.shared.localFileURL(for: latestItem.title, episode: latestItem.episode)
             if FileManager.default.fileExists(atPath: fallback.path) {
                 fileURL = fallback
             }
@@ -824,9 +1033,13 @@ private struct DownloadsDetailView: View {
             playbackError = "Missing local file for this episode."
             return
         }
-        selectedItem = item
+        selectedItem = latestItem
         playURL = resolved
         showPlayer = true
+    }
+
+    private func normalizedTitle(_ value: String) -> String {
+        value.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 }
 

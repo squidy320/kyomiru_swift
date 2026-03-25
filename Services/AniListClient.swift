@@ -467,17 +467,14 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         let calendar = Calendar.current
         let now = Date()
         let month = calendar.component(.month, from: now)
-        var year = calendar.component(.year, from: now)
+        let year = calendar.component(.year, from: now)
         let season: String
         switch month {
-        case 12:
+        case 1...3:
             season = "WINTER"
-            year += 1
-        case 1...2:
-            season = "WINTER"
-        case 3...5:
+        case 4...6:
             season = "SPRING"
-        case 6...8:
+        case 7...9:
             season = "SUMMER"
         default:
             season = "FALL"
@@ -490,14 +487,14 @@ private func cachedDiscoverySectionsFromDisk(sort: String) -> [AniListDiscoveryS
     var sections: [AniListDiscoverySection] = []
     for batch in batches {
         let cacheKey = discoverySectionsCacheKey(batch: batch, sort: sort)
-        guard let data = cacheStore.readJSON(forKey: cacheKey) else { continue }
+        guard let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 10) else { continue }
         sections += decodeDiscoveryBatch(data: data, batch: batch)
     }
     return sections.isEmpty ? nil : sections
 }
 
 private func discoverySectionsCacheKey(batch: String, sort: String) -> String {
-    let version = "v2"
+    let version = "v3"
     let suffix: String
     switch sort {
     case "TRENDING_DESC":
@@ -509,7 +506,8 @@ private func discoverySectionsCacheKey(batch: String, sort: String) -> String {
     default:
         suffix = sort.lowercased()
     }
-    return "discovery:sections:\(batch):\(suffix):\(version)"
+    let (season, year) = currentSeasonAndYear()
+    return "discovery:sections:\(batch):\(suffix):\(season.lowercased())-\(year):\(version)"
 }
 
 private func loadDiscoveryBatch(
@@ -520,7 +518,7 @@ private func loadDiscoveryBatch(
     sectionDefs: [(id: String, title: String)]
 ) async throws -> [AniListDiscoverySection] {
     let cacheKey = discoverySectionsCacheKey(batch: batch, sort: sort)
-    if let data = cacheStore.readJSON(forKey: cacheKey) {
+    if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 10) {
         return decodeDiscoveryBatch(data: data, batch: batch)
     }
     let data = try await graphql(query: query, variables: variables)
