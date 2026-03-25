@@ -2,6 +2,7 @@ import SwiftUI
 #if os(iOS)
 import AVFoundation
 import AVKit
+import MediaPlayer
 import QuartzCore
 import UIKit
 #if canImport(Libmpv)
@@ -11,11 +12,6 @@ private enum MPVPlaybackCommand {
     case seek(Double)
     case setPaused(Bool)
     case setRate(Double)
-}
-
-private enum MPVUtilityAction {
-    case jump85
-    case skipIntro(AniSkipSegment)
 }
 
 private struct MPVResolvedSource: Equatable {
@@ -94,6 +90,7 @@ private final class MPVPlaybackController: ObservableObject {
     private var onDismissForPictureInPicture: (() -> Void)?
     private var currentSource: MPVResolvedSource?
     private var pendingSeekTime: Double?
+    private let volumeView = MPVolumeView(frame: .zero)
 
     init(context: Context) {
         self.context = context
@@ -165,20 +162,13 @@ private final class MPVPlaybackController: ObservableObject {
         skip(by: 10)
     }
 
-    var utilityAction: MPVUtilityAction {
-        if let activeIntroSegment {
-            return .skipIntro(activeIntroSegment)
-        }
-        return .jump85
+    var shouldShowSkipIntro: Bool {
+        activeIntroSegment != nil
     }
 
-    func performUtilityAction() {
-        switch utilityAction {
-        case .jump85:
-            skip(by: 85)
-        case .skipIntro(let intro):
-            seek(to: intro.end)
-        }
+    func skipIntro() {
+        guard let intro = activeIntroSegment else { return }
+        seek(to: intro.end)
     }
 
     var introProgressRange: ClosedRange<Double>? {
@@ -188,6 +178,22 @@ private final class MPVPlaybackController: ObservableObject {
         let end = min(max(intro.end / duration, 0), 1)
         guard end > start else { return nil }
         return start...end
+    }
+
+    func adjustBrightness(by normalizedDelta: Double) {
+        let current = UIScreen.main.brightness
+        let next = max(0, min(1, current + CGFloat(normalizedDelta)))
+        UIScreen.main.brightness = next
+        noteInteraction()
+    }
+
+    func adjustSystemVolume(by normalizedDelta: Double) {
+        guard let slider = volumeView.subviews.compactMap({ $0 as? UISlider }).first else { return }
+        let current = Double(slider.value)
+        let next = max(0, min(1, current + normalizedDelta))
+        slider.setValue(Float(next), animated: false)
+        slider.sendActions(for: .valueChanged)
+        noteInteraction()
     }
 
     func beginHoldSpeed() {
@@ -596,6 +602,9 @@ struct MPVPlayerScreen: View {
     @StateObject private var playbackController: MPVPlaybackController
     @State private var isScrubbing = false
     @State private var wasPausedBeforeScrubbing = false
+    @State private var panStartLocation: CGPoint?
+    @State private var isPanOnLeft = true
+    @State private var seekFeedbackDirection: Int?
 
     init(
         episode: SoraEpisode,
@@ -649,33 +658,12 @@ struct MPVPlayerScreen: View {
                             .tint(.white)
                     }
                 }
-                .overlay {
-                    HStack(spacing: 0) {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture(count: 2) {
-                                playbackController.handleDoubleTapLeft()
-                            }
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture(count: 2) {
-                                playbackController.handleDoubleTapRight()
-                            }
-                    }
+                .overlay { interactionLayer }
+
+                if let seekFeedbackDirection {
+                    seekFeedbackView(direction: seekFeedbackDirection)
+                        .transition(.opacity.combined(with: .scale))
                 }
-                .simultaneousGesture(
-                    TapGesture(count: 1)
-                        .onEnded {
-                            playbackController.toggleControlsVisibility()
-                        }
-                )
-                .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 24, pressing: { pressing in
-                    if pressing {
-                        playbackController.beginHoldSpeed()
-                    } else {
-                        playbackController.endHoldSpeed()
-                    }
-                }, perform: {})
 
                 overlayChrome
             } else {
@@ -719,33 +707,7 @@ struct MPVPlayerScreen: View {
             if playbackController.showControls {
                 Color.black.opacity(0.28)
                     .ignoresSafeArea()
-                    .overlay {
-                        HStack(spacing: 0) {
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .onTapGesture(count: 2) {
-                                    playbackController.handleDoubleTapLeft()
-                                }
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .onTapGesture(count: 2) {
-                                    playbackController.handleDoubleTapRight()
-                                }
-                        }
-                    }
-                    .simultaneousGesture(
-                        TapGesture(count: 1)
-                            .onEnded {
-                                playbackController.toggleControlsVisibility()
-                            }
-                    )
-                    .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 24, pressing: { pressing in
-                        if pressing {
-                            playbackController.beginHoldSpeed()
-                        } else {
-                            playbackController.endHoldSpeed()
-                        }
-                    }, perform: {})
+                    .overlay { interactionLayer }
                     .transition(.opacity)
 
                 Color.clear
@@ -766,32 +728,48 @@ struct MPVPlayerScreen: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 18) {
+        HStack {
             Button {
                 dismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 28, weight: .regular))
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
             }
 
-            if playbackController.isPictureInPicturePossible {
+            Spacer()
+
+            VStack(spacing: 2) {
+                Text(mediaTitle ?? "Now Playing")
+                    .font(.headline)
+                    .lineLimit(1)
+                Text("Episode \(episode.number)")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: 220)
+
+            Spacer()
+
+            HStack(spacing: 8) {
                 Button {
                     playbackController.startPictureInPicture()
                 } label: {
                     Image(systemName: playbackController.isPictureInPictureActive ? "pip.exit" : "pip.enter")
-                        .font(.system(size: 30, weight: .regular))
+                        .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                 }
                 .disabled(playbackController.isPictureInPictureActive)
+                .opacity(playbackController.isPictureInPicturePossible ? 1 : 0)
             }
-
-            Spacer()
         }
-        .padding(.leading, 18)
-        .padding(.top, 14)
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
+        .background(.ultraThinMaterial)
     }
 
     private var centerControls: some View {
@@ -871,49 +849,44 @@ struct MPVPlayerScreen: View {
                             .tint(.white)
                     }
                     Text("-\(mpvTimeString(max(playbackController.duration - playbackController.displayedTime, 0)))")
+                    Button {
+                        playbackController.noteInteraction()
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 28, height: 28)
+                    }
                 }
                 .font(.system(size: 16, weight: .regular, design: .rounded).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.92))
             }
             .padding(.horizontal, 18)
-            .padding(.bottom, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 10)
+            .background(.ultraThinMaterial)
 
             HStack {
+                Spacer(minLength: 0)
                 Button {
-                    playbackController.performUtilityAction()
+                    playbackController.skipIntro()
                 } label: {
-                    Text(utilityButtonTitle)
+                    Text("Skip Intro")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
-                        .background(utilityButtonColor.opacity(0.95))
+                        .background(Color.blue.opacity(0.95))
                         .clipShape(Capsule())
                 }
-                .padding(.leading, 18)
-                .padding(.bottom, 56)
-                Spacer(minLength: 0)
+                .opacity(playbackController.shouldShowSkipIntro ? 1 : 0)
+                .allowsHitTesting(playbackController.shouldShowSkipIntro)
+                .padding(.bottom, 64)
+                .padding(.trailing, 18)
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var utilityButtonTitle: String {
-        switch playbackController.utilityAction {
-        case .jump85:
-            return "+85s"
-        case .skipIntro(let segment):
-            return mpvSkipTitle(for: segment)
-        }
-    }
-
-    private var utilityButtonColor: Color {
-        switch playbackController.utilityAction {
-        case .jump85:
-            return Color(red: 0.22, green: 0.56, blue: 0.97)
-        case .skipIntro:
-            return .yellow.opacity(0.85)
-        }
     }
 
     private func handleScrubbingChanged(_ editing: Bool) {
@@ -935,6 +908,79 @@ struct MPVPlayerScreen: View {
     private var progressFraction: Double {
         guard playbackController.duration > 0 else { return 0 }
         return min(max(playbackController.displayedTime / playbackController.duration, 0), 1)
+    }
+
+    private var interactionLayer: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        playbackController.handleDoubleTapLeft()
+                        showSeekFeedback(direction: -1)
+                    }
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        playbackController.handleDoubleTapRight()
+                        showSeekFeedback(direction: 1)
+                    }
+            }
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                TapGesture(count: 1)
+                    .onEnded { playbackController.toggleControlsVisibility() }
+            )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8)
+                    .onChanged { value in
+                        if panStartLocation == nil {
+                            panStartLocation = value.startLocation
+                            isPanOnLeft = value.startLocation.x < geometry.size.width / 2
+                        }
+                        guard let panStartLocation else { return }
+                        let deltaY = value.location.y - panStartLocation.y
+                        let normalized = Double((-deltaY / max(geometry.size.height, 1)) * 0.08)
+                        if isPanOnLeft {
+                            playbackController.adjustBrightness(by: normalized)
+                        } else {
+                            playbackController.adjustSystemVolume(by: normalized)
+                        }
+                    }
+                    .onEnded { _ in
+                        panStartLocation = nil
+                        playbackController.noteInteraction()
+                    }
+            )
+            .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 24, pressing: { pressing in
+                if pressing {
+                    playbackController.beginHoldSpeed()
+                } else {
+                    playbackController.endHoldSpeed()
+                }
+            }, perform: {})
+        }
+    }
+
+    private func showSeekFeedback(direction: Int) {
+        seekFeedbackDirection = direction
+        withAnimation(.easeInOut(duration: 0.18)) {}
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                seekFeedbackDirection = nil
+            }
+        }
+    }
+
+    private func seekFeedbackView(direction: Int) -> some View {
+        ZStack {
+            Circle()
+                .fill(.ultraThinMaterial)
+                .frame(width: 96, height: 96)
+            Image(systemName: direction < 0 ? "gobackward.10" : "goforward.10")
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(.white)
+        }
     }
 }
 
@@ -1072,6 +1118,7 @@ private final class MPVViewController: UIViewController {
         mpv_set_option_string(handle, "hwdec", "videotoolbox")
         mpv_set_option_string(handle, "keep-open", "yes")
         mpv_set_option_string(handle, "osc", "no")
+        mpv_set_option_string(handle, "osd-level", "0")
         mpv_set_option_string(handle, "input-default-bindings", "yes")
         mpv_set_option_string(handle, "input-vo-keyboard", "no")
         mpv_set_option_string(handle, "sub-auto", "fuzzy")
@@ -1086,6 +1133,15 @@ private final class MPVViewController: UIViewController {
             delegate?.mpvViewController(self, didFailWithError: "mpv failed to initialize.")
             teardownMPV()
             return
+        }
+        "no".withCString { cString in
+            _ = mpv_set_property_string(handle, "osc", cString)
+        }
+        var osdLevel: Int64 = 0
+        withUnsafeMutablePointer(to: &osdLevel) { ptr in
+            "osd-level".withCString { cName in
+                _ = mpv_set_property(handle, cName, MPV_FORMAT_INT64, ptr)
+            }
         }
 
         startObserving()
