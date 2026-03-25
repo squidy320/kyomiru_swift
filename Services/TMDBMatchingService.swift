@@ -1,5 +1,23 @@
 import Foundation
 
+private actor TMDBMatchTaskCoalescer<Key: Hashable, Value> {
+    private var inFlight: [Key: Task<Value, Never>] = [:]
+
+    func value(for key: Key, start: @escaping @Sendable () async -> Value) async -> Value {
+        if let existing = inFlight[key] {
+            return await existing.value
+        }
+
+        let task = Task {
+            await start()
+        }
+        inFlight[key] = task
+        let value = await task.value
+        inFlight[key] = nil
+        return value
+    }
+}
+
 struct TMDBSeasonMatch: Equatable, Codable {
     let showId: Int
     let seasonNumber: Int
@@ -23,6 +41,8 @@ final class TMDBMatchingService {
     private let cacheManager: MetadataCacheManager
     private let apiKey: String?
     private let dateFormatter: DateFormatter
+    private let matchRequests = TMDBMatchTaskCoalescer<String, TMDBSeasonMatch?>()
+    private let seasonDetailRequests = TMDBMatchTaskCoalescer<String, TMDBSeasonDetails?>()
 
     init(cacheStore: CacheStore, session: URLSession = .custom, cacheManager: MetadataCacheManager = MetadataCacheManager()) {
         self.cacheStore = cacheStore
@@ -64,37 +84,60 @@ final class TMDBMatchingService {
             }
         }
 
-        let title = media.title.english ?? media.title.romaji ?? media.title.native ?? media.title.best
-        let startYear = franchiseStartYear
-            ?? media.startDate?.year
-            ?? media.seasonYear
-        guard let showId = await findShowId(title: title, startYear: startYear) else { return nil }
-        let aniFirstEpisode = max(firstEpisodeNumber ?? 1, 1)
-        guard let seasonMatch = await matchSeason(showId: showId, media: media, aniFirstEpisode: aniFirstEpisode) else { return nil }
-        let match = TMDBSeasonMatch(
-            showId: showId,
-            seasonNumber: seasonMatch.seasonNumber,
-            episodeOffset: seasonMatch.episodeOffset
-        )
-        if let seasonDetails = await fetchSeasonDetails(
-            aniListId: media.id,
-            showId: showId,
-            seasonNumber: seasonMatch.seasonNumber
-        ) {
-            let cachedMeta = TMDBCachedMetadata(
-                aniListId: media.id,
+        let requestKey = "\(media.id):\(franchiseStartYear ?? 0):\(firstEpisodeNumber ?? 1)"
+        return await matchRequests.value(for: requestKey) { [self] in
+            if let cached = cacheManager.load(aniListId: media.id) {
+                if let firstEpisodeNumber, firstEpisodeNumber > 1, cached.episodeOffset == 0 {
+                    AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=offset-zero firstEp=\(firstEpisodeNumber)")
+                } else {
+                    return TMDBSeasonMatch(
+                        showId: cached.showId,
+                        seasonNumber: cached.seasonNumber,
+                        episodeOffset: cached.episodeOffset
+                    )
+                }
+            }
+            if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
+               let decoded = try? JSONDecoder().decode(TMDBSeasonMatch.self, from: cached) {
+                if let firstEpisodeNumber, firstEpisodeNumber > 1, decoded.episodeOffset == 0 {
+                    AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=offset-zero-cache firstEp=\(firstEpisodeNumber)")
+                } else {
+                    return decoded
+                }
+            }
+
+            let title = media.title.english ?? media.title.romaji ?? media.title.native ?? media.title.best
+            let startYear = franchiseStartYear
+                ?? media.startDate?.year
+                ?? media.seasonYear
+            guard let showId = await findShowId(title: title, startYear: startYear) else { return nil }
+            let aniFirstEpisode = max(firstEpisodeNumber ?? 1, 1)
+            guard let seasonMatch = await matchSeason(showId: showId, media: media, aniFirstEpisode: aniFirstEpisode) else { return nil }
+            let match = TMDBSeasonMatch(
                 showId: showId,
                 seasonNumber: seasonMatch.seasonNumber,
-                episodeOffset: seasonMatch.episodeOffset,
-                cachedAt: Date(),
-                seasonDetails: seasonDetails
+                episodeOffset: seasonMatch.episodeOffset
             )
-            cacheManager.save(cachedMeta)
+            if let seasonDetails = await fetchSeasonDetails(
+                aniListId: media.id,
+                showId: showId,
+                seasonNumber: seasonMatch.seasonNumber
+            ) {
+                let cachedMeta = TMDBCachedMetadata(
+                    aniListId: media.id,
+                    showId: showId,
+                    seasonNumber: seasonMatch.seasonNumber,
+                    episodeOffset: seasonMatch.episodeOffset,
+                    cachedAt: Date(),
+                    seasonDetails: seasonDetails
+                )
+                cacheManager.save(cachedMeta)
+            }
+            if let data = try? JSONEncoder().encode(match) {
+                cacheStore.writeJSON(data, forKey: cacheKey)
+            }
+            return match
         }
-        if let data = try? JSONEncoder().encode(match) {
-            cacheStore.writeJSON(data, forKey: cacheKey)
-        }
-        return match
     }
 
     func fetchSeasonDetails(aniListId: Int, showId: Int, seasonNumber: Int) async -> TMDBSeasonDetails? {
@@ -108,33 +151,36 @@ final class TMDBMatchingService {
     }
 
     func fetchSeasonDetails(showId: Int, seasonNumber: Int) async -> TMDBSeasonDetails? {
-        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
-        guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)/season/\(seasonNumber)?api_key=\(apiKey)") else {
-            return nil
-        }
-        do {
-            let (data, response) = try await session.data(from: url)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        let requestKey = "\(showId):\(seasonNumber)"
+        return await seasonDetailRequests.value(for: requestKey) { [self] in
+            guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
+            guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)/season/\(seasonNumber)?api_key=\(apiKey)") else {
                 return nil
             }
-            let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            let posterPath = root?["poster_path"] as? String
-            let posterURL = posterPath.flatMap { URL(string: "https://image.tmdb.org/t/p/original\($0)") }
-            let rows = root?["episodes"] as? [[String: Any]] ?? []
-            let episodes = rows.compactMap { row -> TMDBSeasonDetails.Episode? in
-                let number = row["episode_number"] as? Int ?? 0
-                let still = row["still_path"] as? String
-                let rating = row["vote_average"] as? Double
-                guard number > 0 else { return nil }
-                return TMDBSeasonDetails.Episode(
-                    number: number,
-                    stillURL: still.flatMap { URL(string: "https://image.tmdb.org/t/p/w780\($0)") },
-                    rating: rating
-                )
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    return nil
+                }
+                let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let posterPath = root?["poster_path"] as? String
+                let posterURL = posterPath.flatMap { URL(string: "https://image.tmdb.org/t/p/original\($0)") }
+                let rows = root?["episodes"] as? [[String: Any]] ?? []
+                let episodes = rows.compactMap { row -> TMDBSeasonDetails.Episode? in
+                    let number = row["episode_number"] as? Int ?? 0
+                    let still = row["still_path"] as? String
+                    let rating = row["vote_average"] as? Double
+                    guard number > 0 else { return nil }
+                    return TMDBSeasonDetails.Episode(
+                        number: number,
+                        stillURL: still.flatMap { URL(string: "https://image.tmdb.org/t/p/w780\($0)") },
+                        rating: rating
+                    )
+                }
+                return TMDBSeasonDetails(posterURL: posterURL, episodes: episodes)
+            } catch {
+                return nil
             }
-            return TMDBSeasonDetails(posterURL: posterURL, episodes: episodes)
-        } catch {
-            return nil
         }
     }
 

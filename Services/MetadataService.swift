@@ -1,5 +1,23 @@
 import Foundation
 
+private actor TMDBTaskCoalescer<Key: Hashable, Value> {
+    private var inFlight: [Key: Task<Value, Never>] = [:]
+
+    func value(for key: Key, start: @escaping @Sendable () async -> Value) async -> Value {
+        if let existing = inFlight[key] {
+            return await existing.value
+        }
+
+        let task = Task {
+            await start()
+        }
+        inFlight[key] = task
+        let value = await task.value
+        inFlight[key] = nil
+        return value
+    }
+}
+
 struct TMDBMetadata: Equatable, Codable {
     let tmdbId: Int
     let title: String
@@ -13,6 +31,7 @@ final class MetadataService {
     private let cacheStore: CacheStore
     private let apiKey: String?
     private let imageBase = "https://image.tmdb.org/t/p/original"
+    private let metadataRequests = TMDBTaskCoalescer<Int, TMDBMetadata?>()
 
     init(cacheStore: CacheStore, session: URLSession = .custom) {
         self.cacheStore = cacheStore
@@ -29,17 +48,24 @@ final class MetadataService {
             return decoded
         }
 
-        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
-            AppLog.error(.network, "tmdb api key missing")
-            return nil
-        }
+        return await metadataRequests.value(for: media.id) { [self] in
+            if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 24),
+               let decoded = try? JSONDecoder().decode(TMDBMetadata.self, from: cached) {
+                return decoded
+            }
 
-        guard let tmdbId = await resolveTMDBShowId(media: media) else { return nil }
-        guard let details = await fetchTMDBDetails(showId: tmdbId, apiKey: apiKey) else { return nil }
-        if let data = try? JSONEncoder().encode(details) {
-            cacheStore.writeJSON(data, forKey: cacheKey)
+            guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
+                AppLog.error(.network, "tmdb api key missing")
+                return nil
+            }
+
+            guard let tmdbId = await resolveTMDBShowId(media: media) else { return nil }
+            guard let details = await fetchTMDBDetails(showId: tmdbId, apiKey: apiKey) else { return nil }
+            if let data = try? JSONEncoder().encode(details) {
+                cacheStore.writeJSON(data, forKey: cacheKey)
+            }
+            return details
         }
-        return details
     }
 
     func posterURL(for media: AniListMedia) async -> URL? {
