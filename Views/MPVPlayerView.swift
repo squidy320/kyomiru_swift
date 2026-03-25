@@ -719,6 +719,33 @@ struct MPVPlayerScreen: View {
             if playbackController.showControls {
                 Color.black.opacity(0.28)
                     .ignoresSafeArea()
+                    .overlay {
+                        HStack(spacing: 0) {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture(count: 2) {
+                                    playbackController.handleDoubleTapLeft()
+                                }
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture(count: 2) {
+                                    playbackController.handleDoubleTapRight()
+                                }
+                        }
+                    }
+                    .simultaneousGesture(
+                        TapGesture(count: 1)
+                            .onEnded {
+                                playbackController.toggleControlsVisibility()
+                            }
+                    )
+                    .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 24, pressing: { pressing in
+                        if pressing {
+                            playbackController.beginHoldSpeed()
+                        } else {
+                            playbackController.endHoldSpeed()
+                        }
+                    }, perform: {})
                     .transition(.opacity)
 
                 Color.clear
@@ -787,7 +814,7 @@ struct MPVPlayerScreen: View {
     }
 
     private var bottomBar: some View {
-        ZStack(alignment: .trailing) {
+        ZStack {
             VStack(spacing: 8) {
                 ZStack {
                     Capsule()
@@ -851,8 +878,7 @@ struct MPVPlayerScreen: View {
             .padding(.horizontal, 18)
             .padding(.bottom, 14)
 
-            VStack {
-                Spacer()
+            HStack {
                 Button {
                     playbackController.performUtilityAction()
                 } label: {
@@ -866,8 +892,8 @@ struct MPVPlayerScreen: View {
                 }
                 .padding(.leading, 18)
                 .padding(.bottom, 56)
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity)
     }
