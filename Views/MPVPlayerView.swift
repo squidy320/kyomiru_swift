@@ -61,6 +61,7 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     @Published var currentTime: Double = 0
+    @Published var displayedTime: Double = 0
     @Published var duration: Double = 0
     @Published var isPaused = false
     @Published var isBuffering = true
@@ -85,6 +86,7 @@ private final class MPVPlaybackController: ObservableObject {
     private var onRestoreAfterPictureInPicture: (() -> Void)?
     private var onDismissForPictureInPicture: (() -> Void)?
     private var currentSource: MPVResolvedSource?
+    private var pendingSeekTime: Double?
 
     init(context: Context) {
         self.context = context
@@ -134,12 +136,17 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func seek(to seconds: Double) {
-        sendCommand(.seek(seconds))
+        let clampedTime = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, seconds))
+        pendingSeekTime = clampedTime
+        displayedTime = clampedTime
+        updateActiveSkip(at: clampedTime)
+        sendCommand(.seek(clampedTime))
         noteInteraction()
     }
 
     func skip(by interval: Double) {
-        let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, currentTime + interval))
+        let baseTime = pendingSeekTime ?? currentTime
+        let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime + interval))
         seek(to: target)
     }
 
@@ -168,12 +175,24 @@ private final class MPVPlaybackController: ObservableObject {
 
     func handleTimeChanged(_ time: Double) {
         currentTime = time
-        updateActiveSkip(at: time)
+        if let pendingSeekTime, abs(time - pendingSeekTime) <= 1.0 {
+            self.pendingSeekTime = nil
+        } else if let pendingSeekTime, abs(time - pendingSeekTime) > 1.0 {
+            displayedTime = pendingSeekTime
+            updateActiveSkip(at: pendingSeekTime)
+            syncProgress(currentTime: pendingSeekTime, duration: duration)
+            return
+        }
+        displayedTime = time
         syncProgress(currentTime: time, duration: duration)
+        updateActiveSkip(at: time)
     }
 
     func handleDurationChanged(_ duration: Double) {
         self.duration = duration
+        if displayedTime > duration, duration > 0 {
+            displayedTime = duration
+        }
     }
 
     func handlePauseChanged(_ paused: Bool) {
@@ -194,6 +213,8 @@ private final class MPVPlaybackController: ObservableObject {
 
     func handleEnded() {
         currentTime = duration
+        displayedTime = duration
+        pendingSeekTime = nil
         isPaused = true
         markWatchedIfNeeded()
     }
@@ -227,6 +248,8 @@ private final class MPVPlaybackController: ObservableObject {
                 self.isPictureInPictureActive = false
                 self.pendingResumeTime = restoredPosition
                 self.didApplyResume = false
+                self.pendingSeekTime = restoredPosition
+                self.displayedTime = restoredPosition
             },
             onRestore: { [weak self] in
                 self?.onRestoreAfterPictureInPicture?()
@@ -255,9 +278,12 @@ private final class MPVPlaybackController: ObservableObject {
         )
         if let startAt = context.startAt, startAt > 0 {
             pendingResumeTime = startAt
+            displayedTime = startAt
         } else if let saved = PlaybackHistoryStore.shared.position(for: context.episode.id), saved >= 5 {
             pendingResumeTime = saved
+            displayedTime = saved
         } else {
+            displayedTime = 0
             PlaybackHistoryStore.shared.clearEpisode(episodeId: context.episode.id)
         }
     }
@@ -504,7 +530,6 @@ struct MPVPlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var playbackController: MPVPlaybackController
     @State private var isScrubbing = false
-    @State private var scrubTime: Double = 0
     @State private var wasPausedBeforeScrubbing = false
 
     init(
@@ -540,10 +565,6 @@ struct MPVPlayerScreen: View {
 
     private var source: MPVResolvedSource? {
         resolvedMPVSource(sources: sources, mediaTitle: mediaTitle, episodeNumber: episode.number)
-    }
-
-    private var displayedTime: Double {
-        isScrubbing ? scrubTime : playbackController.currentTime
     }
 
     var body: some View {
@@ -611,14 +632,18 @@ struct MPVPlayerScreen: View {
                     .ignoresSafeArea()
                     .transition(.opacity)
 
-                VStack(spacing: 0) {
-                    topBar
-                    Spacer()
-                    centerControls
-                    Spacer()
-                    bottomBar
-                }
-                .transition(.opacity)
+                Color.clear
+                    .ignoresSafeArea()
+                    .overlay(alignment: .topLeading) {
+                        topBar
+                    }
+                    .overlay(alignment: .center) {
+                        centerControls
+                    }
+                    .overlay(alignment: .bottom) {
+                        bottomBar
+                    }
+                    .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: playbackController.showControls)
@@ -649,120 +674,114 @@ struct MPVPlayerScreen: View {
 
             Spacer()
         }
-        .padding(.horizontal, 18)
+        .padding(.leading, 18)
         .padding(.top, 14)
     }
 
     private var centerControls: some View {
-        HStack {
-            Spacer(minLength: 0)
-            HStack(spacing: 28) {
-                transportButton(systemName: "gobackward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
-                    playbackController.skip(by: -appState.settings.playerSkipIntervalSeconds)
-                }
+        HStack(spacing: 28) {
+            transportButton(systemName: "gobackward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
+                playbackController.skip(by: -appState.settings.playerSkipIntervalSeconds)
+            }
 
-                Button {
-                    playbackController.togglePaused()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color.black.opacity(0.28))
-                            .frame(width: 112, height: 112)
-                        Image(systemName: playbackController.isPaused ? "play.fill" : "pause.fill")
-                            .font(.system(size: 42, weight: .medium))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 24, pressing: { isPressing in
-                    if isPressing {
-                        playbackController.beginHoldSpeed()
-                    } else {
-                        playbackController.endHoldSpeed()
-                    }
-                }, perform: {})
-
-                transportButton(systemName: "goforward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
-                    playbackController.skip(by: appState.settings.playerSkipIntervalSeconds)
+            Button {
+                playbackController.togglePaused()
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(Color.black.opacity(0.28))
+                        .frame(width: 112, height: 112)
+                    Image(systemName: playbackController.isPaused ? "play.fill" : "pause.fill")
+                        .font(.system(size: 42, weight: .medium))
+                        .foregroundStyle(.white)
                 }
             }
-            Spacer(minLength: 0)
+            .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 24, pressing: { isPressing in
+                if isPressing {
+                    playbackController.beginHoldSpeed()
+                } else {
+                    playbackController.endHoldSpeed()
+                }
+            }, perform: {})
+
+            transportButton(systemName: "goforward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
+                playbackController.skip(by: appState.settings.playerSkipIntervalSeconds)
+            }
         }
-        .frame(maxWidth: .infinity)
+        .frame(width: 320)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     private var bottomBar: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-
-            ZStack(alignment: .trailing) {
-                VStack(spacing: 8) {
-                    ZStack {
-                        Capsule()
-                            .fill(Color.white.opacity(0.28))
-                            .frame(height: 12)
-
-                        GeometryReader { geometry in
-                            Capsule()
-                                .fill(Color(red: 0.22, green: 0.56, blue: 0.97))
-                                .frame(
-                                    width: max(
-                                        0,
-                                        min(
-                                            geometry.size.width,
-                                            geometry.size.width * CGFloat(progressFraction)
-                                        )
-                                    ),
-                                    height: 12
-                                )
-                        }
+        ZStack(alignment: .trailing) {
+            VStack(spacing: 8) {
+                ZStack {
+                    Capsule()
+                        .fill(Color.white.opacity(0.28))
                         .frame(height: 12)
 
-                        Slider(
-                            value: Binding(
-                                get: { displayedTime },
-                                set: { newValue in
-                                    scrubTime = newValue
-                                }
-                            ),
-                            in: 0...(max(playbackController.duration, 1)),
-                            onEditingChanged: handleScrubbingChanged
-                        )
-                        .tint(.clear)
+                    GeometryReader { geometry in
+                        Capsule()
+                            .fill(Color(red: 0.22, green: 0.56, blue: 0.97))
+                            .frame(
+                                width: max(
+                                    0,
+                                    min(
+                                        geometry.size.width,
+                                        geometry.size.width * CGFloat(progressFraction)
+                                    )
+                                ),
+                                height: 12
+                            )
                     }
+                    .frame(height: 12)
 
-                    HStack {
-                        Text(mpvTimeString(displayedTime))
-                        Spacer()
-                        if playbackController.isBuffering {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.white)
-                        }
-                        Text("-\(mpvTimeString(max(playbackController.duration - displayedTime, 0)))")
-                    }
-                    .font(.system(size: 16, weight: .regular, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.92))
+                    Slider(
+                        value: Binding(
+                            get: { playbackController.displayedTime },
+                            set: { newValue in
+                                playbackController.displayedTime = newValue
+                            }
+                        ),
+                        in: 0...(max(playbackController.duration, 1)),
+                        onEditingChanged: handleScrubbingChanged
+                    )
+                    .tint(.clear)
                 }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 14)
 
-                if let activeSkip = playbackController.activeSkip {
-                    Button {
-                        playbackController.seek(to: activeSkip.end)
-                    } label: {
-                        Text(mpvSkipTitle(for: activeSkip))
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 22)
-                            .padding(.vertical, 16)
-                            .background(Color(red: 0.22, green: 0.56, blue: 0.97).opacity(0.9))
-                            .clipShape(Capsule())
+                HStack {
+                    Text(mpvTimeString(playbackController.displayedTime))
+                    Spacer()
+                    if playbackController.isBuffering {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
                     }
-                    .padding(.trailing, 10)
-                    .padding(.bottom, 62)
+                    Text("-\(mpvTimeString(max(playbackController.duration - playbackController.displayedTime, 0)))")
                 }
+                .font(.system(size: 16, weight: .regular, design: .rounded).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.92))
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 14)
+
+            if let activeSkip = playbackController.activeSkip {
+                Button {
+                    playbackController.seek(to: activeSkip.end)
+                } label: {
+                    Text(mpvSkipTitle(for: activeSkip))
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 16)
+                        .background(Color(red: 0.22, green: 0.56, blue: 0.97).opacity(0.9))
+                        .clipShape(Capsule())
+                }
+                .padding(.trailing, 10)
+                .padding(.bottom, 62)
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func transportButton(systemName: String, title: String, action: @escaping () -> Void) -> some View {
@@ -789,12 +808,12 @@ struct MPVPlayerScreen: View {
         playbackController.noteInteraction()
         if editing {
             isScrubbing = true
-            scrubTime = playbackController.currentTime
             wasPausedBeforeScrubbing = playbackController.isPaused
+            playbackController.displayedTime = playbackController.currentTime
             playbackController.setPaused(true)
         } else {
             isScrubbing = false
-            playbackController.seek(to: scrubTime)
+            playbackController.seek(to: playbackController.displayedTime)
             if !wasPausedBeforeScrubbing {
                 playbackController.setPaused(false)
             }
@@ -803,7 +822,7 @@ struct MPVPlayerScreen: View {
 
     private var progressFraction: Double {
         guard playbackController.duration > 0 else { return 0 }
-        return min(max(displayedTime / playbackController.duration, 0), 1)
+        return min(max(playbackController.displayedTime / playbackController.duration, 0), 1)
     }
 }
 
