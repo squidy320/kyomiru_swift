@@ -607,6 +607,10 @@ struct MPVPlayerScreen: View {
     private var overlayChrome: some View {
         ZStack {
             if playbackController.showControls {
+                Color.black.opacity(0.28)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+
                 VStack(spacing: 0) {
                     topBar
                     Spacer()
@@ -621,65 +625,37 @@ struct MPVPlayerScreen: View {
     }
 
     private var topBar: some View {
-        VStack(spacing: 0) {
-            LinearGradient(
-                colors: [Color.black.opacity(0.72), Color.black.opacity(0.28), .clear],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 140)
-            .overlay(alignment: .top) {
-                HStack(spacing: 14) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(mediaTitle ?? "Now Playing")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                        HStack(spacing: 8) {
-                            labelChip("Episode \(episode.number)")
-                            labelChip("mpv")
-                        }
-                    }
-
-                    Spacer()
-
-                    if playbackController.isPictureInPicturePossible {
-                        Button {
-                            playbackController.startPictureInPicture()
-                        } label: {
-                            Image(systemName: playbackController.isPictureInPictureActive ? "pip.exit" : "pip.enter")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 40, height: 40)
-                        }
-                        .disabled(playbackController.isPictureInPictureActive)
-                    }
-                }
-                .padding(.horizontal, 18)
-                .padding(.top, 10)
-                .padding(.vertical, 10)
-                .background(Color.black.opacity(0.26))
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
+        HStack(spacing: 18) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 28, weight: .regular))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
             }
-            Spacer(minLength: 0)
+
+            if playbackController.isPictureInPicturePossible {
+                Button {
+                    playbackController.startPictureInPicture()
+                } label: {
+                    Image(systemName: playbackController.isPictureInPictureActive ? "pip.exit" : "pip.enter")
+                        .font(.system(size: 30, weight: .regular))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                }
+                .disabled(playbackController.isPictureInPictureActive)
+            }
+
+            Spacer()
         }
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
     }
 
     private var centerControls: some View {
         HStack(spacing: 28) {
-            transportButton(systemName: "gobackward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))s") {
+            transportButton(systemName: "gobackward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
                 playbackController.skip(by: -appState.settings.playerSkipIntervalSeconds)
             }
 
@@ -688,13 +664,10 @@ struct MPVPlayerScreen: View {
             } label: {
                 ZStack {
                     Circle()
-                        .fill(Color.white.opacity(0.16))
-                        .frame(width: 82, height: 82)
-                    Circle()
-                        .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
-                        .frame(width: 82, height: 82)
+                        .fill(Color.black.opacity(0.28))
+                        .frame(width: 112, height: 112)
                     Image(systemName: playbackController.isPaused ? "play.fill" : "pause.fill")
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.system(size: 42, weight: .medium))
                         .foregroundStyle(.white)
                 }
             }
@@ -706,7 +679,7 @@ struct MPVPlayerScreen: View {
                 }
             }, perform: {})
 
-            transportButton(systemName: "goforward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))s") {
+            transportButton(systemName: "goforward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
                 playbackController.skip(by: appState.settings.playerSkipIntervalSeconds)
             }
         }
@@ -716,40 +689,7 @@ struct MPVPlayerScreen: View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
 
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
-                    if let activeSkip = playbackController.activeSkip {
-                        Button {
-                            playbackController.seek(to: activeSkip.end)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "forward.end.fill")
-                                Text(mpvSkipTitle(for: activeSkip))
-                                    .fontWeight(.semibold)
-                            }
-                            .font(.footnote)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.14))
-                            .clipShape(Capsule())
-                        }
-                    }
-
-                    Spacer()
-
-                    if playbackController.isBuffering {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.white)
-                            Text("Buffering")
-                                .font(.footnote)
-                                .foregroundStyle(.white.opacity(0.84))
-                        }
-                    }
-                }
-
+            ZStack(alignment: .trailing) {
                 VStack(spacing: 8) {
                     Slider(
                         value: Binding(
@@ -761,54 +701,61 @@ struct MPVPlayerScreen: View {
                         in: 0...(max(playbackController.duration, 1)),
                         onEditingChanged: handleScrubbingChanged
                     )
-                    .tint(.white)
+                    .tint(Color(red: 0.22, green: 0.56, blue: 0.97))
 
                     HStack {
                         Text(mpvTimeString(displayedTime))
                         Spacer()
+                        if playbackController.isBuffering {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(.white)
+                        }
                         Text("-\(mpvTimeString(max(playbackController.duration - displayedTime, 0)))")
                     }
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.84))
+                    .font(.system(size: 16, weight: .regular, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.92))
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 14)
+
+                if let activeSkip = playbackController.activeSkip {
+                    Button {
+                        playbackController.seek(to: activeSkip.end)
+                    } label: {
+                        Text(mpvSkipTitle(for: activeSkip))
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 22)
+                            .padding(.vertical, 16)
+                            .background(Color(red: 0.22, green: 0.56, blue: 0.97).opacity(0.9))
+                            .clipShape(Capsule())
+                    }
+                    .padding(.trailing, 10)
+                    .padding(.bottom, 62)
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-            .background(Color.black.opacity(0.26))
-            .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
-            .padding(.horizontal, 16)
-            .padding(.bottom, 18)
         }
     }
 
     private func transportButton(systemName: String, title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: systemName)
-                    .font(.system(size: 23, weight: .semibold))
-                Text(title)
-                    .font(.caption2.weight(.semibold))
-            }
-            .foregroundStyle(.white)
-            .frame(width: 64, height: 64)
-            .background(Color.white.opacity(0.12))
-            .clipShape(Circle())
-        }
-    }
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.96), lineWidth: 3)
+                    .frame(width: 72, height: 72)
 
-    private func labelChip(_ title: String) -> some View {
-        Text(title)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.88))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.white.opacity(0.12))
-            .clipShape(Capsule())
+                Image(systemName: systemName)
+                    .font(.system(size: 36, weight: .regular))
+                    .foregroundStyle(.white)
+
+                Text(title)
+                    .font(.system(size: 24, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .offset(y: 5)
+            }
+            .frame(width: 96, height: 96)
+        }
     }
 
     private func handleScrubbingChanged(_ editing: Bool) {
