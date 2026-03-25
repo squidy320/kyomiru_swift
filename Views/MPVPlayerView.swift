@@ -55,6 +55,8 @@ private func mpvTimeString(_ value: Double) -> String {
 
 @MainActor
 private final class MPVPlaybackController: ObservableObject {
+    private static let controlsAutoHideDelayNanoseconds: UInt64 = 5_000_000_000
+
     struct Context {
         let episode: SoraEpisode
         let mediaId: Int
@@ -118,8 +120,12 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func toggleControlsVisibility() {
-        showControls.toggle()
-        scheduleAutoHide()
+        if showControls {
+            autoHideTask?.cancel()
+            showControls = false
+        } else {
+            noteInteraction()
+        }
     }
 
     func noteInteraction() {
@@ -243,6 +249,7 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func handleTimeChanged(_ time: Double) {
+        guard abs(time - currentTime) >= 0.2 || pendingSeekTime != nil else { return }
         currentTime = time
         if let pendingSeekTime, abs(time - pendingSeekTime) <= 1.0 {
             self.pendingSeekTime = nil
@@ -258,6 +265,7 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func handleDurationChanged(_ duration: Double) {
+        guard abs(self.duration - duration) >= 0.5 || (self.duration == 0) != (duration == 0) else { return }
         self.duration = duration
         if displayedTime > duration, duration > 0 {
             displayedTime = duration
@@ -265,6 +273,7 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func handlePauseChanged(_ paused: Bool) {
+        guard isPaused != paused else { return }
         isPaused = paused
         if paused {
             autoHideTask?.cancel()
@@ -275,7 +284,14 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func handleBufferingChanged(_ buffering: Bool) {
+        guard isBuffering != buffering else { return }
         isBuffering = buffering
+        if buffering {
+            autoHideTask?.cancel()
+            showControls = true
+        } else {
+            scheduleAutoHide()
+        }
     }
 
     func handleEnded() {
@@ -413,9 +429,9 @@ private final class MPVPlaybackController: ObservableObject {
 
     private func scheduleAutoHide() {
         autoHideTask?.cancel()
-        guard !isPaused else { return }
+        guard showControls, !isPaused, !isBuffering else { return }
         autoHideTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            try? await Task.sleep(nanoseconds: Self.controlsAutoHideDelayNanoseconds)
             guard !Task.isCancelled else { return }
             self.showControls = false
         }
@@ -1093,6 +1109,11 @@ private final class MPVViewController: UIViewController {
     private var currentSource: MPVResolvedSource?
     private var lastCommandToken = -1
     private var isReady = false
+    private var lastReportedTime: Double?
+    private var lastReportedDuration: Double?
+    private var lastReportedPause: Bool?
+    private var lastReportedBuffering: Bool?
+    private var didReportEOF = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -1168,16 +1189,15 @@ private final class MPVViewController: UIViewController {
         }
 
         mpvHandle = handle
-        mpv_set_option_string(handle, "vo", "gpu-next")
-        mpv_set_option_string(handle, "gpu-api", "vulkan")
-        mpv_set_option_string(handle, "gpu-context", "moltenvk")
-        mpv_set_option_string(handle, "hwdec", "videotoolbox")
+        mpv_set_option_string(handle, "vo", "gpu")
+        mpv_set_option_string(handle, "hwdec", "auto-safe")
         mpv_set_option_string(handle, "keep-open", "yes")
         mpv_set_option_string(handle, "osc", "no")
         mpv_set_option_string(handle, "osd-level", "0")
         mpv_set_option_string(handle, "input-default-bindings", "yes")
         mpv_set_option_string(handle, "input-vo-keyboard", "no")
         mpv_set_option_string(handle, "sub-auto", "fuzzy")
+        mpv_set_option_string(handle, "video-sync", "audio")
 
         var wid = Int64(bitPattern: UInt64(UInt(bitPattern: Unmanaged.passUnretained(renderLayer).toOpaque())))
         withUnsafeMutablePointer(to: &wid) { ptr in
@@ -1209,6 +1229,11 @@ private final class MPVViewController: UIViewController {
     private func loadCurrentSource() {
         guard let handle = mpvHandle, let source = currentSource else { return }
         isReady = false
+        didReportEOF = false
+        lastReportedTime = nil
+        lastReportedDuration = nil
+        lastReportedPause = nil
+        lastReportedBuffering = nil
         delegate?.mpvViewController(self, didChangeBufferingState: true)
 
         if !source.headers.isEmpty {
@@ -1227,9 +1252,10 @@ private final class MPVViewController: UIViewController {
 
     private func startObserving() {
         observationTimer?.invalidate()
-        observationTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        observationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.pollState()
         }
+        observationTimer?.tolerance = 0.2
         RunLoop.main.add(observationTimer!, forMode: .common)
     }
 
@@ -1246,12 +1272,29 @@ private final class MPVViewController: UIViewController {
             delegate?.mpvViewControllerDidBecomeReady(self)
         }
 
-        delegate?.mpvViewController(self, didUpdateDuration: duration)
-        delegate?.mpvViewController(self, didUpdateTime: timePos)
-        delegate?.mpvViewController(self, didChangePauseState: pause)
-        delegate?.mpvViewController(self, didChangeBufferingState: cache || !isReady)
+        if lastReportedDuration == nil || abs((lastReportedDuration ?? 0) - duration) >= 0.5 {
+            lastReportedDuration = duration
+            delegate?.mpvViewController(self, didUpdateDuration: duration)
+        }
 
-        if eof {
+        if lastReportedTime == nil || abs((lastReportedTime ?? 0) - timePos) >= 0.2 || abs(timePos - duration) <= 0.2 {
+            lastReportedTime = timePos
+            delegate?.mpvViewController(self, didUpdateTime: timePos)
+        }
+
+        if lastReportedPause != pause {
+            lastReportedPause = pause
+            delegate?.mpvViewController(self, didChangePauseState: pause)
+        }
+
+        let buffering = cache || !isReady
+        if lastReportedBuffering != buffering {
+            lastReportedBuffering = buffering
+            delegate?.mpvViewController(self, didChangeBufferingState: buffering)
+        }
+
+        if eof && !didReportEOF {
+            didReportEOF = true
             delegate?.mpvViewControllerDidFinishPlayback(self)
         }
 
@@ -1335,6 +1378,11 @@ private final class MPVViewController: UIViewController {
     private func teardownMPV() {
         observationTimer?.invalidate()
         observationTimer = nil
+        lastReportedTime = nil
+        lastReportedDuration = nil
+        lastReportedPause = nil
+        lastReportedBuffering = nil
+        didReportEOF = false
         if let handle = mpvHandle {
             mpv_terminate_destroy(handle)
             mpvHandle = nil
