@@ -621,55 +621,59 @@ struct MPVPlayerScreen: View {
     }
 
     private var topBar: some View {
-        LinearGradient(
-            colors: [Color.black.opacity(0.78), Color.black.opacity(0.38), .clear],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .frame(maxWidth: .infinity)
-        .frame(height: 128)
-        .overlay(alignment: .top) {
-            HStack(spacing: 14) {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(Color.white.opacity(0.12))
-                        .clipShape(Circle())
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(mediaTitle ?? "Now Playing")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text("Episode \(episode.number)")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.76))
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                if playbackController.isPictureInPicturePossible {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color.black.opacity(0.72), Color.black.opacity(0.28), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 140)
+            .overlay(alignment: .top) {
+                HStack(spacing: 14) {
                     Button {
-                        playbackController.startPictureInPicture()
+                        dismiss()
                     } label: {
-                        Image(systemName: playbackController.isPictureInPictureActive ? "pip.exit" : "pip.enter")
-                            .font(.system(size: 18, weight: .semibold))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 40, height: 40)
-                            .background(Color.white.opacity(0.12))
-                            .clipShape(Circle())
                     }
-                    .disabled(playbackController.isPictureInPictureActive)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(mediaTitle ?? "Now Playing")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        HStack(spacing: 8) {
+                            labelChip("Episode \(episode.number)")
+                            labelChip("mpv")
+                        }
+                    }
+
+                    Spacer()
+
+                    if playbackController.isPictureInPicturePossible {
+                        Button {
+                            playbackController.startPictureInPicture()
+                        } label: {
+                            Image(systemName: playbackController.isPictureInPictureActive ? "pip.exit" : "pip.enter")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 40, height: 40)
+                        }
+                        .disabled(playbackController.isPictureInPictureActive)
+                    }
                 }
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
+                .padding(.vertical, 10)
+                .background(Color.black.opacity(0.26))
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 10)
+            Spacer(minLength: 0)
         }
     }
 
@@ -709,14 +713,9 @@ struct MPVPlayerScreen: View {
     }
 
     private var bottomBar: some View {
-        LinearGradient(
-            colors: [.clear, Color.black.opacity(0.44), Color.black.opacity(0.84)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .frame(maxWidth: .infinity)
-        .frame(height: 188)
-        .overlay(alignment: .bottom) {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
                     if let activeSkip = playbackController.activeSkip {
@@ -773,8 +772,17 @@ struct MPVPlayerScreen: View {
                     .foregroundStyle(.white.opacity(0.84))
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 22)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .background(Color.black.opacity(0.26))
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+            .padding(.horizontal, 16)
+            .padding(.bottom, 18)
         }
     }
 
@@ -791,6 +799,16 @@ struct MPVPlayerScreen: View {
             .background(Color.white.opacity(0.12))
             .clipShape(Circle())
         }
+    }
+
+    private func labelChip(_ title: String) -> some View {
+        Text(title)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.88))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.white.opacity(0.12))
+            .clipShape(Capsule())
     }
 
     private func handleScrubbingChanged(_ editing: Bool) {
