@@ -654,35 +654,40 @@ struct MPVPlayerScreen: View {
     }
 
     private var centerControls: some View {
-        HStack(spacing: 28) {
-            transportButton(systemName: "gobackward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
-                playbackController.skip(by: -appState.settings.playerSkipIntervalSeconds)
-            }
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 28) {
+                transportButton(systemName: "gobackward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
+                    playbackController.skip(by: -appState.settings.playerSkipIntervalSeconds)
+                }
 
-            Button {
-                playbackController.togglePaused()
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.black.opacity(0.28))
-                        .frame(width: 112, height: 112)
-                    Image(systemName: playbackController.isPaused ? "play.fill" : "pause.fill")
-                        .font(.system(size: 42, weight: .medium))
-                        .foregroundStyle(.white)
+                Button {
+                    playbackController.togglePaused()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.black.opacity(0.28))
+                            .frame(width: 112, height: 112)
+                        Image(systemName: playbackController.isPaused ? "play.fill" : "pause.fill")
+                            .font(.system(size: 42, weight: .medium))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 24, pressing: { isPressing in
+                    if isPressing {
+                        playbackController.beginHoldSpeed()
+                    } else {
+                        playbackController.endHoldSpeed()
+                    }
+                }, perform: {})
+
+                transportButton(systemName: "goforward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
+                    playbackController.skip(by: appState.settings.playerSkipIntervalSeconds)
                 }
             }
-            .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 24, pressing: { isPressing in
-                if isPressing {
-                    playbackController.beginHoldSpeed()
-                } else {
-                    playbackController.endHoldSpeed()
-                }
-            }, perform: {})
-
-            transportButton(systemName: "goforward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
-                playbackController.skip(by: appState.settings.playerSkipIntervalSeconds)
-            }
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var bottomBar: some View {
@@ -691,17 +696,39 @@ struct MPVPlayerScreen: View {
 
             ZStack(alignment: .trailing) {
                 VStack(spacing: 8) {
-                    Slider(
-                        value: Binding(
-                            get: { displayedTime },
-                            set: { newValue in
-                                scrubTime = newValue
-                            }
-                        ),
-                        in: 0...(max(playbackController.duration, 1)),
-                        onEditingChanged: handleScrubbingChanged
-                    )
-                    .tint(Color(red: 0.22, green: 0.56, blue: 0.97))
+                    ZStack {
+                        Capsule()
+                            .fill(Color.white.opacity(0.28))
+                            .frame(height: 12)
+
+                        GeometryReader { geometry in
+                            Capsule()
+                                .fill(Color(red: 0.22, green: 0.56, blue: 0.97))
+                                .frame(
+                                    width: max(
+                                        0,
+                                        min(
+                                            geometry.size.width,
+                                            geometry.size.width * CGFloat(progressFraction)
+                                        )
+                                    ),
+                                    height: 12
+                                )
+                        }
+                        .frame(height: 12)
+
+                        Slider(
+                            value: Binding(
+                                get: { displayedTime },
+                                set: { newValue in
+                                    scrubTime = newValue
+                                }
+                            ),
+                            in: 0...(max(playbackController.duration, 1)),
+                            onEditingChanged: handleScrubbingChanged
+                        )
+                        .tint(.clear)
+                    }
 
                     HStack {
                         Text(mpvTimeString(displayedTime))
@@ -772,6 +799,11 @@ struct MPVPlayerScreen: View {
                 playbackController.setPaused(false)
             }
         }
+    }
+
+    private var progressFraction: Double {
+        guard playbackController.duration > 0 else { return 0 }
+        return min(max(displayedTime / playbackController.duration, 0), 1)
     }
 }
 
