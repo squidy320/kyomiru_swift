@@ -61,10 +61,11 @@ enum Theme {
 actor ImageCache {
     static let shared = ImageCache()
 
-    private let memory = NSCache<NSURL, NSData>()
+    private static let diskSizeLimitBytes: Int64 = 250 * 1024 * 1024
+    private let memory = NSCache<NSString, NSData>()
     private let folder: URL
     private let session: URLSession
-    private var inFlight: Set<URL> = []
+    private var inFlight: Set<String> = []
 
     init() {
         let fm = FileManager.default
@@ -73,22 +74,18 @@ actor ImageCache {
         try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
 
         let config = URLSessionConfiguration.default
-        config.requestCachePolicy = .returnCacheDataElseLoad
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 90
         config.waitsForConnectivity = true
-        config.urlCache = URLCache(
-            memoryCapacity: 50 * 1024 * 1024,
-            diskCapacity: 200 * 1024 * 1024,
-            diskPath: "KyomiruURLCache"
-        )
+        config.urlCache = nil
         session = URLSession(configuration: config)
         memory.totalCostLimit = 40 * 1024 * 1024
         memory.countLimit = 200
     }
 
     func data(for url: URL) async -> Data? {
-        let key = url as NSURL
+        let key = cacheKey(for: url) as NSString
         if let cached = memory.object(forKey: key) {
             return cached as Data
         }
@@ -104,6 +101,7 @@ actor ImageCache {
             if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
                 memory.setObject(data as NSData, forKey: key, cost: data.count)
                 try? data.write(to: fileURL, options: .atomic)
+                pruneDiskCacheIfNeeded()
                 return data
             }
         } catch {
@@ -116,21 +114,22 @@ actor ImageCache {
         let unique = Array(Set(urls))
         if unique.isEmpty { return }
         for url in unique {
-            let key = url as NSURL
-            if memory.object(forKey: key) != nil { continue }
+            let key = cacheKey(for: url)
+            let memoryKey = key as NSString
+            if memory.object(forKey: memoryKey) != nil { continue }
             let fileURL = fileURLFor(url: url)
             if FileManager.default.fileExists(atPath: fileURL.path) { continue }
-            if inFlight.contains(url) { continue }
-            inFlight.insert(url)
+            if inFlight.contains(key) { continue }
+            inFlight.insert(key)
             Task {
                 _ = await data(for: url)
-                await removeInFlight(url)
+                await removeInFlight(key)
             }
         }
     }
 
-    private func removeInFlight(_ url: URL) async {
-        inFlight.remove(url)
+    private func removeInFlight(_ key: String) async {
+        inFlight.remove(key)
     }
 
     func clearAll() async {
@@ -142,14 +141,66 @@ actor ImageCache {
     }
 
     private func fileURLFor(url: URL) -> URL {
-        let name = sha256(url.absoluteString)
+        let name = sha256(cacheKey(for: url))
         return folder.appendingPathComponent(name).appendingPathExtension("img")
+    }
+
+    private func cacheKey(for url: URL) -> String {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url.absoluteString
+        }
+
+        components.fragment = nil
+        components.host = components.host?.lowercased()
+        components.scheme = components.scheme?.lowercased()
+
+        let queryHostsToStrip: Set<String> = [
+            "image.tmdb.org",
+            "s4.anilist.co",
+            "img.anili.st",
+            "cdn.myanimelist.net"
+        ]
+        if let host = components.host, queryHostsToStrip.contains(host) {
+            components.query = nil
+        }
+
+        return components.string ?? url.absoluteString
     }
 
     private func sha256(_ string: String) -> String {
         let data = Data(string.utf8)
         let hash = SHA256.hash(data: data)
         return hash.compactMap { String(format: "%02x", $0) }.joined()
+    }
+
+    private func pruneDiskCacheIfNeeded() {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: folder,
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        var files: [(url: URL, modified: Date, size: Int64)] = []
+        var totalSize: Int64 = 0
+
+        for case let fileURL as URL in enumerator {
+            guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]),
+                  values.isRegularFile == true else { continue }
+            let fileSize = Int64(values.fileSize ?? 0)
+            totalSize += fileSize
+            files.append((fileURL, values.contentModificationDate ?? .distantPast, fileSize))
+        }
+
+        guard totalSize > Self.diskSizeLimitBytes else { return }
+
+        for file in files.sorted(by: { $0.modified < $1.modified }) {
+            try? fm.removeItem(at: file.url)
+            totalSize -= file.size
+            if totalSize <= Self.diskSizeLimitBytes {
+                break
+            }
+        }
     }
 
     func image(for url: URL, targetSize: CGSize, scale: CGFloat) async -> UIImage? {
