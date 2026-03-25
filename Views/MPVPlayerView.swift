@@ -25,6 +25,7 @@ private struct MPVResolvedSource: Equatable {
     let headers: [String: String]
 }
 
+@MainActor
 private func resolvedMPVSource(
     sources: [SoraSource],
     mediaTitle: String?,
@@ -508,10 +509,13 @@ private final class MPVViewController: UIViewController {
 
     private func run(_ command: String, args: [String]) {
         guard let mpv else { return }
-        var cArgs = ([command] + args).map { strdup($0) }
+        let allocatedArgs = ([command] + args).map { strdup($0) }
+        var cArgs = allocatedArgs.map { pointer in
+            pointer.map { UnsafePointer<CChar>($0) }
+        }
         cArgs.append(nil)
         defer {
-            for arg in cArgs where arg != nil { free(arg) }
+            for arg in allocatedArgs where arg != nil { free(arg) }
         }
         check(mpv_command(mpv, &cArgs))
     }
