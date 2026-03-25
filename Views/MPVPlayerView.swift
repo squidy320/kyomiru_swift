@@ -89,6 +89,7 @@ private final class MPVPlaybackController: ObservableObject {
     private var pendingResumeTime: Double?
     private var didMarkWatched = false
     private var autoHideTask: Task<Void, Never>?
+    private var autoHideGeneration = 0
     private var isLongPressSpeedActive = false
     private var onRestoreAfterPictureInPicture: (() -> Void)?
     private var onDismissForPictureInPicture: (() -> Void)?
@@ -122,6 +123,7 @@ private final class MPVPlaybackController: ObservableObject {
     func toggleControlsVisibility() {
         if showControls {
             autoHideTask?.cancel()
+            autoHideGeneration += 1
             showControls = false
         } else {
             noteInteraction()
@@ -129,6 +131,7 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func noteInteraction() {
+        autoHideGeneration += 1
         showControls = true
         scheduleAutoHide()
     }
@@ -430,9 +433,11 @@ private final class MPVPlaybackController: ObservableObject {
     private func scheduleAutoHide() {
         autoHideTask?.cancel()
         guard showControls, !isPaused, !isBuffering else { return }
+        let generation = autoHideGeneration
         autoHideTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: Self.controlsAutoHideDelayNanoseconds)
             guard !Task.isCancelled else { return }
+            guard generation == self.autoHideGeneration else { return }
             self.showControls = false
         }
     }
@@ -875,7 +880,7 @@ struct MPVPlayerScreen: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             playbackController.skip85Relative()
         } label: {
-            Text("Skip Intro >")
+            Text("Skip 85s")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12)
@@ -955,15 +960,27 @@ struct MPVPlayerScreen: View {
                         playbackController.noteInteraction()
                     }
             )
-            .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 8, pressing: { pressing in
-                if pressing {
+            .simultaneousGesture(holdSpeedGesture)
+        }
+    }
+
+    private var holdSpeedGesture: some Gesture {
+        LongPressGesture(minimumDuration: 0.5, maximumDistance: 8)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .onChanged { value in
+                switch value {
+                case .first(true):
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     playbackController.beginHoldSpeed()
-                } else {
-                    playbackController.endHoldSpeed()
+                case .second(true, _):
+                    playbackController.beginHoldSpeed()
+                default:
+                    break
                 }
-            }, perform: {})
-        }
+            }
+            .onEnded { _ in
+                playbackController.endHoldSpeed()
+            }
     }
 }
 
