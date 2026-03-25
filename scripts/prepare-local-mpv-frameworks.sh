@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCAL_DIR="$ROOT/Vendor/MPVKit/Local/xcframework"
 TMP_DIR="$ROOT/Vendor/MPVKit/Local/tmp"
+RELEASE_DIR="$ROOT/Vendor/MPVKit/dist/release"
 
 mkdir -p "$LOCAL_DIR"
 mkdir -p "$TMP_DIR"
@@ -24,16 +25,54 @@ ensure_unzipped() {
   unzip -q -o "$zip_path" -d "$LOCAL_DIR"
 }
 
-if [ ! -d "$LOCAL_DIR/Libmpv.xcframework" ]; then
-  echo "Preparing Libmpv.xcframework from local MPV build"
-  "$ROOT/scripts/build-mpv.sh"
-  if [ ! -d "$ROOT/Vendor/MPVKit/dist/release/xcframework/Libmpv.xcframework" ]; then
-    echo "Local Libmpv.xcframework was not produced."
-    exit 1
+ensure_local_release_framework() {
+  local name="$1"
+  local framework_path="$LOCAL_DIR/$name.xcframework"
+  local release_framework_path="$RELEASE_DIR/xcframework/$name.xcframework"
+  local release_zip_path="$RELEASE_DIR/$name.xcframework.zip"
+
+  if [ -d "$framework_path" ]; then
+    echo "Using cached local framework: $name"
+    return
   fi
-  rm -rf "$LOCAL_DIR/Libmpv.xcframework"
-  cp -R "$ROOT/Vendor/MPVKit/dist/release/xcframework/Libmpv.xcframework" "$LOCAL_DIR/"
-fi
+
+  if [ -d "$release_framework_path" ]; then
+    echo "Copying $name from local MPV release xcframework directory"
+    cp -R "$release_framework_path" "$LOCAL_DIR/"
+    return
+  fi
+
+  if [ -f "$release_zip_path" ]; then
+    echo "Expanding $name from local MPV release zip"
+    unzip -q -o "$release_zip_path" -d "$LOCAL_DIR"
+    return
+  fi
+
+  echo "Preparing $name from local MPV build"
+  "$ROOT/scripts/build-mpv.sh"
+
+  if [ -d "$release_framework_path" ]; then
+    cp -R "$release_framework_path" "$LOCAL_DIR/"
+    return
+  fi
+
+  if [ -f "$release_zip_path" ]; then
+    unzip -q -o "$release_zip_path" -d "$LOCAL_DIR"
+    return
+  fi
+
+  echo "Local $name.xcframework was not produced."
+  exit 1
+}
+
+ensure_local_release_framework "Libavcodec"
+ensure_local_release_framework "Libavdevice"
+ensure_local_release_framework "Libavfilter"
+ensure_local_release_framework "Libavformat"
+ensure_local_release_framework "Libavutil"
+ensure_local_release_framework "Libmpv"
+ensure_local_release_framework "Libswresample"
+ensure_local_release_framework "Libswscale"
 
 ensure_unzipped "Libcrypto" "https://github.com/mpvkit/openssl-build/releases/download/3.3.5/Libcrypto.xcframework.zip"
 ensure_unzipped "Libssl" "https://github.com/mpvkit/openssl-build/releases/download/3.3.5/Libssl.xcframework.zip"
