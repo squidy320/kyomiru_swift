@@ -153,6 +153,7 @@ private struct AVPlayerScreen: View {
         } message: {
             Text(errorMessage ?? "Unknown error")
         }
+        .statusBar(hidden: true)
     }
 
     private func startPlayback() {

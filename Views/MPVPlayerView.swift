@@ -734,6 +734,7 @@ struct MPVPlayerScreen: View {
         } message: {
             Text(playbackController.errorMessage ?? "")
         }
+        .statusBar(hidden: true)
     }
 
     private var overlayChrome: some View {
