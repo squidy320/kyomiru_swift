@@ -644,6 +644,7 @@ struct MPVPlayerScreen: View {
     @State private var wasPausedBeforeScrubbing = false
     @State private var panStartLocation: CGPoint?
     @State private var isPanOnLeft = true
+    @State private var holdSpeedActivationTask: Task<Void, Never>?
 
     init(
         episode: SoraEpisode,
@@ -719,6 +720,9 @@ struct MPVPlayerScreen: View {
             )
         }
         .onDisappear {
+            holdSpeedActivationTask?.cancel()
+            holdSpeedActivationTask = nil
+            playbackController.endHoldSpeed()
             playbackController.cleanup()
         }
         .alert("Playback Error", isPresented: Binding(
@@ -961,27 +965,32 @@ struct MPVPlayerScreen: View {
                         playbackController.noteInteraction()
                     }
             )
-            .simultaneousGesture(holdSpeedGesture)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        scheduleHoldSpeedActivation()
+                    }
+                    .onEnded { _ in
+                        cancelHoldSpeedActivation()
+                        playbackController.endHoldSpeed()
+                    }
+            )
         }
     }
 
-    private var holdSpeedGesture: some Gesture {
-        LongPressGesture(minimumDuration: 0.5, maximumDistance: 8)
-            .sequenced(before: DragGesture(minimumDistance: 0))
-            .onChanged { value in
-                switch value {
-                case .first(true):
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    playbackController.beginHoldSpeed()
-                case .second(true, _):
-                    playbackController.beginHoldSpeed()
-                default:
-                    break
-                }
-            }
-            .onEnded { _ in
-                playbackController.endHoldSpeed()
-            }
+    private func scheduleHoldSpeedActivation() {
+        guard holdSpeedActivationTask == nil else { return }
+        holdSpeedActivationTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            playbackController.beginHoldSpeed()
+        }
+    }
+
+    private func cancelHoldSpeedActivation() {
+        holdSpeedActivationTask?.cancel()
+        holdSpeedActivationTask = nil
     }
 }
 
@@ -1136,7 +1145,7 @@ private final class MPVViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        renderLayer.frame = view.bounds
+        updateRenderLayerLayout()
         view.layer.addSublayer(renderLayer)
         pipBridge.configure(in: view)
         pipBridge.isPaused = { [weak self] in self?.getPauseState() ?? true }
@@ -1153,7 +1162,16 @@ private final class MPVViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        renderLayer.frame = view.bounds
+        updateRenderLayerLayout()
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            self?.updateRenderLayerLayout()
+        }, completion: { [weak self] _ in
+            self?.updateRenderLayerLayout()
+        })
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -1409,6 +1427,16 @@ private final class MPVViewController: UIViewController {
 
     deinit {
         teardownMPV()
+    }
+
+    private func updateRenderLayerLayout() {
+        renderLayer.frame = view.bounds
+        let scale = view.window?.screen.scale ?? view.contentScaleFactor
+        renderLayer.contentsScale = scale
+        renderLayer.drawableSize = CGSize(
+            width: max(view.bounds.width * scale, 1),
+            height: max(view.bounds.height * scale, 1)
+        )
     }
 }
 
