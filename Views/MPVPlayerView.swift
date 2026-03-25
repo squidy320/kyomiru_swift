@@ -12,6 +12,7 @@ private enum MPVPlaybackCommand {
     case seek(Double)
     case setPaused(Bool)
     case setRate(Double)
+    case commandString(String)
 }
 
 private struct MPVResolvedSource: Equatable {
@@ -116,16 +117,12 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func toggleControlsVisibility() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showControls.toggle()
-        }
+        showControls.toggle()
         scheduleAutoHide()
     }
 
     func noteInteraction() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showControls = true
-        }
+        showControls = true
         scheduleAutoHide()
     }
 
@@ -155,11 +152,23 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func handleDoubleTapLeft() {
-        skip(by: -10)
+        sendCommand(.commandString("seek -10 relative"))
+        let baseTime = pendingSeekTime ?? currentTime
+        let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime - 10))
+        pendingSeekTime = target
+        displayedTime = target
+        updateActiveSkip(at: target)
+        noteInteraction()
     }
 
     func handleDoubleTapRight() {
-        skip(by: 10)
+        sendCommand(.commandString("seek 10 relative"))
+        let baseTime = pendingSeekTime ?? currentTime
+        let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime + 10))
+        pendingSeekTime = target
+        displayedTime = target
+        updateActiveSkip(at: target)
+        noteInteraction()
     }
 
     var shouldShowSkipIntro: Bool {
@@ -169,6 +178,16 @@ private final class MPVPlaybackController: ObservableObject {
     func skipIntro() {
         guard let intro = activeIntroSegment else { return }
         seek(to: intro.end)
+    }
+
+    func skip85Relative() {
+        sendCommand(.commandString("seek 85 relative"))
+        let baseTime = pendingSeekTime ?? currentTime
+        let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime + 85))
+        pendingSeekTime = target
+        displayedTime = target
+        updateActiveSkip(at: target)
+        noteInteraction()
     }
 
     var introProgressRange: ClosedRange<Double>? {
@@ -245,9 +264,7 @@ private final class MPVPlaybackController: ObservableObject {
         isPaused = paused
         if paused {
             autoHideTask?.cancel()
-            withAnimation(.easeInOut(duration: 0.2)) {
-                showControls = true
-            }
+            showControls = true
         } else {
             scheduleAutoHide()
         }
@@ -396,9 +413,7 @@ private final class MPVPlaybackController: ObservableObject {
         autoHideTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.2)) {
-                self.showControls = false
-            }
+            self.showControls = false
         }
     }
 }
@@ -704,27 +719,38 @@ struct MPVPlayerScreen: View {
 
     private var overlayChrome: some View {
         ZStack {
-            if playbackController.showControls {
-                Color.black.opacity(0.28)
-                    .ignoresSafeArea()
-                    .overlay { interactionLayer }
-                    .transition(.opacity)
-
-                Color.clear
-                    .ignoresSafeArea()
-                    .overlay(alignment: .topLeading) {
-                        topBar
-                    }
-                    .overlay(alignment: .center) {
-                        centerControls
-                    }
-                    .overlay(alignment: .bottom) {
-                        bottomBar
-                    }
-                    .transition(.opacity)
-            }
+            Color.clear
+                .ignoresSafeArea()
+                .overlay(alignment: .top) { topGradient }
+                .overlay(alignment: .bottom) { bottomGradient }
+                .overlay(alignment: .top) { topBar }
+                .overlay(alignment: .center) { centerControls }
+                .overlay(alignment: .bottom) { bottomBar }
+                .overlay(alignment: .bottomTrailing) { skip85Button }
         }
+        .opacity(playbackController.showControls ? 1 : 0)
+        .allowsHitTesting(playbackController.showControls)
         .animation(.easeInOut(duration: 0.2), value: playbackController.showControls)
+    }
+
+    private var topGradient: some View {
+        LinearGradient(
+            colors: [Color.black.opacity(0.82), Color.black.opacity(0.35), .clear],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: 150)
+        .allowsHitTesting(false)
+    }
+
+    private var bottomGradient: some View {
+        LinearGradient(
+            colors: [.clear, Color.black.opacity(0.45), Color.black.opacity(0.82)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: 210)
+        .allowsHitTesting(false)
     }
 
     private var topBar: some View {
@@ -733,7 +759,7 @@ struct MPVPlayerScreen: View {
                 dismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 21, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
             }
@@ -753,140 +779,97 @@ struct MPVPlayerScreen: View {
 
             Spacer()
 
-            HStack(spacing: 8) {
-                Button {
-                    playbackController.startPictureInPicture()
-                } label: {
-                    Image(systemName: playbackController.isPictureInPictureActive ? "pip.exit" : "pip.enter")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                }
-                .disabled(playbackController.isPictureInPictureActive)
-                .opacity(playbackController.isPictureInPicturePossible ? 1 : 0)
+            Button {
+                playbackController.noteInteraction()
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
             }
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)
-        .padding(.bottom, 8)
-        .background(.ultraThinMaterial)
+        .padding(.bottom, 4)
     }
 
     private var centerControls: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 46) {
+            Button {
+                playbackController.handleDoubleTapLeft()
+                showSeekFeedback(direction: -1)
+            } label: {
+                Image(systemName: "gobackward.10")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+
             Button {
                 playbackController.togglePaused()
             } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.black.opacity(0.28))
-                        .frame(width: 112, height: 112)
-                    Image(systemName: playbackController.isPaused ? "play.fill" : "pause.fill")
-                        .font(.system(size: 42, weight: .medium))
-                        .foregroundStyle(.white)
-                }
+                Image(systemName: playbackController.isPaused ? "play.fill" : "pause.fill")
+                    .font(.system(size: 56, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+
+            Button {
+                playbackController.handleDoubleTapRight()
+                showSeekFeedback(direction: 1)
+            } label: {
+                Image(systemName: "goforward.10")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(.white)
             }
         }
-        .frame(width: 112)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(.bottom, 24)
     }
 
     private var bottomBar: some View {
-        ZStack {
-            VStack(spacing: 8) {
-                ZStack {
-                    Capsule()
-                        .fill(Color.white.opacity(0.28))
-                        .frame(height: 12)
-
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            if let introRange = playbackController.introProgressRange {
-                                Capsule()
-                                    .fill(Color.yellow.opacity(0.85))
-                                    .frame(
-                                        width: max(0, geometry.size.width * CGFloat(introRange.upperBound - introRange.lowerBound)),
-                                        height: 12
-                                    )
-                                    .offset(x: geometry.size.width * CGFloat(introRange.lowerBound))
-                            }
-
-                            Capsule()
-                                .fill(Color(red: 0.22, green: 0.56, blue: 0.97))
-                                .frame(
-                                    width: max(
-                                        0,
-                                        min(
-                                            geometry.size.width,
-                                            geometry.size.width * CGFloat(progressFraction)
-                                        )
-                                    ),
-                                    height: 12
-                                )
-                        }
+        VStack(spacing: 8) {
+            Slider(
+                value: Binding(
+                    get: { playbackController.displayedTime },
+                    set: { newValue in
+                        playbackController.displayedTime = newValue
                     }
-                    .frame(height: 12)
-
-                    Slider(
-                        value: Binding(
-                            get: { playbackController.displayedTime },
-                            set: { newValue in
-                                playbackController.displayedTime = newValue
-                            }
-                        ),
-                        in: 0...(max(playbackController.duration, 1)),
-                        onEditingChanged: handleScrubbingChanged
-                    )
-                    .tint(.clear)
-                }
-
-                HStack {
-                    Text(mpvTimeString(playbackController.displayedTime))
-                    Spacer()
-                    if playbackController.isBuffering {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.white)
-                    }
-                    Text("-\(mpvTimeString(max(playbackController.duration - playbackController.displayedTime, 0)))")
-                    Button {
-                        playbackController.noteInteraction()
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 28, height: 28)
-                    }
-                }
-                .font(.system(size: 16, weight: .regular, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.92))
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 10)
-            .padding(.bottom, 10)
-            .background(.ultraThinMaterial)
+                ),
+                in: 0...(max(playbackController.duration, 1)),
+                onEditingChanged: handleScrubbingChanged
+            )
+            .tint(.white)
+            .controlSize(.small)
 
             HStack {
-                Spacer(minLength: 0)
-                Button {
-                    playbackController.skipIntro()
-                } label: {
-                    Text("Skip Intro")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(Color.blue.opacity(0.95))
-                        .clipShape(Capsule())
-                }
-                .opacity(playbackController.shouldShowSkipIntro ? 1 : 0)
-                .allowsHitTesting(playbackController.shouldShowSkipIntro)
-                .padding(.bottom, 64)
-                .padding(.trailing, 18)
+                Text(mpvTimeString(playbackController.displayedTime))
+                Spacer()
+                Text("-\(mpvTimeString(max(playbackController.duration - playbackController.displayedTime, 0)))")
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .font(.system(size: 14, weight: .regular, design: .rounded).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.95))
         }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 14)
+    }
+
+    private var skip85Button: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            playbackController.skip85Relative()
+        } label: {
+            Text("Skip Intro >")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.45))
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.4), lineWidth: 1)
+                )
+                .clipShape(Capsule())
+        }
+        .padding(.trailing, 16)
+        .padding(.bottom, 78)
     }
 
     private func handleScrubbingChanged(_ editing: Bool) {
@@ -903,11 +886,6 @@ struct MPVPlayerScreen: View {
                 playbackController.setPaused(false)
             }
         }
-    }
-
-    private var progressFraction: Double {
-        guard playbackController.duration > 0 else { return 0 }
-        return min(max(playbackController.displayedTime / playbackController.duration, 0), 1)
     }
 
     private var interactionLayer: some View {
@@ -975,7 +953,7 @@ struct MPVPlayerScreen: View {
     private func seekFeedbackView(direction: Int) -> some View {
         ZStack {
             Circle()
-                .fill(.ultraThinMaterial)
+                .fill(Color.black.opacity(0.38))
                 .frame(width: 96, height: 96)
             Image(systemName: direction < 0 ? "gobackward.10" : "goforward.10")
                 .font(.system(size: 34, weight: .semibold))
@@ -1046,10 +1024,80 @@ private struct MPVPlayerRepresentable: UIViewControllerRepresentable {
     }
 }
 
+private final class MPVSampleBufferPiPBridge: NSObject, AVPictureInPictureControllerDelegate, AVPictureInPictureSampleBufferPlaybackDelegate {
+    let sampleBufferLayer = AVSampleBufferDisplayLayer()
+    private var controller: AVPictureInPictureController?
+
+    var isPaused: () -> Bool = { true }
+    var setPaused: (Bool) -> Void = { _ in }
+    var currentTime: () -> Double = { 0 }
+    var duration: () -> Double = { 0 }
+    var skipBy: (Double) -> Void = { _ in }
+
+    func configure(in hostView: UIView) {
+        sampleBufferLayer.frame = CGRect(x: 0, y: 0, width: 2, height: 2)
+        sampleBufferLayer.opacity = 0.01
+        sampleBufferLayer.videoGravity = .resizeAspect
+        hostView.layer.addSublayer(sampleBufferLayer)
+
+        guard AVPictureInPictureController.isPictureInPictureSupported() else { return }
+        let source = AVPictureInPictureController.ContentSource(
+            sampleBufferDisplayLayer: sampleBufferLayer,
+            playbackDelegate: self
+        )
+        let pip = AVPictureInPictureController(contentSource: source)
+        pip.canStartPictureInPictureAutomaticallyFromInline = true
+        pip.requiresLinearPlayback = false
+        pip.delegate = self
+        controller = pip
+    }
+
+    func start() {
+        controller?.startPictureInPicture()
+    }
+
+    func stop() {
+        controller?.stopPictureInPicture()
+    }
+
+    func enqueue(_ sampleBuffer: CMSampleBuffer) {
+        sampleBufferLayer.enqueue(sampleBuffer)
+    }
+
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, setPlaying playing: Bool) {
+        setPaused(!playing)
+    }
+
+    func pictureInPictureControllerIsPlaybackPaused(_ pictureInPictureController: AVPictureInPictureController) -> Bool {
+        isPaused()
+    }
+
+    func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {
+        CMTimeRange(start: .zero, duration: CMTime(seconds: max(duration(), 0), preferredTimescale: 600))
+    }
+
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, currentTimeForPlayback time: CMTime) -> CMTime {
+        CMTime(seconds: max(currentTime(), 0), preferredTimescale: 600)
+    }
+
+    func pictureInPictureController(
+        _ pictureInPictureController: AVPictureInPictureController,
+        skipByInterval skipInterval: CMTime,
+        completion: @escaping () -> Void
+    ) {
+        skipBy(skipInterval.seconds)
+        completion()
+    }
+
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, didTransitionToRenderSize newRenderSize: CMVideoDimensions) {}
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, playbackTimeDidChange playbackTime: CMTime) {}
+}
+
 private final class MPVViewController: UIViewController {
     weak var delegate: MPVViewControllerDelegate?
 
     private let renderLayer = MPVMetalLayer()
+    private let pipBridge = MPVSampleBufferPiPBridge()
     private var mpvHandle: OpaquePointer?
     private var eventsQueue = DispatchQueue(label: "kyomiru.mpv.events", qos: .userInitiated)
     private var observationTimer: Timer?
@@ -1062,6 +1110,16 @@ private final class MPVViewController: UIViewController {
         view.backgroundColor = .black
         renderLayer.frame = view.bounds
         view.layer.addSublayer(renderLayer)
+        pipBridge.configure(in: view)
+        pipBridge.isPaused = { [weak self] in self?.getPauseState() ?? true }
+        pipBridge.setPaused = { [weak self] paused in self?.setFlagProperty(name: "pause", value: paused) }
+        pipBridge.currentTime = { [weak self] in self?.getCurrentTime() ?? 0 }
+        pipBridge.duration = { [weak self] in self?.getDurationValue() ?? 0 }
+        pipBridge.skipBy = { [weak self] delta in
+            guard let self else { return }
+            let base = self.getCurrentTime()
+            self.sendCommand(["seek", "\(base + delta)", "absolute+exact"])
+        }
         initializeMPV()
     }
 
@@ -1101,6 +1159,10 @@ private final class MPVViewController: UIViewController {
             setFlagProperty(name: "pause", value: paused)
         case .setRate(let rate):
             setDoubleProperty(name: "speed", value: rate)
+        case .commandString(let command):
+            command.withCString { cCommand in
+                _ = mpv_command_string(mpvHandle, cCommand)
+            }
         }
     }
 
@@ -1198,6 +1260,28 @@ private final class MPVViewController: UIViewController {
         if eof {
             delegate?.mpvViewControllerDidFinishPlayback(self)
         }
+
+        // Frame enqueue point for true mpv PiP:
+        // when mpv render loop emits CMSampleBuffer, call pipBridge.enqueue(sampleBuffer)
+    }
+
+    func enqueuePiPSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+        pipBridge.enqueue(sampleBuffer)
+    }
+
+    private func getCurrentTime() -> Double {
+        guard let handle = mpvHandle else { return 0 }
+        return getDoubleProperty(name: "time-pos", handle: handle)
+    }
+
+    private func getDurationValue() -> Double {
+        guard let handle = mpvHandle else { return 0 }
+        return getDoubleProperty(name: "duration", handle: handle)
+    }
+
+    private func getPauseState() -> Bool {
+        guard let handle = mpvHandle else { return true }
+        return getFlagProperty(name: "pause", handle: handle)
     }
 
     private func sendCommand(_ values: [String]) {
