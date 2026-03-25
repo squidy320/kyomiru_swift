@@ -13,6 +13,11 @@ private enum MPVPlaybackCommand {
     case setRate(Double)
 }
 
+private enum MPVUtilityAction {
+    case jump85
+    case skipIntro(AniSkipSegment)
+}
+
 private struct MPVResolvedSource: Equatable {
     let url: URL
     let headers: [String: String]
@@ -68,6 +73,7 @@ private final class MPVPlaybackController: ObservableObject {
     @Published var errorMessage: String?
     @Published var showControls = true
     @Published var activeSkip: AniSkipSegment?
+    @Published var activeIntroSegment: AniSkipSegment?
     @Published var isPictureInPictureActive = false
     @Published var isPictureInPicturePossible = AVPictureInPictureController.isPictureInPictureSupported()
     @Published private(set) var commandToken = 0
@@ -77,6 +83,7 @@ private final class MPVPlaybackController: ObservableObject {
 
     private var appState: AppState?
     private var skipSegments: [AniSkipSegment] = []
+    private var introSegments: [AniSkipSegment] = []
     private var didApplyResume = false
     private var pendingResumeTime: Double?
     private var didMarkWatched = false
@@ -148,6 +155,39 @@ private final class MPVPlaybackController: ObservableObject {
         let baseTime = pendingSeekTime ?? currentTime
         let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime + interval))
         seek(to: target)
+    }
+
+    func handleDoubleTapLeft() {
+        skip(by: -10)
+    }
+
+    func handleDoubleTapRight() {
+        skip(by: 10)
+    }
+
+    var utilityAction: MPVUtilityAction {
+        if let activeIntroSegment {
+            return .skipIntro(activeIntroSegment)
+        }
+        return .jump85
+    }
+
+    func performUtilityAction() {
+        switch utilityAction {
+        case .jump85:
+            skip(by: 85)
+        case .skipIntro(let intro):
+            seek(to: intro.end)
+        }
+    }
+
+    var introProgressRange: ClosedRange<Double>? {
+        guard duration > 0 else { return nil }
+        guard let intro = introSegments.first else { return nil }
+        let start = min(max(intro.start / duration, 0), 1)
+        let end = min(max(intro.end / duration, 0), 1)
+        guard end > start else { return nil }
+        return start...end
     }
 
     func beginHoldSpeed() {
@@ -326,18 +366,22 @@ private final class MPVPlaybackController: ObservableObject {
         guard let appState, let malId = context.malId else { return }
         if let cached = appState.services.downloadManager.cachedSkipSegments(malId: malId, episode: context.episode.number) {
             skipSegments = cached
-            updateActiveSkip(at: currentTime)
+            introSegments = cached.filter { $0.type.lowercased() == "op" }.sorted(by: { $0.start < $1.start })
+            updateActiveSkip(at: displayedTime)
         }
         let segments = await appState.services.aniSkipService.fetchSkipSegments(malId: malId, episode: context.episode.number)
         guard !segments.isEmpty else { return }
         skipSegments = segments
-        updateActiveSkip(at: currentTime)
+        introSegments = segments.filter { $0.type.lowercased() == "op" }.sorted(by: { $0.start < $1.start })
+        updateActiveSkip(at: displayedTime)
         appState.services.downloadManager.storeSkipSegments(segments, malId: malId, episode: context.episode.number)
     }
 
     private func updateActiveSkip(at time: Double) {
         let matches = skipSegments.filter { time >= $0.start && time <= $0.end }
         activeSkip = matches.min(by: { $0.end < $1.end })
+        let introMatches = introSegments.filter { time >= $0.start && time <= $0.end }
+        activeIntroSegment = introMatches.min(by: { $0.end < $1.end })
     }
 
     private func scheduleAutoHide() {
@@ -362,12 +406,14 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
     private var controller: AVPictureInPictureController?
     private var hostWindow: UIWindow?
     private var timeObserver: Any?
+    private var itemStatusObserver: NSKeyValueObservation?
     private var onStart: (() -> Void)?
     private var onStop: ((Double) -> Void)?
     private var onRestore: (() -> Void)?
     private var onError: ((String) -> Void)?
     private weak var appState: AppState?
     private var didMarkWatched = false
+    private var didAttemptStart = false
 
     func start(
         source: MPVResolvedSource,
@@ -389,6 +435,7 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
         self.onRestore = onRestore
         self.onError = onError
         self.didMarkWatched = false
+        self.didAttemptStart = false
 
         let asset: AVURLAsset
         if source.headers.isEmpty {
@@ -406,13 +453,15 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
         let windowScene = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .first { $0.activationState == .foregroundActive }
-        let hostWindow = windowScene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
-        hostWindow.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+        let hostWindow = windowScene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: UIScreen.main.bounds)
+        hostWindow.frame = UIScreen.main.bounds
         hostWindow.windowLevel = .normal + 1
         hostWindow.backgroundColor = .clear
 
         let hostController = UIViewController()
         hostController.view.backgroundColor = .clear
+        hostController.view.frame = hostWindow.bounds
+        hostController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         hostWindow.rootViewController = hostController
         hostWindow.isHidden = false
         self.hostWindow = hostWindow
@@ -432,12 +481,26 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
         if #available(iOS 14.2, *) {
             pip.canStartPictureInPictureAutomaticallyFromInline = true
         }
+        pip.requiresLinearPlayback = false
         self.controller = pip
 
-        player.seek(to: CMTime(seconds: startTime, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-        player.play()
-        installTimeObserver(mediaId: mediaId, episodeId: episodeId, episodeNumber: episodeNumber)
-        pip.startPictureInPicture()
+        itemStatusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] observed, _ in
+            guard let self else { return }
+            switch observed.status {
+            case .readyToPlay:
+                guard !self.didAttemptStart else { return }
+                self.didAttemptStart = true
+                player.seek(to: CMTime(seconds: startTime, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+                player.play()
+                self.installTimeObserver(mediaId: mediaId, episodeId: episodeId, episodeNumber: episodeNumber)
+                pip.startPictureInPicture()
+            case .failed:
+                self.onError?(observed.error?.localizedDescription ?? "Picture in Picture failed to prepare.")
+                self.stopInternal()
+            default:
+                break
+            }
+        }
     }
 
     private func installTimeObserver(mediaId: Int, episodeId: String, episodeNumber: Int) {
@@ -500,6 +563,8 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
             player.removeTimeObserver(timeObserver)
         }
         timeObserver = nil
+        itemStatusObserver?.invalidate()
+        itemStatusObserver = nil
         player?.pause()
         player = nil
         playerLayer?.player = nil
@@ -577,9 +642,6 @@ struct MPVPlayerScreen: View {
                 )
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    playbackController.toggleControlsVisibility()
-                }
                 .overlay(alignment: .center) {
                     if playbackController.isBuffering {
                         ProgressView()
@@ -587,6 +649,33 @@ struct MPVPlayerScreen: View {
                             .tint(.white)
                     }
                 }
+                .overlay {
+                    HStack(spacing: 0) {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture(count: 2) {
+                                playbackController.handleDoubleTapLeft()
+                            }
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture(count: 2) {
+                                playbackController.handleDoubleTapRight()
+                            }
+                    }
+                }
+                .simultaneousGesture(
+                    TapGesture(count: 1)
+                        .onEnded {
+                            playbackController.toggleControlsVisibility()
+                        }
+                )
+                .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 24, pressing: { pressing in
+                    if pressing {
+                        playbackController.beginHoldSpeed()
+                    } else {
+                        playbackController.endHoldSpeed()
+                    }
+                }, perform: {})
 
                 overlayChrome
             } else {
@@ -679,11 +768,7 @@ struct MPVPlayerScreen: View {
     }
 
     private var centerControls: some View {
-        HStack(spacing: 28) {
-            transportButton(systemName: "gobackward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
-                playbackController.skip(by: -appState.settings.playerSkipIntervalSeconds)
-            }
-
+        HStack(spacing: 0) {
             Button {
                 playbackController.togglePaused()
             } label: {
@@ -696,19 +781,8 @@ struct MPVPlayerScreen: View {
                         .foregroundStyle(.white)
                 }
             }
-            .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 24, pressing: { isPressing in
-                if isPressing {
-                    playbackController.beginHoldSpeed()
-                } else {
-                    playbackController.endHoldSpeed()
-                }
-            }, perform: {})
-
-            transportButton(systemName: "goforward", title: "\(Int(appState.settings.playerSkipIntervalSeconds))") {
-                playbackController.skip(by: appState.settings.playerSkipIntervalSeconds)
-            }
         }
-        .frame(width: 320)
+        .frame(width: 112)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
@@ -721,18 +795,30 @@ struct MPVPlayerScreen: View {
                         .frame(height: 12)
 
                     GeometryReader { geometry in
-                        Capsule()
-                            .fill(Color(red: 0.22, green: 0.56, blue: 0.97))
-                            .frame(
-                                width: max(
-                                    0,
-                                    min(
-                                        geometry.size.width,
-                                        geometry.size.width * CGFloat(progressFraction)
+                        ZStack(alignment: .leading) {
+                            if let introRange = playbackController.introProgressRange {
+                                Capsule()
+                                    .fill(Color.yellow.opacity(0.85))
+                                    .frame(
+                                        width: max(0, geometry.size.width * CGFloat(introRange.upperBound - introRange.lowerBound)),
+                                        height: 12
                                     )
-                                ),
-                                height: 12
-                            )
+                                    .offset(x: geometry.size.width * CGFloat(introRange.lowerBound))
+                            }
+
+                            Capsule()
+                                .fill(Color(red: 0.22, green: 0.56, blue: 0.97))
+                                .frame(
+                                    width: max(
+                                        0,
+                                        min(
+                                            geometry.size.width,
+                                            geometry.size.width * CGFloat(progressFraction)
+                                        )
+                                    ),
+                                    height: 12
+                                )
+                        }
                     }
                     .frame(height: 12)
 
@@ -765,42 +851,42 @@ struct MPVPlayerScreen: View {
             .padding(.horizontal, 18)
             .padding(.bottom, 14)
 
-            if let activeSkip = playbackController.activeSkip {
+            VStack {
+                Spacer()
                 Button {
-                    playbackController.seek(to: activeSkip.end)
+                    playbackController.performUtilityAction()
                 } label: {
-                    Text(mpvSkipTitle(for: activeSkip))
+                    Text(utilityButtonTitle)
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 16)
-                        .background(Color(red: 0.22, green: 0.56, blue: 0.97).opacity(0.9))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(utilityButtonColor.opacity(0.95))
                         .clipShape(Capsule())
                 }
-                .padding(.trailing, 10)
-                .padding(.bottom, 62)
+                .padding(.leading, 18)
+                .padding(.bottom, 56)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func transportButton(systemName: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .stroke(Color.white.opacity(0.96), lineWidth: 3)
-                    .frame(width: 72, height: 72)
+    private var utilityButtonTitle: String {
+        switch playbackController.utilityAction {
+        case .jump85:
+            return "+85s"
+        case .skipIntro(let segment):
+            return mpvSkipTitle(for: segment)
+        }
+    }
 
-                Image(systemName: systemName)
-                    .font(.system(size: 36, weight: .regular))
-                    .foregroundStyle(.white)
-
-                Text(title)
-                    .font(.system(size: 24, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .offset(y: 5)
-            }
-            .frame(width: 96, height: 96)
+    private var utilityButtonColor: Color {
+        switch playbackController.utilityAction {
+        case .jump85:
+            return Color(red: 0.22, green: 0.56, blue: 0.97)
+        case .skipIntro:
+            return .yellow.opacity(0.85)
         }
     }
 
