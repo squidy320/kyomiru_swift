@@ -3,6 +3,7 @@ import SwiftUI
 final class SettingsState: ObservableObject {
     @AppStorage("settings.defaultAudio") private var defaultAudioRaw: String = "Sub"
     @AppStorage("settings.defaultQuality") private var defaultQualityRaw: String = "Auto"
+    @AppStorage("settings.playerBackend") private var playerBackendRaw: String = PlayerBackend.avPlayer.rawValue
     @AppStorage("settings.autoSyncAniList") private var autoSyncAniListRaw: Bool = true
     @AppStorage("settings.showPlayerDebugOverlay") private var showPlayerDebugOverlayRaw: Bool = false
     @AppStorage("settings.cardImageSource") private var cardImageSourceRaw: String = CardImageSource.tmdb.rawValue
@@ -24,6 +25,14 @@ final class SettingsState: ObservableObject {
         get { defaultQualityRaw }
         set {
             defaultQualityRaw = newValue
+            objectWillChange.send()
+        }
+    }
+
+    var playerBackend: PlayerBackend {
+        get { PlayerBackend(rawValue: playerBackendRaw) ?? .avPlayer }
+        set {
+            playerBackendRaw = newValue.rawValue
             objectWillChange.send()
         }
     }
@@ -89,6 +98,31 @@ final class SettingsState: ObservableObject {
         set {
             useComfortableLayoutRaw = newValue
             objectWillChange.send()
+        }
+    }
+}
+
+enum PlayerBackend: String, CaseIterable, Identifiable {
+    case avPlayer
+    case mpv
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .avPlayer:
+            return "AVPlayer"
+        case .mpv:
+            return "mpv"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .avPlayer:
+            return "Best iOS integration with Picture in Picture support."
+        case .mpv:
+            return "Advanced playback pipeline with broader codec and subtitle handling."
         }
     }
 }

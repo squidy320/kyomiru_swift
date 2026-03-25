@@ -13,6 +13,9 @@ struct PlayerView: View {
     let mediaTitle: String?
     let startAt: Double?
     let onRestoreAfterPictureInPicture: (() -> Void)?
+    @EnvironmentObject private var appState: AppState
+    @State private var forceAVPlayerForSession = false
+    @State private var sessionFallbackMessage: String?
 
     init(
         episode: SoraEpisode,
@@ -35,19 +38,46 @@ struct PlayerView: View {
     var body: some View {
         Group {
 #if os(iOS)
-            AVPlayerScreen(
-                episode: episode,
-                sources: sources,
-                mediaId: mediaId,
-                malId: malId,
-                mediaTitle: mediaTitle,
-                startAt: startAt,
-                onRestoreAfterPictureInPicture: onRestoreAfterPictureInPicture
-            )
+            switch effectiveBackend {
+            case .avPlayer:
+                AVPlayerScreen(
+                    episode: episode,
+                    sources: sources,
+                    mediaId: mediaId,
+                    malId: malId,
+                    mediaTitle: mediaTitle,
+                    startAt: startAt,
+                    onRestoreAfterPictureInPicture: onRestoreAfterPictureInPicture
+                )
+            case .mpv:
+                MPVPlayerScreen(
+                    episode: episode,
+                    sources: sources,
+                    mediaId: mediaId,
+                    malId: malId,
+                    mediaTitle: mediaTitle,
+                    startAt: startAt
+                ) { message in
+                    sessionFallbackMessage = message
+                    forceAVPlayerForSession = true
+                }
+            }
 #else
             Text("Playback is only supported on iOS.")
 #endif
         }
+        .alert("Playback Engine Changed", isPresented: Binding(
+            get: { sessionFallbackMessage != nil },
+            set: { _ in sessionFallbackMessage = nil }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(sessionFallbackMessage ?? "")
+        }
+    }
+
+    private var effectiveBackend: PlayerBackend {
+        forceAVPlayerForSession ? .avPlayer : appState.settings.playerBackend
     }
 }
 
