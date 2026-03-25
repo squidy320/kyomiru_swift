@@ -13,6 +13,7 @@ private enum MPVPlaybackCommand {
     case setPaused(Bool)
     case setRate(Double)
     case commandString(String)
+    case setSpeedProperty(String)
 }
 
 private struct MPVResolvedSource: Equatable {
@@ -73,6 +74,7 @@ private final class MPVPlaybackController: ObservableObject {
     @Published var activeIntroSegment: AniSkipSegment?
     @Published var isPictureInPictureActive = false
     @Published var isPictureInPicturePossible = AVPictureInPictureController.isPictureInPictureSupported()
+    @Published var playbackSpeed: Double = 1.0
     @Published private(set) var commandToken = 0
     @Published private(set) var pendingCommand: MPVPlaybackCommand?
 
@@ -85,8 +87,7 @@ private final class MPVPlaybackController: ObservableObject {
     private var pendingResumeTime: Double?
     private var didMarkWatched = false
     private var autoHideTask: Task<Void, Never>?
-    private var holdSpeedRestoreRate: Double = 1.0
-    private var isHoldSpeedActive = false
+    private var isLongPressSpeedActive = false
     private var onRestoreAfterPictureInPicture: (() -> Void)?
     private var onDismissForPictureInPicture: (() -> Void)?
     private var currentSource: MPVResolvedSource?
@@ -199,13 +200,6 @@ private final class MPVPlaybackController: ObservableObject {
         return start...end
     }
 
-    func adjustBrightness(by normalizedDelta: Double) {
-        let current = UIScreen.main.brightness
-        let next = max(0, min(1, current + CGFloat(normalizedDelta)))
-        UIScreen.main.brightness = next
-        noteInteraction()
-    }
-
     func adjustSystemVolume(by normalizedDelta: Double) {
         guard let slider = volumeView.subviews.compactMap({ $0 as? UISlider }).first else { return }
         let current = Double(slider.value)
@@ -216,18 +210,28 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func beginHoldSpeed() {
-        guard !isHoldSpeedActive else { return }
+        guard !isLongPressSpeedActive else { return }
         guard !isPaused else { return }
-        guard let appState else { return }
-        isHoldSpeedActive = true
-        holdSpeedRestoreRate = 1.0
-        sendCommand(.setRate(appState.settings.playerHoldSpeed.rawValue))
+        isLongPressSpeedActive = true
+        sendCommand(.setSpeedProperty("2.0"))
+        noteInteraction()
     }
 
     func endHoldSpeed() {
-        guard isHoldSpeedActive else { return }
-        isHoldSpeedActive = false
-        sendCommand(.setRate(holdSpeedRestoreRate))
+        guard isLongPressSpeedActive else { return }
+        isLongPressSpeedActive = false
+        playbackSpeed = 1.0
+        sendCommand(.setSpeedProperty("1.0"))
+        noteInteraction()
+    }
+
+    func cyclePlaybackSpeed() {
+        let speeds: [Double] = [1.0, 1.25, 1.5, 2.0]
+        let index = speeds.firstIndex(of: playbackSpeed) ?? 0
+        let next = speeds[(index + 1) % speeds.count]
+        playbackSpeed = next
+        sendCommand(.setSpeedProperty(String(format: "%.2f", next)))
+        noteInteraction()
     }
 
     func handleReady() {
@@ -619,7 +623,6 @@ struct MPVPlayerScreen: View {
     @State private var wasPausedBeforeScrubbing = false
     @State private var panStartLocation: CGPoint?
     @State private var isPanOnLeft = true
-    @State private var seekFeedbackDirection: Int?
 
     init(
         episode: SoraEpisode,
@@ -674,11 +677,6 @@ struct MPVPlayerScreen: View {
                     }
                 }
                 .overlay { interactionLayer }
-
-                if let seekFeedbackDirection {
-                    seekFeedbackView(direction: seekFeedbackDirection)
-                        .transition(.opacity.combined(with: .scale))
-                }
 
                 overlayChrome
             } else {
@@ -778,15 +776,7 @@ struct MPVPlayerScreen: View {
             .frame(maxWidth: 220)
 
             Spacer()
-
-            Button {
-                playbackController.noteInteraction()
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-            }
+            Color.clear.frame(width: 44, height: 44)
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)
@@ -797,7 +787,6 @@ struct MPVPlayerScreen: View {
         HStack(spacing: 46) {
             Button {
                 playbackController.handleDoubleTapLeft()
-                showSeekFeedback(direction: -1)
             } label: {
                 Image(systemName: "gobackward.10")
                     .font(.system(size: 34, weight: .semibold))
@@ -814,7 +803,6 @@ struct MPVPlayerScreen: View {
 
             Button {
                 playbackController.handleDoubleTapRight()
-                showSeekFeedback(direction: 1)
             } label: {
                 Image(systemName: "goforward.10")
                     .font(.system(size: 34, weight: .semibold))
@@ -843,6 +831,21 @@ struct MPVPlayerScreen: View {
                 Text(mpvTimeString(playbackController.displayedTime))
                 Spacer()
                 Text("-\(mpvTimeString(max(playbackController.duration - playbackController.displayedTime, 0)))")
+                Button {
+                    playbackController.cyclePlaybackSpeed()
+                } label: {
+                    Text(speedButtonTitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.45))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        )
+                        .clipShape(Capsule())
+                }
             }
             .font(.system(size: 14, weight: .regular, design: .rounded).monospacedDigit())
             .foregroundStyle(.white.opacity(0.95))
@@ -888,6 +891,16 @@ struct MPVPlayerScreen: View {
         }
     }
 
+    private var speedButtonTitle: String {
+        switch playbackController.playbackSpeed {
+        case 1.0: return "1.0x"
+        case 1.25: return "1.25x"
+        case 1.5: return "1.5x"
+        case 2.0: return "2.0x"
+        default: return String(format: "%.2fx", playbackController.playbackSpeed)
+        }
+    }
+
     private var interactionLayer: some View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
@@ -895,13 +908,11 @@ struct MPVPlayerScreen: View {
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) {
                         playbackController.handleDoubleTapLeft()
-                        showSeekFeedback(direction: -1)
                     }
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) {
                         playbackController.handleDoubleTapRight()
-                        showSeekFeedback(direction: 1)
                     }
             }
             .contentShape(Rectangle())
@@ -919,9 +930,7 @@ struct MPVPlayerScreen: View {
                         guard let panStartLocation else { return }
                         let deltaY = value.location.y - panStartLocation.y
                         let normalized = Double((-deltaY / max(geometry.size.height, 1)) * 0.08)
-                        if isPanOnLeft {
-                            playbackController.adjustBrightness(by: normalized)
-                        } else {
+                        if !isPanOnLeft {
                             playbackController.adjustSystemVolume(by: normalized)
                         }
                     }
@@ -930,34 +939,14 @@ struct MPVPlayerScreen: View {
                         playbackController.noteInteraction()
                     }
             )
-            .onLongPressGesture(minimumDuration: 0.35, maximumDistance: 24, pressing: { pressing in
+            .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 8, pressing: { pressing in
                 if pressing {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     playbackController.beginHoldSpeed()
                 } else {
                     playbackController.endHoldSpeed()
                 }
             }, perform: {})
-        }
-    }
-
-    private func showSeekFeedback(direction: Int) {
-        seekFeedbackDirection = direction
-        withAnimation(.easeInOut(duration: 0.18)) {}
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            withAnimation(.easeInOut(duration: 0.18)) {
-                seekFeedbackDirection = nil
-            }
-        }
-    }
-
-    private func seekFeedbackView(direction: Int) -> some View {
-        ZStack {
-            Circle()
-                .fill(Color.black.opacity(0.38))
-                .frame(width: 96, height: 96)
-            Image(systemName: direction < 0 ? "gobackward.10" : "goforward.10")
-                .font(.system(size: 34, weight: .semibold))
-                .foregroundStyle(.white)
         }
     }
 }
@@ -1162,6 +1151,11 @@ private final class MPVViewController: UIViewController {
         case .commandString(let command):
             command.withCString { cCommand in
                 _ = mpv_command_string(mpvHandle, cCommand)
+            }
+        case .setSpeedProperty(let speed):
+            guard let handle = mpvHandle else { return }
+            speed.withCString { cSpeed in
+                _ = mpv_set_property_string(handle, "speed", cSpeed)
             }
         }
     }
