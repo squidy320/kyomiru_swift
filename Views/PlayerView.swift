@@ -56,7 +56,8 @@ struct PlayerView: View {
                     mediaId: mediaId,
                     malId: malId,
                     mediaTitle: mediaTitle,
-                    startAt: startAt
+                    startAt: startAt,
+                    onRestoreAfterPictureInPicture: onRestoreAfterPictureInPicture
                 ) { message in
                     sessionFallbackMessage = message
                     forceAVPlayerForSession = true
