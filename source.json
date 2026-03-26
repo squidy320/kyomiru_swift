@@ -8,8 +8,8 @@
       "bundleIdentifier": "com.squidy320.kyomiru",
       "developerName": "squidy320",
       "version": "1.0-build.1",
-      "date": "2026-03-26T18:56:19Z",
-      "size": 25627218,
+      "date": "2026-03-26T19:41:04Z",
+      "size": 25635797,
       "downloadURL": "https://github.com/squidy320/kyomiru_swift/releases/latest/download/Kyomiru_Unsigned.ipa",
       "iconURL": "https://raw.githubusercontent.com/squidy320/kyomiru_swift/main/Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
       "versionDescription": ""
@@ -18,7 +18,7 @@
   "news": [
     {
       "title": "What's New",
-      "date": "2026-03-26T18:56:19Z",
+      "date": "2026-03-26T19:41:04Z",
       "text": "Merge branch 'main' of https://github.com/squidy320/kyomiru_swift"
     }
   ]
