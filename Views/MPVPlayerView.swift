@@ -16,6 +16,11 @@ private enum MPVPlaybackCommand {
     case setSpeedProperty(String)
 }
 
+private struct MPVQueuedPlaybackCommand: Identifiable {
+    let id: Int
+    let command: MPVPlaybackCommand
+}
+
 private struct MPVResolvedSource: Equatable {
     let url: URL
     let headers: [String: String]
@@ -78,7 +83,7 @@ private final class MPVPlaybackController: ObservableObject {
     @Published var isPictureInPicturePossible = AVPictureInPictureController.isPictureInPictureSupported()
     @Published var playbackSpeed: Double = 1.0
     @Published private(set) var commandToken = 0
-    @Published private(set) var pendingCommand: MPVPlaybackCommand?
+    @Published private(set) var pendingCommands: [MPVQueuedPlaybackCommand] = []
 
     let context: Context
 
@@ -95,6 +100,7 @@ private final class MPVPlaybackController: ObservableObject {
     private var onDismissForPictureInPicture: (() -> Void)?
     private var currentSource: MPVResolvedSource?
     private var pendingSeekTime: Double?
+    private var pendingSeekIssuedAt: Date?
     private var previousIdleTimerDisabled = false
     private let volumeView = MPVolumeView(frame: .zero)
 
@@ -152,6 +158,7 @@ private final class MPVPlaybackController: ObservableObject {
     func seek(to seconds: Double) {
         let clampedTime = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, seconds))
         pendingSeekTime = clampedTime
+        pendingSeekIssuedAt = Date()
         displayedTime = clampedTime
         updateActiveSkip(at: clampedTime)
         sendCommand(.seek(clampedTime))
@@ -169,6 +176,7 @@ private final class MPVPlaybackController: ObservableObject {
         let baseTime = pendingSeekTime ?? currentTime
         let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime - 10))
         pendingSeekTime = target
+        pendingSeekIssuedAt = Date()
         displayedTime = target
         updateActiveSkip(at: target)
         noteInteraction()
@@ -179,6 +187,7 @@ private final class MPVPlaybackController: ObservableObject {
         let baseTime = pendingSeekTime ?? currentTime
         let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime + 10))
         pendingSeekTime = target
+        pendingSeekIssuedAt = Date()
         displayedTime = target
         updateActiveSkip(at: target)
         noteInteraction()
@@ -198,6 +207,7 @@ private final class MPVPlaybackController: ObservableObject {
         let baseTime = pendingSeekTime ?? currentTime
         let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime + 85))
         pendingSeekTime = target
+        pendingSeekIssuedAt = Date()
         displayedTime = target
         updateActiveSkip(at: target)
         noteInteraction()
@@ -259,11 +269,17 @@ private final class MPVPlaybackController: ObservableObject {
         currentTime = time
         if let pendingSeekTime, abs(time - pendingSeekTime) <= 1.0 {
             self.pendingSeekTime = nil
+            pendingSeekIssuedAt = nil
         } else if let pendingSeekTime, abs(time - pendingSeekTime) > 1.0 {
-            displayedTime = pendingSeekTime
-            updateActiveSkip(at: pendingSeekTime)
-            syncProgress(currentTime: pendingSeekTime, duration: duration)
-            return
+            let age = Date().timeIntervalSince(pendingSeekIssuedAt ?? .distantPast)
+            if age < 1.5 {
+                displayedTime = pendingSeekTime
+                updateActiveSkip(at: pendingSeekTime)
+                syncProgress(currentTime: pendingSeekTime, duration: duration)
+                return
+            }
+            self.pendingSeekTime = nil
+            pendingSeekIssuedAt = nil
         }
         displayedTime = time
         syncProgress(currentTime: time, duration: duration)
@@ -304,6 +320,7 @@ private final class MPVPlaybackController: ObservableObject {
         currentTime = duration
         displayedTime = duration
         pendingSeekTime = nil
+        pendingSeekIssuedAt = nil
         isPaused = true
         markWatchedIfNeeded()
     }
@@ -407,8 +424,11 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     private func sendCommand(_ command: MPVPlaybackCommand) {
-        pendingCommand = command
         commandToken += 1
+        pendingCommands.append(MPVQueuedPlaybackCommand(id: commandToken, command: command))
+        if pendingCommands.count > 32 {
+            pendingCommands.removeFirst(pendingCommands.count - 32)
+        }
     }
 
     private func loadSkipSegments() async {
@@ -814,7 +834,18 @@ struct MPVPlayerScreen: View {
             .frame(maxWidth: 220)
 
             Spacer()
-            Color.clear.frame(width: 44, height: 44)
+            if playbackController.isPictureInPicturePossible {
+                Button {
+                    playbackController.startPictureInPicture()
+                } label: {
+                    Image(systemName: "pip.enter")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                }
+            } else {
+                Color.clear.frame(width: 44, height: 44)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)
@@ -1062,8 +1093,8 @@ private struct MPVPlayerRepresentable: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: MPVViewController, context: Context) {
         uiViewController.delegate = controller
         uiViewController.updateSourceIfNeeded(source)
-        if let command = controller.pendingCommand {
-            uiViewController.handle(command: command, token: controller.commandToken)
+        if !controller.pendingCommands.isEmpty {
+            uiViewController.handle(commands: controller.pendingCommands)
         }
     }
 }
@@ -1206,25 +1237,29 @@ private final class MPVViewController: UIViewController {
         load(source: source)
     }
 
-    func handle(command: MPVPlaybackCommand, token: Int) {
-        guard token != lastCommandToken else { return }
-        lastCommandToken = token
+    func handle(commands: [MPVQueuedPlaybackCommand]) {
+        let newCommands = commands.filter { $0.id > lastCommandToken }.sorted { $0.id < $1.id }
+        guard !newCommands.isEmpty else { return }
 
-        switch command {
-        case .seek(let seconds):
-            sendCommand(["seek", "\(seconds)", "absolute+exact"])
-        case .setPaused(let paused):
-            setFlagProperty(name: "pause", value: paused)
-        case .setRate(let rate):
-            setDoubleProperty(name: "speed", value: rate)
-        case .commandString(let command):
-            command.withCString { cCommand in
-                _ = mpv_command_string(mpvHandle, cCommand)
-            }
-        case .setSpeedProperty(let speed):
-            guard let handle = mpvHandle else { return }
-            speed.withCString { cSpeed in
-                _ = mpv_set_property_string(handle, "speed", cSpeed)
+        for entry in newCommands {
+            lastCommandToken = entry.id
+
+            switch entry.command {
+            case .seek(let seconds):
+                sendCommand(["seek", "\(seconds)", "absolute+exact"])
+            case .setPaused(let paused):
+                setFlagProperty(name: "pause", value: paused)
+            case .setRate(let rate):
+                setDoubleProperty(name: "speed", value: rate)
+            case .commandString(let command):
+                command.withCString { cCommand in
+                    _ = mpv_command_string(mpvHandle, cCommand)
+                }
+            case .setSpeedProperty(let speed):
+                guard let handle = mpvHandle else { continue }
+                speed.withCString { cSpeed in
+                    _ = mpv_set_property_string(handle, "speed", cSpeed)
+                }
             }
         }
     }
