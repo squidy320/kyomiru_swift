@@ -95,6 +95,7 @@ private final class MPVPlaybackController: ObservableObject {
     private var onDismissForPictureInPicture: (() -> Void)?
     private var currentSource: MPVResolvedSource?
     private var pendingSeekTime: Double?
+    private var previousIdleTimerDisabled = false
     private let volumeView = MPVolumeView(frame: .zero)
 
     init(context: Context) {
@@ -112,12 +113,14 @@ private final class MPVPlaybackController: ObservableObject {
         self.onRestoreAfterPictureInPicture = onRestoreAfterPictureInPicture
         self.onDismissForPictureInPicture = onDismissForPictureInPicture
         preparePlayback()
+        setIdleTimerDisabled(true)
         Task { await loadSkipSegments() }
         scheduleAutoHide()
     }
 
     func cleanup() {
         autoHideTask?.cancel()
+        setIdleTimerDisabled(false)
     }
 
     func toggleControlsVisibility() {
@@ -439,6 +442,15 @@ private final class MPVPlaybackController: ObservableObject {
             guard !Task.isCancelled else { return }
             guard generation == self.autoHideGeneration else { return }
             self.showControls = false
+        }
+    }
+
+    private func setIdleTimerDisabled(_ disabled: Bool) {
+        if disabled {
+            previousIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
+            UIApplication.shared.isIdleTimerDisabled = true
+        } else {
+            UIApplication.shared.isIdleTimerDisabled = previousIdleTimerDisabled
         }
     }
 }
