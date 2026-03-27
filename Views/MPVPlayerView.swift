@@ -2,7 +2,6 @@ import SwiftUI
 #if os(iOS)
 import AVFoundation
 import AVKit
-import MediaPlayer
 import QuartzCore
 import UIKit
 #if canImport(Libmpv)
@@ -102,7 +101,6 @@ private final class MPVPlaybackController: ObservableObject {
     private var pendingSeekTime: Double?
     private var pendingSeekIssuedAt: Date?
     private var previousIdleTimerDisabled = false
-    private let volumeView = MPVolumeView(frame: .zero)
 
     init(context: Context) {
         self.context = context
@@ -220,15 +218,6 @@ private final class MPVPlaybackController: ObservableObject {
         let end = min(max(intro.end / duration, 0), 1)
         guard end > start else { return nil }
         return start...end
-    }
-
-    func adjustSystemVolume(by normalizedDelta: Double) {
-        guard let slider = volumeView.subviews.compactMap({ $0 as? UISlider }).first else { return }
-        let current = Double(slider.value)
-        let next = max(0, min(1, current + normalizedDelta))
-        slider.setValue(Float(next), animated: false)
-        slider.sendActions(for: .valueChanged)
-        noteInteraction()
     }
 
     func beginHoldSpeed() {
@@ -674,8 +663,6 @@ struct MPVPlayerScreen: View {
     @StateObject private var playbackController: MPVPlaybackController
     @State private var isScrubbing = false
     @State private var wasPausedBeforeScrubbing = false
-    @State private var panStartLocation: CGPoint?
-    @State private var isPanOnLeft = true
     @State private var holdSpeedActivationTask: Task<Void, Never>?
 
     init(
@@ -988,25 +975,6 @@ struct MPVPlayerScreen: View {
             .simultaneousGesture(
                 TapGesture(count: 1)
                     .onEnded { playbackController.toggleControlsVisibility() }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8)
-                    .onChanged { value in
-                        if panStartLocation == nil {
-                            panStartLocation = value.startLocation
-                            isPanOnLeft = value.startLocation.x < geometry.size.width / 2
-                        }
-                        guard let panStartLocation else { return }
-                        let deltaY = value.location.y - panStartLocation.y
-                        let normalized = Double((-deltaY / max(geometry.size.height, 1)) * 0.08)
-                        if !isPanOnLeft {
-                            playbackController.adjustSystemVolume(by: normalized)
-                        }
-                    }
-                    .onEnded { _ in
-                        panStartLocation = nil
-                        playbackController.noteInteraction()
-                    }
             )
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0)

@@ -24,6 +24,14 @@ struct TMDBSeasonMatch: Equatable, Codable {
     let episodeOffset: Int
 }
 
+struct TMDBResolvedMatch: Equatable, Codable {
+    let showId: Int
+    let seasonNumber: Int
+    let episodeOffset: Int
+    let confidence: Double
+    let reason: String
+}
+
 struct TMDBSeasonDetails: Equatable, Codable {
     struct Episode: Equatable, Codable {
         let number: Int
@@ -47,7 +55,7 @@ final class TMDBMatchingService {
     private let cacheManager: MetadataCacheManager
     private let apiKey: String?
     private let dateFormatter: DateFormatter
-    private let matchRequests = TMDBMatchTaskCoalescer<String, TMDBSeasonMatch?>()
+    private let matchRequests = TMDBMatchTaskCoalescer<String, TMDBResolvedMatch?>()
     private let seasonDetailRequests = TMDBMatchTaskCoalescer<String, TMDBSeasonDetails?>()
 
     init(cacheStore: CacheStore, session: URLSession = .custom, cacheManager: MetadataCacheManager = MetadataCacheManager()) {
@@ -68,16 +76,36 @@ final class TMDBMatchingService {
         franchiseStartYear: Int? = nil,
         firstEpisodeNumber: Int? = nil
     ) async -> TMDBSeasonMatch? {
+        let resolved = await resolveShowAndSeason(
+            media: media,
+            franchiseStartYear: franchiseStartYear,
+            firstEpisodeNumber: firstEpisodeNumber
+        )
+        guard let resolved else { return nil }
+        return TMDBSeasonMatch(
+            showId: resolved.showId,
+            seasonNumber: resolved.seasonNumber,
+            episodeOffset: resolved.episodeOffset
+        )
+    }
+
+    func resolveShowAndSeason(
+        media: AniListMedia,
+        franchiseStartYear: Int? = nil,
+        firstEpisodeNumber: Int? = nil
+    ) async -> TMDBResolvedMatch? {
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
-        let cacheKey = "tmdb:match:\(media.id)"
+        let cacheKey = "tmdb:match:v2:\(media.id)"
         if let cached = cacheManager.load(aniListId: media.id) {
             if let firstEpisodeNumber, firstEpisodeNumber > 1, cached.episodeOffset == 0 {
                 AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=offset-zero firstEp=\(firstEpisodeNumber)")
             } else {
-                return TMDBSeasonMatch(
+                return TMDBResolvedMatch(
                     showId: cached.showId,
                     seasonNumber: cached.seasonNumber,
-                    episodeOffset: cached.episodeOffset
+                    episodeOffset: cached.episodeOffset,
+                    confidence: 0.95,
+                    reason: "disk-cache"
                 )
             }
         }
@@ -91,10 +119,12 @@ final class TMDBMatchingService {
                 if let firstEpisodeNumber, firstEpisodeNumber > 1, cached.episodeOffset == 0 {
                     AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=offset-zero firstEp=\(firstEpisodeNumber)")
                 } else {
-                    return TMDBSeasonMatch(
+                    return TMDBResolvedMatch(
                         showId: cached.showId,
                         seasonNumber: cached.seasonNumber,
-                        episodeOffset: cached.episodeOffset
+                        episodeOffset: cached.episodeOffset,
+                        confidence: 0.95,
+                        reason: "disk-cache"
                     )
                 }
             }
@@ -115,10 +145,12 @@ final class TMDBMatchingService {
                 writeNegativeSeasonMatchCache(forKey: cacheKey)
                 return nil
             }
-            let match = TMDBSeasonMatch(
+            let match = TMDBResolvedMatch(
                 showId: showId,
                 seasonNumber: seasonMatch.seasonNumber,
-                episodeOffset: seasonMatch.episodeOffset
+                episodeOffset: seasonMatch.episodeOffset,
+                confidence: seasonMatch.confidence,
+                reason: seasonMatch.reason
             )
             if let seasonDetails = await fetchSeasonDetails(
                 aniListId: media.id,
@@ -239,7 +271,7 @@ final class TMDBMatchingService {
         return best?.id
     }
 
-    private func matchSeason(showId: Int, media: AniListMedia, aniFirstEpisode: Int) async -> TMDBSeasonMatch? {
+    private func matchSeason(showId: Int, media: AniListMedia, aniFirstEpisode: Int) async -> TMDBResolvedMatch? {
         guard let apiKey else { return nil }
         guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)?api_key=\(apiKey)") else {
             return nil
@@ -259,10 +291,12 @@ final class TMDBMatchingService {
             if let aniDate {
                 if let deepMatch = await deepEpisodeMatch(showId: showId, targetDate: aniDate) {
                     let offset = aniFirstEpisode - deepMatch.episodeNumber
-                    return TMDBSeasonMatch(
+                    return TMDBResolvedMatch(
                         showId: showId,
                         seasonNumber: deepMatch.seasonNumber,
-                        episodeOffset: offset
+                        episodeOffset: offset,
+                        confidence: 0.99,
+                        reason: "deep-episode-date"
                     )
                 }
 
@@ -272,20 +306,39 @@ final class TMDBMatchingService {
                     return days <= 14 ? (season, days) : nil
                 }
                 if let best = within14.min(by: { $0.1 < $1.1 }) {
-                    return TMDBSeasonMatch(showId: showId, seasonNumber: best.0.seasonNumber, episodeOffset: 0)
+                    let confidence = max(0.78, 0.94 - (Double(best.1) / 30.0))
+                    return TMDBResolvedMatch(
+                        showId: showId,
+                        seasonNumber: best.0.seasonNumber,
+                        episodeOffset: 0,
+                        confidence: min(confidence, 0.94),
+                        reason: "season-air-date"
+                    )
                 }
             }
 
             if let episodes = media.episodes, episodes > 0 {
-                let best = seasons.min { lhs, rhs in
-                    abs(lhs.episodeCount - episodes) < abs(rhs.episodeCount - episodes)
+                let ranked = seasons
+                    .map { season -> (season: TMDBSeasonInfo, delta: Int, score: Double) in
+                        let delta = abs(season.episodeCount - episodes)
+                        let score = 1.0 - min(Double(delta) / Double(max(episodes, 1)), 1.0)
+                        return (season, delta, score)
+                    }
+                    .sorted { lhs, rhs in
+                        if lhs.delta != rhs.delta { return lhs.delta < rhs.delta }
+                        return lhs.season.seasonNumber < rhs.season.seasonNumber
+                    }
+                if let best = ranked.first, best.score >= 0.6 {
+                    let secondScore = ranked.dropFirst().first?.score ?? 0.0
+                    let confidence = min(max(best.score + max((best.score - secondScore) * 0.2, 0.0), 0.6), 0.88)
+                    return TMDBResolvedMatch(
+                        showId: showId,
+                        seasonNumber: best.season.seasonNumber,
+                        episodeOffset: 0,
+                        confidence: confidence,
+                        reason: "episode-count"
+                    )
                 }
-                if let best {
-                    return TMDBSeasonMatch(showId: showId, seasonNumber: best.seasonNumber, episodeOffset: 0)
-                }
-            }
-            if let first = seasons.first {
-                return TMDBSeasonMatch(showId: showId, seasonNumber: first.seasonNumber, episodeOffset: 0)
             }
             return nil
         } catch {
@@ -356,9 +409,9 @@ final class TMDBMatchingService {
         return nil
     }
 
-    private func cachedSeasonMatch(forKey key: String, firstEpisodeNumber: Int?, mediaId: Int) -> TMDBSeasonMatch?? {
+    private func cachedSeasonMatch(forKey key: String, firstEpisodeNumber: Int?, mediaId: Int) -> TMDBResolvedMatch?? {
         if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.matchCacheTTL),
-           let decoded = try? JSONDecoder().decode(TMDBSeasonMatch.self, from: cached) {
+           let decoded = try? JSONDecoder().decode(TMDBResolvedMatch.self, from: cached) {
             if let firstEpisodeNumber, firstEpisodeNumber > 1, decoded.episodeOffset == 0 {
                 AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(mediaId) reason=offset-zero-cache firstEp=\(firstEpisodeNumber)")
             } else {

@@ -38,6 +38,7 @@ final class MetadataService {
     private let apiKey: String?
     private let imageBase = "https://image.tmdb.org/t/p/original"
     private let metadataRequests = TMDBTaskCoalescer<Int, TMDBMetadata?>()
+    private let tmdbMatcher: TMDBMatchingService
 
     init(cacheStore: CacheStore, session: URLSession = .custom) {
         self.cacheStore = cacheStore
@@ -45,10 +46,11 @@ final class MetadataService {
         let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
         let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
         self.apiKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
+        self.tmdbMatcher = TMDBMatchingService(cacheStore: cacheStore, session: session)
     }
 
     func fetchTMDBMetadata(for media: AniListMedia) async -> TMDBMetadata? {
-        let cacheKey = "tmdb:media:\(media.id)"
+        let cacheKey = "tmdb:media:v2:\(media.id)"
         if let cachedResult = cachedMetadata(forKey: cacheKey) {
             return cachedResult
         }
@@ -63,11 +65,7 @@ final class MetadataService {
                 return nil
             }
 
-            guard let tmdbId = await resolveTMDBShowId(media: media) else {
-                writeNegativeMetadataCache(forKey: cacheKey)
-                return nil
-            }
-            guard let details = await fetchTMDBDetails(showId: tmdbId, apiKey: apiKey) else {
+            guard let details = await fetchSeasonAwareTMDBMetadata(for: media, apiKey: apiKey) else {
                 writeNegativeMetadataCache(forKey: cacheKey)
                 return nil
             }
@@ -97,6 +95,34 @@ final class MetadataService {
         AppLog.debug(.matching, "manual match local=\(local.title) remote=\(remoteId)")
         try? await Task.sleep(nanoseconds: 200_000_000)
         return true
+    }
+
+    private func fetchSeasonAwareTMDBMetadata(for media: AniListMedia, apiKey: String) async -> TMDBMetadata? {
+        let franchiseStartYear = media.startDate?.year ?? media.seasonYear
+        guard let match = await tmdbMatcher.resolveShowAndSeason(
+            media: media,
+            franchiseStartYear: franchiseStartYear,
+            firstEpisodeNumber: nil
+        ) else {
+            AppLog.debug(.matching, "tmdb metadata unresolved mediaId=\(media.id)")
+            return nil
+        }
+
+        guard let details = await fetchTMDBDetails(showId: match.showId, apiKey: apiKey) else {
+            return nil
+        }
+        let seasonPosterURL = await tmdbMatcher.fetchSeasonDetails(
+            aniListId: media.id,
+            showId: match.showId,
+            seasonNumber: match.seasonNumber
+        )?.posterURL
+        return TMDBMetadata(
+            tmdbId: details.tmdbId,
+            title: details.title,
+            posterURL: seasonPosterURL ?? details.posterURL,
+            backdropURL: details.backdropURL,
+            logoURL: details.logoURL
+        )
     }
 
     private func resolveTMDBShowId(media: AniListMedia) async -> Int? {
@@ -636,8 +662,8 @@ final class EpisodeMetadataService {
             if let cachedMeta = cacheManager.load(aniListId: media.id) {
                 seasonNumber = cachedMeta.seasonNumber
                 episodeOffset = cachedMeta.episodeOffset
-            } else if let cachedMatch = cacheStore.readJSON(forKey: "tmdb:match:\(media.id)"),
-                      let decoded = try? JSONDecoder().decode(TMDBSeasonMatch.self, from: cachedMatch) {
+            } else if let cachedMatch = cacheStore.readJSON(forKey: "tmdb:match:v2:\(media.id)"),
+                      let decoded = try? JSONDecoder().decode(TMDBResolvedMatch.self, from: cachedMatch) {
                 seasonNumber = decoded.seasonNumber
                 episodeOffset = decoded.episodeOffset
             }
@@ -669,7 +695,7 @@ final class EpisodeMetadataService {
         case .tmdb:
             let desiredCount = episodes.isEmpty ? (media.episodes ?? 0) : episodes.count
             let maxEpisodeNumber = episodes.map(\.number).max() ?? 0
-            let preferredSeason = TitleMatcher.extractSeasonNumber(from: media.title.best)
+            let preferredSeason = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best)
             let firstEpisodeNumber = episodes.map(\.number).min()
             let (primary, seasonNumber, episodeOffset, accepted, rejectReason) = await fetchFromTMDB(
                 media: media,
@@ -1061,9 +1087,9 @@ final class EpisodeMetadataService {
 
             var markerScore = 0.0
             if let preferred, season.seasonNumber == preferred {
-                markerScore += 0.5
+                markerScore += 0.8
             } else if preferred != nil {
-                markerScore -= 0.1
+                markerScore -= 0.18
             }
             let seasonLower = (season.name ?? "").lowercased()
             if wantsFinal, seasonLower.contains("final") { markerScore += 0.2 }
@@ -1075,11 +1101,6 @@ final class EpisodeMetadataService {
             if let relationSeason, relationSeason == season.seasonNumber {
                 markerScore += 1.2
             }
-
-            let markerConflict =
-                (wantsFinal && !seasonLower.contains("final"))
-                || (wantsPart && !seasonLower.contains("part"))
-                || (wantsCour && !seasonLower.contains("cour"))
 
             let titleWeight = isTunedTitle ? 0.25 : 0.35
             let yearWeight = isTunedTitle ? 0.3 : 0.2
@@ -1104,8 +1125,6 @@ final class EpisodeMetadataService {
             let rejectReason: String?
             if countMismatch {
                 rejectReason = "count-mismatch"
-            } else if markerConflict {
-                rejectReason = "marker-conflict"
             } else {
                 rejectReason = nil
             }
@@ -1415,11 +1434,20 @@ final class EpisodeMetadataService {
 
     private func orderRelationChain(_ chain: [AniListMedia]) -> [AniListMedia] {
         chain.sorted { lhs, rhs in
-            let leftYear = lhs.seasonYear ?? 9999
-            let rightYear = rhs.seasonYear ?? 9999
-            if leftYear != rightYear { return leftYear < rightYear }
+            let leftDate = sortDate(for: lhs)
+            let rightDate = sortDate(for: rhs)
+            if leftDate != rightDate { return leftDate < rightDate }
             return lhs.title.best < rhs.title.best
         }
+    }
+
+    private func sortDate(for media: AniListMedia) -> Date {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.year = media.startDate?.year ?? media.seasonYear ?? 9999
+        components.month = media.startDate?.month ?? 1
+        components.day = media.startDate?.day ?? 1
+        return components.date ?? Date.distantFuture
     }
 
     private func relationSeasonIndex(chain: [AniListMedia], target: AniListMedia) -> Int? {
