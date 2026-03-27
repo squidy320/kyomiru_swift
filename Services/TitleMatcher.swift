@@ -104,11 +104,30 @@ enum TitleMatcher {
     }
 
     static func extractSeasonNumber(from input: String) -> Int? {
+        extractSeasonMarkerNumber(from: input) ?? extractPartMarkerNumber(from: input)
+    }
+
+    static func extractSeasonMarkerNumber(from input: String) -> Int? {
         let normalized = romanToArabic(input)
         let patterns = [
             #"(?i)\bseason\s*(\d+)\b"#,
             #"(?i)\bs\s*(\d+)\b"#,
-            #"(?i)\b(\d+)(st|nd|rd|th)\s*season\b"#,
+            #"(?i)\b(\d+)(st|nd|rd|th)\s*season\b"#
+        ]
+        for p in patterns {
+            if let match = normalized.range(of: p, options: .regularExpression) {
+                let chunk = String(normalized[match])
+                if let number = chunk.compactMap({ $0.wholeNumberValue }).first {
+                    return number
+                }
+            }
+        }
+        return nil
+    }
+
+    static func extractPartMarkerNumber(from input: String) -> Int? {
+        let normalized = romanToArabic(input)
+        let patterns = [
             #"(?i)\bpart\s*(\d+)\b"#,
             #"(?i)\bcour\s*(\d+)\b"#
         ]

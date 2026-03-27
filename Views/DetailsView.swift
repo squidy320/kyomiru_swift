@@ -111,6 +111,7 @@ struct DetailsView: View {
     @State private var showListManager = false
     @State private var playerStartAt: Double?
     @State private var listManagerModel = ListManagerViewModel(item: MediaItem(title: "", status: .planning))
+    @State private var listTrackingEntry: AniListTrackingEntry?
     @State private var isLoadingMatch = false
     @State private var matchCandidates: [SoraAnimeMatch] = []
     @State private var matchError: String?
@@ -254,6 +255,9 @@ struct DetailsView: View {
             .presentationDetents([PresentationDetent.medium])
             .onAppear {
                 listManagerModel = makeListManagerModel()
+                Task {
+                    await refreshTrackingEntryForSheet()
+                }
             }
         }
         .alert("Import", isPresented: Binding(
@@ -764,10 +768,19 @@ struct DetailsView: View {
     }
 
     private func makeListManagerModel() -> ListManagerViewModel {
+        let scoreFormat = appState.authState.user?.scoreFormat ?? .point100
         if let existing = appState.services.libraryStore.item(forExternalId: media.id) {
-            return ListManagerViewModel(item: existing)
+            return ListManagerViewModel(
+                item: existing,
+                trackingEntry: listTrackingEntry,
+                scoreFormat: scoreFormat
+            )
         }
-        return ListManagerViewModel(item: detailItem)
+        return ListManagerViewModel(
+            item: detailItem,
+            trackingEntry: listTrackingEntry,
+            scoreFormat: scoreFormat
+        )
     }
 
     private func loadEpisodes() async {
@@ -814,6 +827,22 @@ struct DetailsView: View {
         matchQuery = media.title.best
         showMatchSheet = true
         performMatchSearch(query: matchQuery)
+    }
+
+    private func refreshTrackingEntryForSheet() async {
+        guard appState.authState.isSignedIn,
+              let token = appState.authState.token else {
+            listTrackingEntry = nil
+            listManagerModel = makeListManagerModel()
+            return
+        }
+        do {
+            let entry = try await appState.services.aniListClient.trackingEntry(token: token, mediaId: media.id)
+            listTrackingEntry = entry
+            listManagerModel = makeListManagerModel()
+        } catch {
+            AppLog.error(.network, "tracking entry load failed mediaId=\(media.id) \(error.localizedDescription)")
+        }
     }
 
     private func performMatchSearch(query: String) {
@@ -1345,24 +1374,65 @@ private struct EpisodeThumbCard: View {
 final class ListManagerViewModel {
     var status: MediaStatus
     var currentEpisode: Int
-    var rating: Int
+    var rating: Double
     let totalEpisodes: Int?
     let title: String
+    let scoreFormat: AniListScoreFormat
+    let startedAt: AniListFuzzyDate?
+    let completedAt: AniListFuzzyDate?
 
-    init(item: MediaItem) {
-        self.status = item.status
-        self.currentEpisode = item.currentEpisode
-        self.rating = item.userRating
+    init(item: MediaItem, trackingEntry: AniListTrackingEntry? = nil, scoreFormat: AniListScoreFormat = .point100) {
+        self.status = trackingEntry?.status.flatMap(ListManagerViewModel.mediaStatus(from:)) ?? item.status
+        self.currentEpisode = trackingEntry?.progress ?? item.currentEpisode
+        self.rating = trackingEntry?.score ?? item.userRating
         self.totalEpisodes = item.totalEpisodes
         self.title = item.title
+        self.scoreFormat = scoreFormat
+        self.startedAt = trackingEntry?.startedAt
+        self.completedAt = trackingEntry?.completedAt
     }
 
     func apply(to item: MediaItem) -> MediaItem {
         var updated = item
         updated.status = status
         updated.currentEpisode = max(currentEpisode, 0)
-        updated.userRating = min(max(rating, 0), 100)
+        updated.userRating = normalizedRating
         return updated
+    }
+
+    var normalizedRating: Double {
+        let clamped = min(max(rating, scoreFormat.range.lowerBound), scoreFormat.range.upperBound)
+        if scoreFormat == .point10Decimal {
+            return (clamped * 10).rounded() / 10
+        }
+        return clamped.rounded()
+    }
+
+    var ratingText: String {
+        let value = normalizedRating
+        switch scoreFormat {
+        case .point10Decimal:
+            return String(format: "%.1f", value)
+        default:
+            return String(Int(value.rounded()))
+        }
+    }
+
+    private static func mediaStatus(from value: String) -> MediaStatus? {
+        switch value.uppercased() {
+        case "CURRENT":
+            return .watching
+        case "PLANNING":
+            return .planning
+        case "COMPLETED":
+            return .completed
+        case "PAUSED":
+            return .paused
+        case "DROPPED":
+            return .dropped
+        default:
+            return nil
+        }
     }
 }
 
@@ -1409,12 +1479,22 @@ private struct ListManagerView: View {
                     Text("Your Rating")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(Theme.textSecondary)
-                    Slider(value: Binding(
-                        get: { Double(viewModel.rating) },
-                        set: { viewModel.rating = Int($0) }
-                    ), in: 0...100, step: 1)
-                    Text("\(viewModel.rating)")
+                    ratingControl
+                    Text(viewModel.ratingText)
                         .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+
+                VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
+                    Text("Started")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                    Text(viewModel.startedAt?.displayText ?? "Not set")
+                        .foregroundColor(.white)
+                    Text("Finished")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                    Text(viewModel.completedAt?.displayText ?? "Not set")
                         .foregroundColor(.white)
                 }
 
@@ -1434,6 +1514,26 @@ private struct ListManagerView: View {
                     .font(.system(size: 14, weight: .semibold))
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var ratingControl: some View {
+        switch viewModel.scoreFormat {
+        case .point3:
+            Picker("Your Rating", selection: $viewModel.rating) {
+                Text("0").tag(0.0)
+                Text("1").tag(1.0)
+                Text("2").tag(2.0)
+                Text("3").tag(3.0)
+            }
+            .pickerStyle(.segmented)
+        default:
+            Slider(
+                value: $viewModel.rating,
+                in: viewModel.scoreFormat.range,
+                step: viewModel.scoreFormat.step
+            )
         }
     }
 }

@@ -74,15 +74,55 @@ final class EpisodeService {
     }
 
     private func applySeasonOffsetIfNeeded(episodes: [SoraEpisode], media: AniListMedia) -> [SoraEpisode] {
-        guard let expected = media.episodes, expected > 0 else { return episodes }
-        let season = TitleMatcher.extractSeasonNumber(from: media.title.best) ?? 1
-        guard season > 1 else { return episodes }
-        let minTotal = expected * season
-        guard episodes.count >= minTotal else { return episodes }
-        let offset = expected * (season - 1)
-        let slice = Array(episodes.dropFirst(offset).prefix(expected))
-        if slice.isEmpty { return episodes }
-        AppLog.debug(.matching, "season offset applied mediaId=\(media.id) season=\(season) offset=\(offset)")
-        return slice
+        guard !episodes.isEmpty else { return episodes }
+
+        let sorted = episodes.sorted { lhs, rhs in
+            if lhs.sourceNumber == rhs.sourceNumber {
+                return lhs.id < rhs.id
+            }
+            return lhs.sourceNumber < rhs.sourceNumber
+        }
+
+        let expected = media.episodes ?? 0
+        let seasonMarker = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best) ?? 1
+        let hasPartMarker = TitleMatcher.extractPartMarkerNumber(from: media.title.best) != nil
+        let rawMin = sorted.first?.sourceNumber ?? 1
+        let rawMax = sorted.last?.sourceNumber ?? rawMin
+
+        if expected > 0, seasonMarker > 1, rawMin == 1 {
+            let offset = expected * (seasonMarker - 1)
+            if sorted.count > offset {
+                let slice = Array(sorted.dropFirst(offset).prefix(expected))
+                if !slice.isEmpty {
+                    AppLog.debug(.matching, "season slice applied mediaId=\(media.id) season=\(seasonMarker) offset=\(offset)")
+                    return enumerateDisplayNumbers(slice)
+                }
+            }
+        }
+
+        if expected > 0 {
+            let needsRenumber = rawMin > 1 || rawMax > expected || hasPartMarker
+            if needsRenumber {
+                AppLog.debug(.matching, "episode renumber applied mediaId=\(media.id) min=\(rawMin) max=\(rawMax) expected=\(expected)")
+                return enumerateDisplayNumbers(sorted)
+            }
+        } else if rawMin > 1 {
+            return enumerateDisplayNumbers(sorted)
+        }
+
+        return sorted.map {
+            SoraEpisode(id: $0.id, sourceNumber: $0.sourceNumber, displayNumber: $0.sourceNumber, playURL: $0.playURL)
+        }
+    }
+
+    private func enumerateDisplayNumbers(_ episodes: [SoraEpisode]) -> [SoraEpisode] {
+        episodes.enumerated().map { index, episode in
+            SoraEpisode(
+                id: episode.id,
+                sourceNumber: episode.sourceNumber,
+                displayNumber: index + 1,
+                playURL: episode.playURL
+            )
+        }
     }
 }

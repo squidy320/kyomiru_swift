@@ -37,6 +37,9 @@ final class AniListClient {
             name
             avatar { large }
             bannerImage
+            mediaListOptions {
+              scoreFormat
+            }
           }
         }
         """
@@ -178,6 +181,9 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
               entries {
                 id
                 progress
+                score
+                startedAt { year month day }
+                completedAt { year month day }
                 media {
                   id
               idMal
@@ -362,6 +368,18 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         let key = "library:\(token.prefix(8))"
         cacheStore.remove(key: key)
         AppLog.debug(.cache, "library cache cleared key=\(key)")
+    }
+
+    func clearTrackingCaches(for mediaId: Int? = nil) {
+        if let mediaId {
+            cachedTrackingEntries.removeValue(forKey: mediaId)
+            cachedAvailability.removeValue(forKey: mediaId)
+            AppLog.debug(.cache, "tracking caches cleared mediaId=\(mediaId)")
+        } else {
+            cachedTrackingEntries.removeAll()
+            cachedAvailability.removeAll()
+            AppLog.debug(.cache, "tracking caches cleared all")
+        }
     }
 
     private func cachedTrendingFromDisk() -> [AniListMedia]? {
@@ -606,6 +624,7 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             AppLog.error(.network, "save tracking failed mediaId=\(mediaId)")
             return false
         }
+        clearTrackingCaches(for: mediaId)
         AppLog.debug(.network, "save tracking success mediaId=\(mediaId)")
         return true
     }
@@ -614,15 +633,19 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         token: String,
         mediaId: Int,
         status: String?,
-        progress: Int?
+        progress: Int?,
+        score: Double? = nil,
+        startedAt: AniListFuzzyDate? = nil,
+        completedAt: AniListFuzzyDate? = nil
     ) async throws -> Bool {
         AppLog.debug(.network, "save list start mediaId=\(mediaId) status=\(status ?? "nil") progress=\(progress.map(String.init) ?? "nil")")
         let q = """
-        mutation SaveEntry($mediaId: Int, $status: MediaListStatus, $progress: Int) {
-          SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress) {
+        mutation SaveEntry($mediaId: Int, $status: MediaListStatus, $progress: Int, $score: Float, $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput) {
+          SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, score: $score, startedAt: $startedAt, completedAt: $completedAt) {
             id
             status
             progress
+            score
           }
         }
         """
@@ -637,6 +660,13 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         } else {
             vars["progress"] = NSNull()
         }
+        if let score {
+            vars["score"] = score
+        } else {
+            vars["score"] = NSNull()
+        }
+        vars["startedAt"] = fuzzyDateVariable(startedAt)
+        vars["completedAt"] = fuzzyDateVariable(completedAt)
         let data = try await graphql(query: q, variables: vars, token: token)
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dataMap = root["data"] as? [String: Any],
@@ -644,6 +674,7 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             AppLog.error(.network, "save list failed mediaId=\(mediaId)")
             return false
         }
+        clearTrackingCaches(for: mediaId)
         AppLog.debug(.network, "save list success mediaId=\(mediaId)")
         return true
     }
@@ -711,6 +742,8 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             status
             progress
             score
+            startedAt { year month day }
+            completedAt { year month day }
           }
         }
         """
@@ -731,7 +764,16 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         let status = row["status"] as? String
         let progress = row["progress"] as? Int
         let score = row["score"] as? Double ?? (row["score"] as? Int).map(Double.init)
-        let entry = AniListTrackingEntry(id: id, status: status, progress: progress, score: score)
+        let startedAt = decodeFuzzyDate(row["startedAt"] as? [String: Any])
+        let completedAt = decodeFuzzyDate(row["completedAt"] as? [String: Any])
+        let entry = AniListTrackingEntry(
+            id: id,
+            status: status,
+            progress: progress,
+            score: score,
+            startedAt: startedAt,
+            completedAt: completedAt
+        )
         cachedTrackingEntries[mediaId] = (entry, Date().addingTimeInterval(60 * 5))
         AppLog.debug(.network, "tracking entry success mediaId=\(mediaId)")
         return entry
@@ -948,11 +990,13 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         let name = viewer["name"] as? String ?? "User"
         let avatar = (viewer["avatar"] as? [String: Any])?["large"] as? String
         let banner = viewer["bannerImage"] as? String
+        let scoreFormatRaw = ((viewer["mediaListOptions"] as? [String: Any])?["scoreFormat"] as? String) ?? AniListScoreFormat.point100.rawValue
         return AniListUser(
             id: id,
             name: name,
             avatarURL: avatar.flatMap(URL.init(string:)),
-            bannerURL: banner.flatMap(URL.init(string:))
+            bannerURL: banner.flatMap(URL.init(string:)),
+            scoreFormat: AniListScoreFormat(rawValue: scoreFormatRaw) ?? .point100
         )
     }
 
@@ -1025,9 +1069,19 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             let entries = (list["entries"] as? [[String: Any]] ?? []).compactMap { entry -> AniListLibraryEntry? in
                 let id = entry["id"] as? Int ?? 0
                 let progress = entry["progress"] as? Int ?? 0
+                let score = entry["score"] as? Double ?? (entry["score"] as? Int).map(Double.init)
+                let startedAt = decodeFuzzyDate(entry["startedAt"] as? [String: Any])
+                let completedAt = decodeFuzzyDate(entry["completedAt"] as? [String: Any])
                 guard let mediaMap = entry["media"] as? [String: Any],
                       let media = decodeMedia(mediaMap) else { return nil }
-                return AniListLibraryEntry(id: id, progress: progress, media: media)
+                return AniListLibraryEntry(
+                    id: id,
+                    progress: progress,
+                    score: score,
+                    startedAt: startedAt,
+                    completedAt: completedAt,
+                    media: media
+                )
             }
             return AniListLibrarySection(id: name.lowercased().replacingOccurrences(of: " ", with: "-"), title: name, items: entries)
         }
@@ -1049,11 +1103,7 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         let episodes = media["episodes"] as? Int
         let seasonYear = media["seasonYear"] as? Int
         let startDateMap = media["startDate"] as? [String: Any]
-        let startDate = AniListFuzzyDate(
-            year: startDateMap?["year"] as? Int,
-            month: startDateMap?["month"] as? Int,
-            day: startDateMap?["day"] as? Int
-        )
+        let startDate = decodeFuzzyDate(startDateMap)
         let format = media["format"] as? String
         let status = media["status"] as? String
         let isAdult = media["isAdult"] as? Bool ?? false
@@ -1076,6 +1126,23 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             genres: genres,
             studios: studios
         )
+    }
+
+    private func decodeFuzzyDate(_ map: [String: Any]?) -> AniListFuzzyDate? {
+        AniListFuzzyDate.sanitized(
+            year: map?["year"] as? Int,
+            month: map?["month"] as? Int,
+            day: map?["day"] as? Int
+        )
+    }
+
+    private func fuzzyDateVariable(_ date: AniListFuzzyDate?) -> Any {
+        guard let date, !date.isEmpty else { return NSNull() }
+        return [
+            "year": date.year.map { $0 as Any } ?? NSNull(),
+            "month": date.month.map { $0 as Any } ?? NSNull(),
+            "day": date.day.map { $0 as Any } ?? NSNull()
+        ]
     }
 
     private func traverse(_ root: [String: Any], keyPath: [String]) -> Any? {

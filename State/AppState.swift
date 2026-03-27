@@ -63,7 +63,7 @@ final class AppState: ObservableObject {
                     genres: entry.media.genres,
                     totalEpisodes: entry.media.episodes,
                     currentEpisode: entry.progress,
-                    userRating: entry.media.averageScore ?? 0,
+                    userRating: entry.score ?? 0,
                     studio: entry.media.studios.first,
                     status: status
                 )
@@ -80,13 +80,25 @@ final class AppState: ObservableObject {
               let mediaId = item.externalId else { return }
         let status = aniListStatus(for: item.status)
         do {
+            let existing = try await services.aniListClient.trackingEntry(token: token, mediaId: mediaId)
+            let dates = resolvedTrackingDates(
+                existing: existing,
+                status: item.status,
+                progress: item.currentEpisode,
+                totalEpisodes: item.totalEpisodes
+            )
+            let score = item.userRating > 0 ? item.userRating : existing?.score
             _ = try await services.aniListClient.saveMediaListEntry(
                 token: token,
                 mediaId: mediaId,
                 status: status,
-                progress: item.currentEpisode
+                progress: item.currentEpisode,
+                score: score,
+                startedAt: dates.startedAt,
+                completedAt: dates.completedAt
             )
             services.aniListClient.clearLibraryCache(token: token)
+            services.aniListClient.clearTrackingCaches(for: mediaId)
             if refresh {
                 await loadLibraryStoreIfNeeded(forceRefresh: true)
             }
@@ -140,20 +152,13 @@ final class AppState: ObservableObject {
             services.libraryStore.upsert(updated)
         }
 
-        guard settings.autoSyncAniList,
-              authState.isSignedIn,
-              let token = authState.token else { return }
-        do {
-            _ = try await services.aniListClient.saveMediaListEntry(
-                token: token,
-                mediaId: mediaId,
-                status: aniListStatus(for: newStatus),
-                progress: newProgress
-            )
-            services.aniListClient.clearLibraryCache(token: token)
-        } catch {
-            AppLog.error(.network, "episode watch sync failed mediaId=\(mediaId) \(error.localizedDescription)")
-        }
+        await syncAniListTracking(
+            mediaId: mediaId,
+            status: newStatus,
+            progress: newProgress,
+            userRating: currentItem?.userRating ?? 0,
+            totalEpisodes: totalEpisodes
+        )
     }
 
     func markEpisodeUnwatched(mediaId: Int, episodeNumber: Int) async {
@@ -186,20 +191,13 @@ final class AppState: ObservableObject {
             services.libraryStore.upsert(updated)
         }
 
-        guard settings.autoSyncAniList,
-              authState.isSignedIn,
-              let token = authState.token else { return }
-        do {
-            _ = try await services.aniListClient.saveMediaListEntry(
-                token: token,
-                mediaId: mediaId,
-                status: aniListStatus(for: newStatus),
-                progress: newProgress
-            )
-            services.aniListClient.clearLibraryCache(token: token)
-        } catch {
-            AppLog.error(.network, "episode unwatch sync failed mediaId=\(mediaId) \(error.localizedDescription)")
-        }
+        await syncAniListTracking(
+            mediaId: mediaId,
+            status: newStatus,
+            progress: newProgress,
+            userRating: currentItem?.userRating ?? 0,
+            totalEpisodes: currentItem?.totalEpisodes
+        )
     }
 
     func markMediaCompleted(mediaId: Int) async {
@@ -234,20 +232,13 @@ final class AppState: ObservableObject {
             services.libraryStore.upsert(updated)
         }
 
-        guard settings.autoSyncAniList,
-              authState.isSignedIn,
-              let token = authState.token else { return }
-        do {
-            _ = try await services.aniListClient.saveMediaListEntry(
-                token: token,
-                mediaId: mediaId,
-                status: aniListStatus(for: .completed),
-                progress: newProgress
-            )
-            services.aniListClient.clearLibraryCache(token: token)
-        } catch {
-            AppLog.error(.network, "media completion sync failed mediaId=\(mediaId) \(error.localizedDescription)")
-        }
+        await syncAniListTracking(
+            mediaId: mediaId,
+            status: .completed,
+            progress: newProgress,
+            userRating: currentItem?.userRating ?? 0,
+            totalEpisodes: totalEpisodes
+        )
     }
 
     private func aniListStatus(for status: MediaStatus) -> String {
@@ -263,6 +254,72 @@ final class AppState: ObservableObject {
         case .dropped:
             return "DROPPED"
         }
+    }
+
+    private func syncAniListTracking(
+        mediaId: Int,
+        status: MediaStatus,
+        progress: Int,
+        userRating: Double,
+        totalEpisodes: Int?
+    ) async {
+        guard settings.autoSyncAniList,
+              authState.isSignedIn,
+              let token = authState.token else { return }
+
+        do {
+            let existing = try await services.aniListClient.trackingEntry(token: token, mediaId: mediaId)
+            let dates = resolvedTrackingDates(
+                existing: existing,
+                status: status,
+                progress: progress,
+                totalEpisodes: totalEpisodes
+            )
+            let score = userRating > 0 ? userRating : existing?.score
+            _ = try await services.aniListClient.saveMediaListEntry(
+                token: token,
+                mediaId: mediaId,
+                status: aniListStatus(for: status),
+                progress: progress,
+                score: score,
+                startedAt: dates.startedAt,
+                completedAt: dates.completedAt
+            )
+            services.aniListClient.clearLibraryCache(token: token)
+            services.aniListClient.clearTrackingCaches(for: mediaId)
+        } catch {
+            AppLog.error(.network, "tracking sync failed mediaId=\(mediaId) \(error.localizedDescription)")
+        }
+    }
+
+    private func resolvedTrackingDates(
+        existing: AniListTrackingEntry?,
+        status: MediaStatus,
+        progress: Int,
+        totalEpisodes: Int?
+    ) -> (startedAt: AniListFuzzyDate?, completedAt: AniListFuzzyDate?) {
+        let today = AniListFuzzyDate.today()
+        var startedAt = existing?.startedAt
+        var completedAt = existing?.completedAt
+
+        if startedAt == nil,
+           progress > 0 || status == .watching || status == .completed {
+            startedAt = today
+        }
+
+        let shouldComplete = status == .completed || (totalEpisodes ?? 0) > 0 && progress >= (totalEpisodes ?? 0)
+        if shouldComplete {
+            if completedAt == nil {
+                completedAt = today
+            }
+            if startedAt == nil {
+                startedAt = today
+            }
+        } else {
+            completedAt = nil
+        }
+
+        return (startedAt, completedAt)
     }
 }
 

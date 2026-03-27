@@ -12,8 +12,25 @@ struct SoraAnimeMatch: Identifiable, Equatable {
 
 struct SoraEpisode: Identifiable, Equatable {
     let id: String
-    let number: Int
+    let sourceNumber: Int
+    let displayNumber: Int
     let playURL: URL
+
+    var number: Int { displayNumber }
+
+    init(id: String, number: Int, playURL: URL) {
+        self.id = id
+        self.sourceNumber = number
+        self.displayNumber = number
+        self.playURL = playURL
+    }
+
+    init(id: String, sourceNumber: Int, displayNumber: Int, playURL: URL) {
+        self.id = id
+        self.sourceNumber = sourceNumber
+        self.displayNumber = displayNumber
+        self.playURL = playURL
+    }
 }
 
 struct SoraSource: Identifiable, Equatable {
