@@ -549,6 +549,7 @@ final class DownloadManager: NSObject, ObservableObject {
             let ext: String
             let tempURL: URL
             let outputURL: URL
+            let hlsFolderURL: URL?
         }
 
         var bgTaskId = UIBackgroundTaskIdentifier.invalid
@@ -574,7 +575,9 @@ final class DownloadManager: NSObject, ObservableObject {
 
         for candidate in sorted {
             guard let episodeNumber = candidate.episodeNumber else { continue }
-            let outputURL = localFileURL(for: media.title, episode: episodeNumber)
+            let ext = candidate.url.pathExtension.lowercased()
+            let outputURL = importOutputURL(for: media.title, episode: episodeNumber, ext: ext)
+            let hlsFolderURL = ext == "m3u8" ? localHLSFolder(title: media.title, episode: episodeNumber) : nil
             if let _ = downloadedItem(title: media.title, episode: episodeNumber) {
                 skipped += 1
                 continue
@@ -585,7 +588,6 @@ final class DownloadManager: NSObject, ObservableObject {
                 continue
             }
 
-            let ext = candidate.url.pathExtension.lowercased()
             let supported = ["mp4", "m4v", "mov", "ts", "m3u8"]
             if !supported.contains(ext) {
                 failed.append("\(candidate.fileName) (unsupported)")
@@ -634,7 +636,8 @@ final class DownloadManager: NSObject, ObservableObject {
                 episodeNumber: episodeNumber,
                 ext: ext,
                 tempURL: tempURL,
-                outputURL: outputURL
+                outputURL: outputURL,
+                hlsFolderURL: hlsFolderURL
             ))
         }
 
@@ -645,28 +648,31 @@ final class DownloadManager: NSObject, ObservableObject {
                     let hasVideo = !asset.tracks(withMediaType: .video).isEmpty
                     let canDirectCopy = await MediaConversionManager.shared.canUseImportedFileDirectly(inputURL: item.tempURL)
                     if asset.isPlayable && hasVideo && canDirectCopy {
-                        if fm.fileExists(atPath: item.outputURL.path) {
-                            try fm.removeItem(at: item.outputURL)
-                        }
-                        try fm.copyItem(at: item.tempURL, to: item.outputURL)
-                        try? fm.removeItem(at: item.tempURL)
+                        try replaceItem(at: item.outputURL, with: item.tempURL, move: false)
                     } else {
-                        _ = try await MediaConversionManager.shared.remuxImportedToMp4(
-                            inputURL: item.tempURL,
-                            outputURL: item.outputURL
-                        )
+                        failed.append("\(item.candidate.fileName) (unsupported codec)")
+                        try? fm.removeItem(at: item.tempURL)
+                        continue
                     }
+                } else if item.ext == "ts" {
+                    try replaceItem(at: item.outputURL, with: item.tempURL, move: false)
+                } else if item.ext == "m3u8" {
+                    guard let folder = item.hlsFolderURL else {
+                        failed.append("\(item.candidate.fileName) (missing hls folder)")
+                        try? fm.removeItem(at: item.tempURL)
+                        continue
+                    }
+                    try importPlaylistBundle(from: item.tempURL, originalURL: item.candidate.url, toFolder: folder, outputURL: item.outputURL)
                 } else {
-                    _ = try await MediaConversionManager.shared.remuxToMp4(
-                        inputURL: item.tempURL,
-                        outputURL: item.outputURL
-                    )
+                    failed.append("\(item.candidate.fileName) (unsupported)")
+                    try? fm.removeItem(at: item.tempURL)
+                    continue
                 }
                 try? fm.removeItem(at: item.tempURL)
                 registerImportedEpisode(media: media, episode: item.episodeNumber, fileURL: item.outputURL)
                 imported += 1
             } catch {
-                failed.append("\(item.candidate.fileName) (convert failed)")
+                failed.append("\(item.candidate.fileName) (import failed)")
                 try? fm.removeItem(at: item.tempURL)
             }
         }
@@ -693,6 +699,60 @@ final class DownloadManager: NSObject, ObservableObject {
             try? await Task.sleep(nanoseconds: 300_000_000)
         }
         throw MediaConversionManager.ConversionError.exportFailed("file download timeout")
+    }
+
+    private func importOutputURL(for title: String, episode: Int, ext: String) -> URL {
+        switch ext {
+        case "ts":
+            return localMergedHLSFileURL(for: title, episode: episode)
+        case "m3u8":
+            return localHLSFolder(title: title, episode: episode).appendingPathComponent("playlist.m3u8")
+        case "mov", "m4v":
+            let base = localFileURL(for: title, episode: episode)
+            return base.deletingPathExtension().appendingPathExtension(ext)
+        default:
+            return localFileURL(for: title, episode: episode)
+        }
+    }
+
+    private func replaceItem(at destination: URL, with source: URL, move: Bool) throws {
+        if fm.fileExists(atPath: destination.path) {
+            try fm.removeItem(at: destination)
+        }
+        if move {
+            try fm.moveItem(at: source, to: destination)
+        } else {
+            try fm.copyItem(at: source, to: destination)
+        }
+    }
+
+    private func importPlaylistBundle(from tempPlaylist: URL, originalURL: URL, toFolder folder: URL, outputURL: URL) throws {
+        if fm.fileExists(atPath: folder.path) {
+            try? fm.removeItem(at: folder)
+        }
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        let text = try String(contentsOf: tempPlaylist)
+        let baseFolder = originalURL.deletingLastPathComponent()
+        let lines = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+
+        for rawLine in lines {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty, !line.hasPrefix("#"), !line.contains("://") else { continue }
+            let sourceURL = baseFolder.appendingPathComponent(line)
+            guard fm.fileExists(atPath: sourceURL.path) else { continue }
+            let destinationURL = folder.appendingPathComponent(line)
+            let destinationFolder = destinationURL.deletingLastPathComponent()
+            try fm.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
+            if fm.fileExists(atPath: destinationURL.path) {
+                try fm.removeItem(at: destinationURL)
+            }
+            try fm.copyItem(at: sourceURL, to: destinationURL)
+        }
+
+        try replaceItem(at: outputURL, with: tempPlaylist, move: false)
     }
 
     func enqueue(title: String, episode: Int, url: URL, media: MediaItem? = nil) {
@@ -974,8 +1034,6 @@ final class DownloadManager: NSObject, ObservableObject {
         if let idx = items.firstIndex(where: { $0.id == itemId }) {
             if let localFile = items[idx].localFile {
                 try? fm.removeItem(at: localFile)
-                let folder = localFile.deletingLastPathComponent()
-                try? fm.removeItem(at: folder)
             }
             let mergedTs = localMergedHLSFileURL(for: items[idx].title, episode: items[idx].episode)
             if fm.fileExists(atPath: mergedTs.path) {

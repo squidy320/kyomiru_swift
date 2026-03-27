@@ -403,7 +403,7 @@ struct DetailsView: View {
                             Task { await appState.markEpisodeUnwatched(mediaId: media.id, episodeNumber: episode.number) }
                         }
                         Button("Download") {
-                            openSourcePicker(for: episode)
+                            downloadEpisodeUsingPreferences(episode)
                         }
                         Button("Play from Start") {
                             playerStartAt = 0
@@ -737,7 +737,7 @@ struct DetailsView: View {
                         Task { await appState.markEpisodeUnwatched(mediaId: media.id, episodeNumber: episode.number) }
                     }
                     Button("Download") {
-                        openSourcePicker(for: episode)
+                        downloadEpisodeUsingPreferences(episode)
                     }
                     Button("Play from Start") {
                         playerStartAt = 0
@@ -933,6 +933,31 @@ struct DetailsView: View {
                 AppLog.error(.network, "sources load failed ep=\(episode.number) \(error.localizedDescription)")
             }
             isLoadingSources = false
+        }
+    }
+
+    private func downloadEpisodeUsingPreferences(_ episode: SoraEpisode) {
+        selectedEpisode = episode
+        Task {
+            isLoadingSources = true
+            defer { isLoadingSources = false }
+            do {
+                let loadedSources = try await appState.services.episodeService.loadSources(for: episode)
+                guard !loadedSources.isEmpty else {
+                    errorMessage = "No streams available."
+                    return
+                }
+                if let preferred = preferredSource(in: loadedSources) {
+                    enqueueDownload(preferred, episodeNumber: episode.number)
+                    downloadMessage = "Queued episode \(episode.number) using your saved stream preference."
+                } else {
+                    sources = loadedSources
+                    showSourceSheet = true
+                }
+            } catch {
+                errorMessage = "Failed to load streams."
+                AppLog.error(.network, "download source load failed ep=\(episode.number) \(error.localizedDescription)")
+            }
         }
     }
 
@@ -1444,63 +1469,64 @@ private struct ListManagerView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: UIConstants.standardPadding) {
-                Text(viewModel.title)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white)
+            ScrollView {
+                VStack(alignment: .leading, spacing: UIConstants.standardPadding) {
+                    Text(viewModel.title)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
 
-                VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
-                    Text("Status")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textSecondary)
-                    Picker("Status", selection: $viewModel.status) {
-                        ForEach(MediaStatus.allCases, id: \.self) { status in
-                            Text(status.rawValue.capitalized).tag(status)
+                    VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
+                        Text("Status")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                        Picker("Status", selection: $viewModel.status) {
+                            ForEach(MediaStatus.allCases, id: \.self) { status in
+                                Text(status.rawValue.capitalized).tag(status)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
+                        Text("Episodes Watched")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                        Stepper(
+                            value: $viewModel.currentEpisode,
+                            in: 0...(viewModel.totalEpisodes ?? 999),
+                            step: 1
+                        ) {
+                            Text("Episode \(viewModel.currentEpisode)")
+                                .foregroundColor(.white)
                         }
                     }
-                    .pickerStyle(.segmented)
-                }
 
-                VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
-                    Text("Episodes Watched")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textSecondary)
-                    Stepper(
-                        value: $viewModel.currentEpisode,
-                        in: 0...(viewModel.totalEpisodes ?? 999),
-                        step: 1
-                    ) {
-                        Text("Episode \(viewModel.currentEpisode)")
+                    VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
+                        Text("Your Rating")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                        ratingControl
+                        Text(viewModel.ratingText)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
+                        Text("Started")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                        Text(viewModel.startedAt?.displayText ?? "Not set")
+                            .foregroundColor(.white)
+                        Text("Finished")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                        Text(viewModel.completedAt?.displayText ?? "Not set")
                             .foregroundColor(.white)
                     }
                 }
-
-                VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
-                    Text("Your Rating")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textSecondary)
-                    ratingControl
-                    Text(viewModel.ratingText)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-
-                VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
-                    Text("Started")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textSecondary)
-                    Text(viewModel.startedAt?.displayText ?? "Not set")
-                        .foregroundColor(.white)
-                    Text("Finished")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textSecondary)
-                    Text(viewModel.completedAt?.displayText ?? "Not set")
-                        .foregroundColor(.white)
-                }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(UIConstants.standardPadding)
             }
-            .padding(UIConstants.standardPadding)
             .background(Theme.baseBackground.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
