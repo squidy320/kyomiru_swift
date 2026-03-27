@@ -40,13 +40,17 @@ final class MetadataService {
     private let metadataRequests = TMDBTaskCoalescer<Int, TMDBMetadata?>()
     private let tmdbMatcher: TMDBMatchingService
 
-    init(cacheStore: CacheStore, session: URLSession = .custom) {
+    init(
+        cacheStore: CacheStore,
+        session: URLSession = .custom,
+        tmdbMatcher: TMDBMatchingService? = nil
+    ) {
         self.cacheStore = cacheStore
         self.session = session
         let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
         let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
         self.apiKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
-        self.tmdbMatcher = TMDBMatchingService(cacheStore: cacheStore, session: session)
+        self.tmdbMatcher = tmdbMatcher ?? TMDBMatchingService(cacheStore: cacheStore, session: session)
     }
 
     func fetchTMDBMetadata(for media: AniListMedia) async -> TMDBMetadata? {
@@ -99,10 +103,12 @@ final class MetadataService {
 
     private func fetchSeasonAwareTMDBMetadata(for media: AniListMedia, apiKey: String) async -> TMDBMetadata? {
         let franchiseStartYear = media.startDate?.year ?? media.seasonYear
+        let preferredSeasonNumber = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best)
         guard let match = await tmdbMatcher.resolveShowAndSeason(
             media: media,
             franchiseStartYear: franchiseStartYear,
-            firstEpisodeNumber: nil
+            firstEpisodeNumber: nil,
+            preferredSeasonNumber: preferredSeasonNumber
         ) else {
             AppLog.debug(.matching, "tmdb metadata unresolved mediaId=\(media.id)")
             return nil

@@ -12,11 +12,12 @@ struct TMDBCachedMetadata: Codable, Equatable {
 final class MetadataCacheManager {
     private let fileManager: FileManager
     private let directoryURL: URL
+    private let cacheVersion = "v2"
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
         let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        self.directoryURL = caches.appendingPathComponent("tmdb_meta", isDirectory: true)
+        self.directoryURL = caches.appendingPathComponent("tmdb_meta_\(cacheVersion)", isDirectory: true)
         if !fileManager.fileExists(atPath: directoryURL.path) {
             try? fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         }
@@ -35,6 +36,6 @@ final class MetadataCacheManager {
     }
 
     private func fileURL(for aniListId: Int) -> URL {
-        directoryURL.appendingPathComponent("tmdb_meta_\(aniListId).json")
+        directoryURL.appendingPathComponent("tmdb_meta_\(cacheVersion)_\(aniListId).json")
     }
 }
