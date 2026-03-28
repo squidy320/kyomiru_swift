@@ -47,6 +47,12 @@ private struct TMDBSeasonMatchNegativeCacheEntry: Codable {
     let missing: Bool
 }
 
+private enum TMDBMatchCacheResult {
+    case hit(TMDBResolvedMatch)
+    case negative
+    case missing
+}
+
 final class TMDBMatchingService {
     private static let matchCacheTTL: TimeInterval = 60 * 60 * 12
     private static let negativeMatchCacheTTL: TimeInterval = 60 * 30
@@ -147,8 +153,13 @@ final class TMDBMatchingService {
             )
         }
 
-        if let cachedResult = cachedSeasonMatch(forKey: cacheKey) {
+        switch cachedSeasonMatch(forKey: cacheKey) {
+        case .hit(let cachedResult):
             return cachedResult
+        case .negative:
+            return nil
+        case .missing:
+            break
         }
 
         return await matchRequests.value(for: cacheKey) { [self] in
@@ -169,8 +180,13 @@ final class TMDBMatchingService {
                 )
             }
 
-            if let cachedResult = cachedSeasonMatch(forKey: cacheKey) {
+            switch cachedSeasonMatch(forKey: cacheKey) {
+            case .hit(let cachedResult):
                 return cachedResult
+            case .negative:
+                return nil
+            case .missing:
+                break
             }
 
             let titles = candidateTitles(for: media)
@@ -291,17 +307,17 @@ final class TMDBMatchingService {
         return true
     }
 
-    private func cachedSeasonMatch(forKey key: String) -> TMDBResolvedMatch?? {
+    private func cachedSeasonMatch(forKey key: String) -> TMDBMatchCacheResult {
         if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.matchCacheTTL),
            let decoded = try? JSONDecoder().decode(TMDBResolvedMatch.self, from: cached) {
-            return decoded
+            return .hit(decoded)
         }
         if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.negativeMatchCacheTTL),
            let negative = try? JSONDecoder().decode(TMDBSeasonMatchNegativeCacheEntry.self, from: cached),
            negative.missing {
-            return nil
+            return .negative
         }
-        return nil
+        return .missing
     }
 
     private func writeNegativeSeasonMatchCache(forKey key: String) {

@@ -30,6 +30,12 @@ private struct TMDBMetadataNegativeCacheEntry: Codable {
     let missing: Bool
 }
 
+private enum TMDBMetadataCacheResult {
+    case hit(TMDBMetadata)
+    case negative
+    case missing
+}
+
 final class MetadataService {
     private static let metadataCacheTTL: TimeInterval = 60 * 60 * 24
     private static let negativeMetadataCacheTTL: TimeInterval = 60 * 30
@@ -55,13 +61,23 @@ final class MetadataService {
 
     func fetchTMDBMetadata(for media: AniListMedia) async -> TMDBMetadata? {
         let cacheKey = "tmdb:media:v3:\(media.id)"
-        if let cachedResult = cachedMetadata(forKey: cacheKey) {
+        switch cachedMetadata(forKey: cacheKey) {
+        case .hit(let cachedResult):
             return cachedResult
+        case .negative:
+            return nil
+        case .missing:
+            break
         }
 
         return await metadataRequests.value(for: media.id) { [self] in
-            if let cachedResult = cachedMetadata(forKey: cacheKey) {
+            switch cachedMetadata(forKey: cacheKey) {
+            case .hit(let cachedResult):
                 return cachedResult
+            case .negative:
+                return nil
+            case .missing:
+                break
             }
 
             guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
@@ -277,17 +293,17 @@ final class MetadataService {
         return Int(dateString.prefix(4))
     }
 
-    private func cachedMetadata(forKey key: String) -> TMDBMetadata?? {
+    private func cachedMetadata(forKey key: String) -> TMDBMetadataCacheResult {
         if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.metadataCacheTTL),
            let decoded = try? JSONDecoder().decode(TMDBMetadata.self, from: cached) {
-            return decoded
+            return .hit(decoded)
         }
         if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.negativeMetadataCacheTTL),
            let negative = try? JSONDecoder().decode(TMDBMetadataNegativeCacheEntry.self, from: cached),
            negative.missing {
-            return nil
+            return .negative
         }
-        return nil
+        return .missing
     }
 
     private func writeNegativeMetadataCache(forKey key: String) {
