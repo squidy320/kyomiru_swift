@@ -337,13 +337,17 @@ final class RatingService {
 
         var targetSeason = seasonNumber
         var episodeOffset = 0
+        let preferredSeasonNumber = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best)
         if let match = await tmdbMatcher.matchShowAndSeason(
             media: media,
             franchiseStartYear: media.startDate?.year ?? media.seasonYear,
-            firstEpisodeNumber: firstEpisodeNumber
+            firstEpisodeNumber: firstEpisodeNumber,
+            preferredSeasonNumber: preferredSeasonNumber
         ) {
             targetSeason = match.seasonNumber
             episodeOffset = match.episodeOffset
+        } else if let preferredSeasonNumber {
+            targetSeason = preferredSeasonNumber
         }
 
         let cacheKey = "tmdb:ratings:\(media.id):season:\(targetSeason):offset:\(episodeOffset)"
@@ -888,7 +892,8 @@ final class EpisodeMetadataService {
         if let match = await tmdbMatcher.matchShowAndSeason(
             media: media,
             franchiseStartYear: franchiseStartYear,
-            firstEpisodeNumber: firstEpisodeNumber
+            firstEpisodeNumber: firstEpisodeNumber,
+            preferredSeasonNumber: preferredSeason
         ) {
             let data = await fetchTMDBSeason(showId: match.showId, seasonNumber: match.seasonNumber)
             let mapped = match.episodeOffset == 0 ? data : applyEpisodeOffset(data, offset: match.episodeOffset)

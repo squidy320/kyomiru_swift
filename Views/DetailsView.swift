@@ -1268,24 +1268,14 @@ private struct EpisodeCardModel: Identifiable {
 
 private struct EpisodeRow: View {
     let card: EpisodeCardModel
-    @EnvironmentObject private var appState: AppState
-    @State private var imdbImageURL: URL?
-    @State private var tmdbLookupComplete = false
 
     var body: some View {
-        let useTMDB = appState.settings.cardImageSource == .tmdb
-        let resolvedURL: URL? = {
-            if useTMDB {
-                return tmdbLookupComplete ? (imdbImageURL ?? card.imageURL) : imdbImageURL
-            }
-            return card.imageURL
-        }()
         HStack(alignment: .top, spacing: UIConstants.interCardSpacing) {
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous)
                     .fill(Color.white.opacity(0.06))
                     .frame(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
-                if let resolved = resolvedURL {
+                if let resolved = card.imageURL {
                     CachedImage(
                         url: resolved,
                         targetSize: CGSize(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
@@ -1330,16 +1320,6 @@ private struct EpisodeRow: View {
             RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
                 .fill(Color.white.opacity(0.06))
         )
-        .task(id: "\(card.relatedMedia?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
-            guard let media = card.relatedMedia else { return }
-            if useTMDB {
-                imdbImageURL = await appState.services.metadataService.backdropURL(for: media)
-                tmdbLookupComplete = true
-            } else {
-                imdbImageURL = nil
-                tmdbLookupComplete = false
-            }
-        }
     }
 }
 
