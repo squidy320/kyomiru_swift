@@ -16,12 +16,13 @@ struct HeroHeader: View {
     var height: CGFloat = 260
     @EnvironmentObject private var appState: AppState
     @State private var tmdbBackdropURL: URL?
+    @State private var tmdbLookupComplete = false
 
     var body: some View {
         let useComfortableLayout = appState.settings.useComfortableLayout
         let contentSpacing: CGFloat = useComfortableLayout ? 10 : 8
         let contentPadding: CGFloat = useComfortableLayout ? 22 : 18
-        let resolvedURL = tmdbBackdropURL ?? imageURL
+        let resolvedURL = tmdbBackdropURL ?? (tmdbLookupComplete ? imageURL : nil)
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .fill(Theme.surface)
@@ -87,7 +88,9 @@ struct HeroHeader: View {
         }
         .task(id: media?.id ?? 0) {
             guard let media else { return }
+            tmdbLookupComplete = false
             tmdbBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+            tmdbLookupComplete = true
         }
     }
 }

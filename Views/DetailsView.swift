@@ -124,6 +124,7 @@ struct DetailsView: View {
     @State private var streamingEpisodes: [AniListStreamingEpisode] = []
     @State private var tmdbHeroBackdropURL: URL?
     @State private var tmdbHeroLogoURL: URL?
+    @State private var tmdbHeroLookupComplete = false
     @State private var showImportPicker = false
     @State private var showImportReview = false
     @State private var importCandidates: [EpisodeImportCandidate] = []
@@ -427,7 +428,7 @@ struct DetailsView: View {
             let width = proxy.size.width
             let insetTop = proxy.safeAreaInsets.top
             let topFeatherHeight = max(24.0, insetTop * 0.6)
-            let fallbackBackdrop = media.bannerURL ?? media.coverURL
+            let fallbackBackdrop = tmdbHeroLookupComplete ? (media.bannerURL ?? media.coverURL) : nil
             ZStack {
                 Group {
                     if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
@@ -470,8 +471,10 @@ struct DetailsView: View {
         .frame(height: height)
         .offset(y: -topInset)
         .task(id: media.id) {
+            tmdbHeroLookupComplete = false
             tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
             tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
+            tmdbHeroLookupComplete = true
             let fallback = media.bannerURL ?? media.coverURL
             let urls = [tmdbHeroBackdropURL, fallback].compactMap { $0 }
             await ImageCache.shared.prefetch(urls: urls)
@@ -487,7 +490,7 @@ struct DetailsView: View {
             let width = proxy.size.width
             let insetTop = proxy.safeAreaInsets.top
             let topFeatherHeight = max(24.0, insetTop * 0.6)
-            let fallbackBackdrop = media.bannerURL ?? media.coverURL
+            let fallbackBackdrop = tmdbHeroLookupComplete ? (media.bannerURL ?? media.coverURL) : nil
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
@@ -566,8 +569,10 @@ struct DetailsView: View {
         .frame(height: height)
         .offset(y: -topInset)
         .task(id: media.id) {
+            tmdbHeroLookupComplete = false
             tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
             tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
+            tmdbHeroLookupComplete = true
             let fallback = media.bannerURL ?? media.coverURL
             let urls = [tmdbHeroBackdropURL, fallback].compactMap { $0 }
             await ImageCache.shared.prefetch(urls: urls)

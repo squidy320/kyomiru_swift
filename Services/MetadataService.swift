@@ -18,6 +18,41 @@ private actor TMDBTaskCoalescer<Key: Hashable, Value> {
     }
 }
 
+private actor TMDBRequestLimiter {
+    private let maxConcurrent: Int
+    private var running = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(maxConcurrent: Int) {
+        self.maxConcurrent = maxConcurrent
+    }
+
+    func run<T>(_ operation: @escaping @Sendable () async -> T) async -> T {
+        await acquire()
+        defer { release() }
+        return await operation()
+    }
+
+    private func acquire() async {
+        if running < maxConcurrent {
+            running += 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    private func release() {
+        if let next = waiters.first {
+            waiters.removeFirst()
+            next.resume()
+        } else {
+            running = max(0, running - 1)
+        }
+    }
+}
+
 struct TMDBMetadata: Equatable, Codable {
     let tmdbId: Int
     let title: String
@@ -39,6 +74,7 @@ private enum TMDBMetadataCacheResult {
 final class MetadataService {
     private static let metadataCacheTTL: TimeInterval = 60 * 60 * 24
     private static let negativeMetadataCacheTTL: TimeInterval = 60 * 30
+    private static let requestLimiter = TMDBRequestLimiter(maxConcurrent: 3)
     private let tmdbImageBase = "https://image.tmdb.org/t/p"
     private let session: URLSession
     private let cacheStore: CacheStore
@@ -71,28 +107,30 @@ final class MetadataService {
         }
 
         return await metadataRequests.value(for: media.id) { [self] in
-            switch cachedMetadata(forKey: cacheKey) {
-            case .hit(let cachedResult):
-                return cachedResult
-            case .negative:
-                return nil
-            case .missing:
-                break
-            }
+            await Self.requestLimiter.run {
+                switch cachedMetadata(forKey: cacheKey) {
+                case .hit(let cachedResult):
+                    return cachedResult
+                case .negative:
+                    return nil
+                case .missing:
+                    break
+                }
 
-            guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
-                AppLog.error(.network, "tmdb api key missing")
-                return nil
-            }
+                guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
+                    AppLog.error(.network, "tmdb api key missing")
+                    return nil
+                }
 
-            guard let details = await fetchSeasonAwareTMDBMetadata(for: media, apiKey: apiKey) else {
-                writeNegativeMetadataCache(forKey: cacheKey)
-                return nil
+                guard let details = await fetchSeasonAwareTMDBMetadata(for: media, apiKey: apiKey) else {
+                    writeNegativeMetadataCache(forKey: cacheKey)
+                    return nil
+                }
+                if let data = try? JSONEncoder().encode(details) {
+                    cacheStore.writeJSON(data, forKey: cacheKey)
+                }
+                return details
             }
-            if let data = try? JSONEncoder().encode(details) {
-                cacheStore.writeJSON(data, forKey: cacheKey)
-            }
-            return details
         }
     }
 

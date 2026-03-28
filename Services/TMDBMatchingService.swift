@@ -18,6 +18,41 @@ private actor TMDBMatchTaskCoalescer<Key: Hashable, Value> {
     }
 }
 
+private actor TMDBMatchRequestLimiter {
+    private let maxConcurrent: Int
+    private var running = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(maxConcurrent: Int) {
+        self.maxConcurrent = maxConcurrent
+    }
+
+    func run<T>(_ operation: @escaping @Sendable () async -> T) async -> T {
+        await acquire()
+        defer { release() }
+        return await operation()
+    }
+
+    private func acquire() async {
+        if running < maxConcurrent {
+            running += 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    private func release() {
+        if let next = waiters.first {
+            waiters.removeFirst()
+            next.resume()
+        } else {
+            running = max(0, running - 1)
+        }
+    }
+}
+
 struct TMDBSeasonMatch: Equatable, Codable {
     let showId: Int
     let seasonNumber: Int
@@ -56,6 +91,7 @@ private enum TMDBMatchCacheResult {
 final class TMDBMatchingService {
     private static let matchCacheTTL: TimeInterval = 60 * 60 * 12
     private static let negativeMatchCacheTTL: TimeInterval = 60 * 30
+    private static let requestLimiter = TMDBMatchRequestLimiter(maxConcurrent: 3)
 
     private let session: URLSession
     private let cacheStore: CacheStore
@@ -163,82 +199,84 @@ final class TMDBMatchingService {
         }
 
         return await matchRequests.value(for: cacheKey) { [self] in
-            if let cached = cacheManager.load(aniListId: media.id),
-               isCachedMetadataUsable(
-                    cached,
-                    firstEpisodeNumber: firstEpisodeNumber,
-                    preferredSeasonNumber: preferredSeason,
-                    expectedEpisodeCount: expectedEpisodeCount,
-                    maxEpisodeNumber: maxEpisodeNumber
-               ) {
-                return TMDBResolvedMatch(
-                    showId: cached.showId,
-                    seasonNumber: cached.seasonNumber,
-                    episodeOffset: cached.episodeOffset,
-                    confidence: 0.95,
-                    reason: "disk-cache"
-                )
-            }
-
-            switch cachedSeasonMatch(forKey: cacheKey) {
-            case .hit(let cachedResult):
-                return cachedResult
-            case .negative:
-                return nil
-            case .missing:
-                break
-            }
-
-            let titles = candidateTitles(for: media)
-            let startYear = franchiseStartYear ?? media.startDate?.year ?? media.seasonYear
-            guard let showId = await findShowId(media: media, titles: titles, startYear: startYear),
-                  let show = await fetchShowSummary(showId: showId, apiKey: apiKey),
-                  let selection = selectSeason(
-                        media: media,
-                        show: show,
-                        preferredSeasonNumber: preferredSeason,
+            await Self.requestLimiter.run {
+                if let cached = cacheManager.load(aniListId: media.id),
+                   isCachedMetadataUsable(
+                        cached,
                         firstEpisodeNumber: firstEpisodeNumber,
+                        preferredSeasonNumber: preferredSeason,
                         expectedEpisodeCount: expectedEpisodeCount,
                         maxEpisodeNumber: maxEpisodeNumber
-                  ) else {
-                writeNegativeSeasonMatchCache(forKey: cacheKey)
-                return nil
-            }
-
-            let resolved = TMDBResolvedMatch(
-                showId: show.showId,
-                seasonNumber: selection.seasonNumber,
-                episodeOffset: selection.episodeOffset,
-                confidence: selection.confidence,
-                reason: selection.reason
-            )
-
-            if let seasonDetails = await fetchSeasonDetails(
-                aniListId: media.id,
-                showId: resolved.showId,
-                seasonNumber: resolved.seasonNumber
-            ) {
-                cacheManager.save(
-                    TMDBCachedMetadata(
-                        aniListId: media.id,
-                        showId: resolved.showId,
-                        seasonNumber: resolved.seasonNumber,
-                        episodeOffset: resolved.episodeOffset,
-                        cachedAt: Date(),
-                        seasonDetails: seasonDetails
+                   ) {
+                    return TMDBResolvedMatch(
+                        showId: cached.showId,
+                        seasonNumber: cached.seasonNumber,
+                        episodeOffset: cached.episodeOffset,
+                        confidence: 0.95,
+                        reason: "disk-cache"
                     )
+                }
+
+                switch cachedSeasonMatch(forKey: cacheKey) {
+                case .hit(let cachedResult):
+                    return cachedResult
+                case .negative:
+                    return nil
+                case .missing:
+                    break
+                }
+
+                let titles = candidateTitles(for: media)
+                let startYear = franchiseStartYear ?? media.startDate?.year ?? media.seasonYear
+                guard let showId = await findShowId(media: media, titles: titles, startYear: startYear),
+                      let show = await fetchShowSummary(showId: showId, apiKey: apiKey),
+                      let selection = selectSeason(
+                            media: media,
+                            show: show,
+                            preferredSeasonNumber: preferredSeason,
+                            firstEpisodeNumber: firstEpisodeNumber,
+                            expectedEpisodeCount: expectedEpisodeCount,
+                            maxEpisodeNumber: maxEpisodeNumber
+                      ) else {
+                    writeNegativeSeasonMatchCache(forKey: cacheKey)
+                    return nil
+                }
+
+                let resolved = TMDBResolvedMatch(
+                    showId: show.showId,
+                    seasonNumber: selection.seasonNumber,
+                    episodeOffset: selection.episodeOffset,
+                    confidence: selection.confidence,
+                    reason: selection.reason
                 )
-            }
 
-            if let data = try? JSONEncoder().encode(resolved) {
-                cacheStore.writeJSON(data, forKey: cacheKey)
-            }
+                if let seasonDetails = await fetchSeasonDetails(
+                    aniListId: media.id,
+                    showId: resolved.showId,
+                    seasonNumber: resolved.seasonNumber
+                ) {
+                    cacheManager.save(
+                        TMDBCachedMetadata(
+                            aniListId: media.id,
+                            showId: resolved.showId,
+                            seasonNumber: resolved.seasonNumber,
+                            episodeOffset: resolved.episodeOffset,
+                            cachedAt: Date(),
+                            seasonDetails: seasonDetails
+                        )
+                    )
+                }
 
-            AppLog.debug(
-                .matching,
-                "tmdb resolved match mediaId=\(media.id) showId=\(resolved.showId) season=\(resolved.seasonNumber) offset=\(resolved.episodeOffset) reason=\(resolved.reason)"
-            )
-            return resolved
+                if let data = try? JSONEncoder().encode(resolved) {
+                    cacheStore.writeJSON(data, forKey: cacheKey)
+                }
+
+                AppLog.debug(
+                    .matching,
+                    "tmdb resolved match mediaId=\(media.id) showId=\(resolved.showId) season=\(resolved.seasonNumber) offset=\(resolved.episodeOffset) reason=\(resolved.reason)"
+                )
+                return resolved
+            }
         }
     }
 

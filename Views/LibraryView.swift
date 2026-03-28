@@ -405,24 +405,12 @@ struct LibraryView: View {
 
     private func prefetchLibraryImages(sections: [AniListLibrarySection], limit: Int = 18) async {
         guard networkMonitor.isOnWiFi else { return }
-        let mediaItems = sections.flatMap(\.items).map(\.media)
         var urls: [URL] = []
 
         let continueItems = continueWatchingItems()
         for item in continueItems.prefix(6) {
-            if let media = item.media,
-               let backdrop = await appState.services.metadataService.backdropURL(for: media) {
-                urls.append(backdrop)
-            } else if let url = item.imageURL {
+            if let url = item.imageURL {
                 urls.append(url)
-            }
-        }
-
-        for media in mediaItems.prefix(limit) {
-            if let poster = await appState.services.metadataService.posterURL(for: media) {
-                urls.append(poster)
-            } else if let cover = media.coverURL {
-                urls.append(cover)
             }
         }
 

@@ -13,6 +13,7 @@ struct MediaPosterCard: View {
     let allowFallbackWhileLoading: Bool
     @EnvironmentObject private var appState: AppState
     @State private var tmdbPosterURL: URL?
+    @State private var tmdbLookupComplete = false
 
     init(
         title: String,
@@ -24,7 +25,7 @@ struct MediaPosterCard: View {
         cornerBadge: String?,
         size: CGSize? = nil,
         overlayOpacity: Double = 0.85,
-        allowFallbackWhileLoading: Bool = true
+        allowFallbackWhileLoading: Bool = false
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -48,7 +49,10 @@ struct MediaPosterCard: View {
             if let tmdbPosterURL {
                 return tmdbPosterURL
             }
-            return allowFallbackWhileLoading ? imageURL : nil
+            if allowFallbackWhileLoading && !tmdbLookupComplete {
+                return imageURL
+            }
+            return tmdbLookupComplete ? imageURL : nil
         }()
         ZStack(alignment: .topTrailing) {
             ZStack(alignment: .bottomLeading) {
@@ -132,7 +136,9 @@ struct MediaPosterCard: View {
         }
         .task(id: media?.id ?? 0) {
             guard let media else { return }
+            tmdbLookupComplete = false
             tmdbPosterURL = await appState.services.metadataService.posterURL(for: media)
+            tmdbLookupComplete = true
         }
     }
 }
@@ -147,10 +153,11 @@ struct ContinueWatchingCard: View {
     let media: AniListMedia?
     @EnvironmentObject private var appState: AppState
     @State private var tmdbImageURL: URL?
+    @State private var tmdbLookupComplete = false
     var body: some View {
         let useComfortableLayout = appState.settings.useComfortableLayout
         let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
-        let resolvedURL = tmdbImageURL ?? imageURL
+        let resolvedURL = tmdbImageURL ?? (tmdbLookupComplete ? imageURL : nil)
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.06))
@@ -218,7 +225,9 @@ struct ContinueWatchingCard: View {
         }
         .task(id: media?.id ?? 0) {
             guard let media else { return }
+            tmdbLookupComplete = false
             tmdbImageURL = await appState.services.metadataService.backdropURL(for: media)
+            tmdbLookupComplete = true
         }
     }
 }

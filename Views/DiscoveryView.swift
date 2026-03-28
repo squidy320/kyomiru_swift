@@ -524,14 +524,6 @@ private extension DiscoveryView {
     func prefetchDiscoveryImages(limit: Int = 16) async {
         guard networkMonitor.isOnWiFi else { return }
         var urls: [URL] = []
-        let mediaItems = sections.flatMap(\.items).prefix(limit)
-        for media in mediaItems {
-            if let tmdb = await appState.services.metadataService.posterURL(for: media) {
-                urls.append(tmdb)
-            } else if let cover = media.coverURL {
-                urls.append(cover)
-            }
-        }
         let trendingItems = imdbTrending.prefix(limit)
         for item in trendingItems {
             if let backdrop = item.backdropURL { urls.append(backdrop) }
