@@ -72,18 +72,24 @@ enum TitleMatcher {
         let raw = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if raw.isEmpty { return [] }
         let cleanedSeason = stripSeasonMarkers(raw)
+        let finalSeasonRemoved = stripFinalSeasonMarkers(raw)
         let noTrailing = raw.replacingOccurrences(
             of: #"(?i)\b(cour|part|season)\s*\d+\b"#,
             with: "",
             options: .regularExpression
         ).trimmingCharacters(in: .whitespacesAndNewlines)
         let romanNormalized = romanToArabic(raw)
+        let romanFinalRemoved = stripFinalSeasonMarkers(romanNormalized)
         return Array(Set([
             raw,
             noTrailing,
             cleanedSeason,
+            finalSeasonRemoved,
+            stripSeasonMarkers(finalSeasonRemoved),
             romanNormalized,
-            stripSeasonMarkers(romanNormalized)
+            stripSeasonMarkers(romanNormalized),
+            romanFinalRemoved,
+            stripSeasonMarkers(romanFinalRemoved)
         ]))
     }
 
@@ -140,6 +146,24 @@ enum TitleMatcher {
             }
         }
         return nil
+    }
+
+    static func hasFinalSeasonMarker(_ input: String) -> Bool {
+        let normalized = romanToArabic(input)
+        return normalized.range(
+            of: #"(?i)\b(?:the\s+)?final\s+season\b"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    static func stripFinalSeasonMarkers(_ input: String) -> String {
+        input.replacingOccurrences(
+            of: #"(?i)\b(?:the\s+)?final\s+season\b"#,
+            with: "",
+            options: .regularExpression
+        )
+        .replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func cleanTitle(_ input: String) -> String {

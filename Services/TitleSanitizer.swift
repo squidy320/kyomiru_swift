@@ -8,8 +8,7 @@ enum TitleSanitizer {
             #"\s+\((?i:tv)\)\s*$"#,
             #"\s+\(\d{4}\)\s*$"#,
             #"\s+(?i:season|part|cour)\s+(?:\d+|[ivx]+)\s*$"#,
-            #"\s+(?i:\d+(?:st|nd|rd|th)\s+season)\s*$"#,
-            #"\s+(?i:the\s+final|final\s+season|final)\s*$"#
+            #"\s+(?i:\d+(?:st|nd|rd|th)\s+season)\s*$"#
         ]
         for pattern in suffixPatterns {
             result = result.replacingOccurrences(

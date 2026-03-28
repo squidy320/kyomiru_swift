@@ -12,7 +12,7 @@ struct TMDBCachedMetadata: Codable, Equatable {
 final class MetadataCacheManager {
     private let fileManager: FileManager
     private let directoryURL: URL
-    private let cacheVersion = "v6"
+    private let cacheVersion = "v7"
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager

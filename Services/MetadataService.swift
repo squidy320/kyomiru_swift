@@ -96,7 +96,7 @@ final class MetadataService {
     }
 
     func fetchTMDBMetadata(for media: AniListMedia) async -> TMDBMetadata? {
-        let cacheKey = "tmdb:media:v4:\(media.id)"
+        let cacheKey = "tmdb:media:v5:\(media.id)"
         switch cachedMetadata(forKey: cacheKey) {
         case .hit(let cachedResult):
             return cachedResult
@@ -410,7 +410,7 @@ final class RatingService {
         let targetSeason = match.seasonNumber
         let episodeOffset = match.episodeOffset
 
-        let cacheKey = "tmdb:ratings:v4:\(media.id):season:\(targetSeason):offset:\(episodeOffset)"
+        let cacheKey = "tmdb:ratings:v5:\(media.id):season:\(targetSeason):offset:\(episodeOffset)"
         if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
            let decoded = try? JSONDecoder().decode([Int: Double].self, from: cached) {
             return decoded
@@ -746,7 +746,7 @@ final class EpisodeMetadataService {
 
             guard let seasonNumber else { return nil }
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
-            let cacheKey = "episode-meta:tmdb:v7:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let cacheKey = "episode-meta:tmdb:v8:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
             if let cached = cacheStore.readJSON(forKey: cacheKey),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
@@ -783,7 +783,7 @@ final class EpisodeMetadataService {
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
-            let cacheKey = "episode-meta:tmdb:v7:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let cacheKey = "episode-meta:tmdb:v8:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
             if accepted, let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded

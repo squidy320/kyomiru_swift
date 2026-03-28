@@ -126,7 +126,7 @@ final class TMDBMatchingService {
         expectedEpisodeCount: Int?,
         maxEpisodeNumber: Int?
     ) -> String {
-        "tmdb:match:v7:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
+        "tmdb:match:v8:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
     }
 
     func matchShowAndSeason(
@@ -462,6 +462,7 @@ final class TMDBMatchingService {
             return value
         }
         titles.append(contentsOf: titles.map(TitleMatcher.stripSeasonMarkers))
+        titles.append(contentsOf: titles.map(TitleMatcher.stripFinalSeasonMarkers))
         return Array(Set(titles)).sorted()
     }
 
@@ -500,6 +501,7 @@ final class TMDBMatchingService {
 
         let explicitSeasonMarker = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best)
         let explicitPartMarker = TitleMatcher.extractPartMarkerNumber(from: media.title.best)
+        let hasFinalSeasonMarker = TitleMatcher.hasFinalSeasonMarker(media.title.best)
         let targetDate = date(from: media.startDate)
         let targetYear = media.startDate?.year ?? media.seasonYear
         let rangeMatch = cumulativeRangeMatch(
@@ -530,6 +532,16 @@ final class TMDBMatchingService {
                 episodeOffset: offset,
                 confidence: 0.98,
                 reason: "explicit-season-marker"
+            )
+        }
+
+        if hasFinalSeasonMarker {
+            return selectFinalSeason(
+                seasons: seasons,
+                rangeMatch: rangeMatch,
+                dateMatch: dateMatch,
+                yearMatch: yearMatch,
+                partMarker: explicitPartMarker
             )
         }
 
@@ -578,6 +590,61 @@ final class TMDBMatchingService {
         )
     }
 
+    private func selectFinalSeason(
+        seasons: [TMDBSeasonInfo],
+        rangeMatch: SeasonRangeMatch?,
+        dateMatch: (seasonNumber: Int, score: Double)?,
+        yearMatch: (seasonNumber: Int, score: Double)?,
+        partMarker: Int?
+    ) -> SelectedSeason? {
+        let mainSeasons = seasons.filter { !$0.isSpecial }
+        let latestMainSeason = (mainSeasons.isEmpty ? seasons : mainSeasons)
+            .max(by: { $0.seasonNumber < $1.seasonNumber })
+
+        guard let latestMainSeason else { return nil }
+
+        if let partMarker, partMarker > 0 {
+            if let rangeMatch {
+                if rangeMatch.seasonNumber != latestMainSeason.seasonNumber {
+                    return nil
+                }
+                return SelectedSeason(
+                    seasonNumber: latestMainSeason.seasonNumber,
+                    episodeOffset: rangeMatch.offset,
+                    confidence: 0.97,
+                    reason: "final-season-part"
+                )
+            }
+
+            if let dateMatch, dateMatch.seasonNumber == latestMainSeason.seasonNumber, dateMatch.score >= 0.78 {
+                return SelectedSeason(
+                    seasonNumber: latestMainSeason.seasonNumber,
+                    episodeOffset: 0,
+                    confidence: dateMatch.score,
+                    reason: "final-season-part"
+                )
+            }
+
+            if let yearMatch, yearMatch.seasonNumber == latestMainSeason.seasonNumber, yearMatch.score >= 0.82 {
+                return SelectedSeason(
+                    seasonNumber: latestMainSeason.seasonNumber,
+                    episodeOffset: 0,
+                    confidence: yearMatch.score,
+                    reason: "final-season-part"
+                )
+            }
+
+            return nil
+        }
+
+        return SelectedSeason(
+            seasonNumber: latestMainSeason.seasonNumber,
+            episodeOffset: 0,
+            confidence: 0.9,
+            reason: "final-season"
+        )
+    }
+
     private func selectPartOrCourSeason(
         seasons: [TMDBSeasonInfo],
         rangeMatch: SeasonRangeMatch?,
@@ -590,7 +657,7 @@ final class TMDBMatchingService {
                 seasonNumber: onlySeason.seasonNumber,
                 episodeOffset: rangeMatch?.offset ?? 0,
                 confidence: 0.84,
-                reason: "single-season-part-cour"
+                reason: "single-season-split-cour"
             )
         }
 
@@ -736,6 +803,7 @@ private struct TMDBSeasonInfo {
     let episodeCount: Int
     let airDateString: String?
     let name: String?
+    let isSpecial: Bool
 
     init?(from dict: [String: Any]) {
         guard let seasonNumber = dict["season_number"] as? Int else { return nil }
@@ -743,6 +811,7 @@ private struct TMDBSeasonInfo {
         self.episodeCount = dict["episode_count"] as? Int ?? 0
         self.airDateString = dict["air_date"] as? String
         self.name = dict["name"] as? String
+        self.isSpecial = dict["season_type"] as? String == "specials"
     }
 }
 
