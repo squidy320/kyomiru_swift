@@ -680,7 +680,7 @@ final class EpisodeMetadataService {
 
             guard let seasonNumber else { return nil }
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
-            let cacheKey = "episode-meta:tmdb:v2:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let cacheKey = "episode-meta:tmdb:v4:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
             if let cached = cacheStore.readJSON(forKey: cacheKey),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
@@ -717,12 +717,16 @@ final class EpisodeMetadataService {
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
-            let cacheKey = "episode-meta:tmdb:v3:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let cacheKey = "episode-meta:tmdb:v4:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
             if accepted, let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
             }
-            let aniListFallback = await fetchFromAniListStreaming(media: media)
+            let aniListFallback = await fetchFromAniListStreaming(
+                media: media,
+                episodes: episodes,
+                episodeOffset: episodeOffset
+            )
             if accepted, !primary.isEmpty {
                 mapped = mergeEpisodeMetadata(aniList: aniListFallback, tmdb: primary)
                 if let data = try? JSONEncoder().encode(mapped) {
@@ -781,32 +785,156 @@ final class EpisodeMetadataService {
         return await fetchKitsuEpisodes(animeId: animeId)
     }
 
-    private func fetchFromAniListStreaming(media: AniListMedia) async -> [Int: EpisodeMetadata] {
-        let cacheKey = "episode-meta:anilist:\(media.id)"
+    private func fetchFromAniListStreaming(
+        media: AniListMedia,
+        episodes: [SoraEpisode],
+        episodeOffset: Int
+    ) async -> [Int: EpisodeMetadata] {
+        let desiredCount = episodes.isEmpty ? (media.episodes ?? 0) : episodes.count
+        let cacheKey = "episode-meta:anilist:v2:\(media.id):count:\(desiredCount):offset:\(episodeOffset)"
         if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 6),
            let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
             return decoded
         }
-        guard let episodes = try? await aniListClient.streamingEpisodes(mediaId: media.id) else {
+        guard let streamingEpisodes = try? await aniListClient.streamingEpisodes(mediaId: media.id) else {
             return [:]
         }
-        var result: [Int: EpisodeMetadata] = [:]
-        for episode in episodes {
-            guard let number = episode.episodeNumber, number > 0 else { continue }
-            let meta = EpisodeMetadata(
-                number: number,
-                title: episode.title,
-                summary: nil,
-                airDate: nil,
-                runtimeMinutes: nil,
-                thumbnailURL: episode.thumbnailURL
-            )
-            result[number] = meta
-        }
+        let result = buildAniListStreamingMap(
+            streamingEpisodes: streamingEpisodes,
+            localEpisodes: episodes,
+            media: media,
+            episodeOffset: episodeOffset
+        )
+        AppLog.debug(
+            .network,
+            "streaming episodes mapped mediaId=\(media.id) raw=\(streamingEpisodes.count) mapped=\(result.count) expected=\(desiredCount) offset=\(episodeOffset)"
+        )
         if let data = try? JSONEncoder().encode(result) {
             cacheStore.writeJSON(data, forKey: cacheKey)
         }
         return result
+    }
+
+    private func buildAniListStreamingMap(
+        streamingEpisodes: [AniListStreamingEpisode],
+        localEpisodes: [SoraEpisode],
+        media: AniListMedia,
+        episodeOffset: Int
+    ) -> [Int: EpisodeMetadata] {
+        guard !streamingEpisodes.isEmpty else { return [:] }
+
+        let sortedLocalEpisodes = localEpisodes.sorted { lhs, rhs in
+            if lhs.number == rhs.number {
+                return lhs.sourceNumber < rhs.sourceNumber
+            }
+            return lhs.number < rhs.number
+        }
+        guard !sortedLocalEpisodes.isEmpty else { return [:] }
+
+        let localNumbers = Set(sortedLocalEpisodes.map(\.number))
+        var explicit: [Int: EpisodeMetadata] = [:]
+        for episode in streamingEpisodes {
+            guard let number = episode.episodeNumber, number > 0 else { continue }
+            explicit[number] = episodeMetadata(from: episode, number: number)
+        }
+        let explicitLocalKeys = explicit.keys.filter(localNumbers.contains)
+
+        var result: [Int: EpisodeMetadata] = [:]
+        let explicitThreshold = sortedLocalEpisodes.count <= 2
+            ? 1
+            : min(sortedLocalEpisodes.count, max(3, sortedLocalEpisodes.count / 2))
+        if explicitLocalKeys.count >= explicitThreshold || explicitLocalKeys.count == sortedLocalEpisodes.count {
+            for number in explicitLocalKeys {
+                result[number] = explicit[number]
+            }
+        }
+
+        let needsFallback = result.count < sortedLocalEpisodes.count
+        if needsFallback {
+            let orderedFallback = alignAniListStreamingEpisodesByOrder(
+                streamingEpisodes: streamingEpisodes,
+                localEpisodes: sortedLocalEpisodes,
+                media: media,
+                episodeOffset: episodeOffset
+            )
+            for (number, meta) in orderedFallback where result[number] == nil {
+                result[number] = meta
+            }
+        }
+
+        return result
+    }
+
+    private func alignAniListStreamingEpisodesByOrder(
+        streamingEpisodes: [AniListStreamingEpisode],
+        localEpisodes: [SoraEpisode],
+        media: AniListMedia,
+        episodeOffset: Int
+    ) -> [Int: EpisodeMetadata] {
+        guard !streamingEpisodes.isEmpty, !localEpisodes.isEmpty else { return [:] }
+
+        var result: [Int: EpisodeMetadata] = [:]
+        let maxSourceNumber = localEpisodes.map(\.sourceNumber).max() ?? 0
+        let minSourceNumber = localEpisodes.map(\.sourceNumber).min() ?? 0
+        let sourceNumbersContiguous = zip(localEpisodes, localEpisodes.dropFirst()).allSatisfy { lhs, rhs in
+            rhs.sourceNumber == lhs.sourceNumber + 1
+        }
+
+        if minSourceNumber > 0, maxSourceNumber <= streamingEpisodes.count, sourceNumbersContiguous {
+            for episode in localEpisodes {
+                let sourceIndex = episode.sourceNumber - 1
+                guard streamingEpisodes.indices.contains(sourceIndex) else { continue }
+                result[episode.number] = episodeMetadata(from: streamingEpisodes[sourceIndex], number: episode.number)
+            }
+            if !result.isEmpty {
+                return result
+            }
+        }
+
+        if episodeOffset != 0 {
+            for episode in localEpisodes {
+                let rawNumber = episode.number - episodeOffset
+                let rawIndex = rawNumber - 1
+                guard rawNumber > 0, streamingEpisodes.indices.contains(rawIndex) else { continue }
+                result[episode.number] = episodeMetadata(from: streamingEpisodes[rawIndex], number: episode.number)
+            }
+            if !result.isEmpty {
+                return result
+            }
+        }
+
+        if streamingEpisodes.count == localEpisodes.count {
+            for (episode, streaming) in zip(localEpisodes, streamingEpisodes) {
+                result[episode.number] = episodeMetadata(from: streaming, number: episode.number)
+            }
+            return result
+        }
+
+        if let partMarker = TitleMatcher.extractPartMarkerNumber(from: media.title.best),
+           partMarker > 1,
+           streamingEpisodes.count >= localEpisodes.count {
+            let fallbackStart = max((partMarker - 1) * localEpisodes.count, streamingEpisodes.count - localEpisodes.count)
+            let slice = Array(streamingEpisodes.dropFirst(fallbackStart).prefix(localEpisodes.count))
+            if slice.count == localEpisodes.count {
+                for (episode, streaming) in zip(localEpisodes, slice) {
+                    result[episode.number] = episodeMetadata(from: streaming, number: episode.number)
+                }
+                return result
+            }
+        }
+
+        return [:]
+    }
+
+    private func episodeMetadata(from episode: AniListStreamingEpisode, number: Int) -> EpisodeMetadata {
+        EpisodeMetadata(
+            number: number,
+            title: episode.title,
+            summary: nil,
+            airDate: nil,
+            runtimeMinutes: nil,
+            thumbnailURL: episode.thumbnailURL
+        )
     }
 
     private func resolveKitsuAnimeId(malId: Int?, title: String) async -> String? {

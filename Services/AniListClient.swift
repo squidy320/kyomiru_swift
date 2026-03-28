@@ -968,7 +968,7 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             let title = row["title"] as? String ?? "Episode"
             let thumb = row["thumbnail"] as? String
             let url = row["url"] as? String
-            let number = extractEpisodeNumber(from: title) ?? extractEpisodeNumber(from: url)
+            let number = extractEpisodeNumber(fromTitle: title) ?? extractEpisodeNumber(fromURL: url)
             return AniListStreamingEpisode(
                 title: title,
                 thumbnailURL: thumb.flatMap(URL.init(string:)),
@@ -976,7 +976,8 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
                 episodeNumber: number
             )
         }
-        AppLog.debug(.network, "streaming episodes request success mediaId=\(mediaId) count=\(episodes.count)")
+        let parsedCount = episodes.filter { ($0.episodeNumber ?? 0) > 0 }.count
+        AppLog.debug(.network, "streaming episodes request success mediaId=\(mediaId) count=\(episodes.count) parsed=\(parsedCount)")
         return episodes
     }
 
@@ -1157,10 +1158,43 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         return current
     }
 
-    private func extractEpisodeNumber(from text: String?) -> Int? {
+    private func extractEpisodeNumber(fromTitle text: String?) -> Int? {
         guard let text else { return nil }
-        let digits = text.split { !$0.isNumber }.compactMap { Int($0) }
-        return digits.first
+        return firstCapturedInteger(
+            in: text,
+            patterns: [
+                #"(?i)\bepisode\s*(\d{1,4})\b"#,
+                #"(?i)\bep\.?\s*(\d{1,4})\b"#,
+                #"^\s*(\d{1,4})\s*[-:.]"#
+            ]
+        )
+    }
+
+    private func extractEpisodeNumber(fromURL text: String?) -> Int? {
+        guard let text else { return nil }
+        return firstCapturedInteger(
+            in: text,
+            patterns: [
+                #"(?i)[?&](?:episode|ep)=(\d{1,4})\b"#,
+                #"(?i)\bepisodes?[-/_=: ]+(\d{1,4})\b"#,
+                #"(?i)\bep[-/_=: ]+(\d{1,4})\b"#,
+                #"(?i)/watch/[^/?#]*-(\d{1,4})(?:[/?#]|$)"#
+            ]
+        )
+    }
+
+    private func firstCapturedInteger(in text: String, patterns: [String]) -> Int? {
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            guard let match = regex.firstMatch(in: text, range: range), match.numberOfRanges > 1 else { continue }
+            let capture = match.range(at: 1)
+            guard let swiftRange = Range(capture, in: text) else { continue }
+            if let number = Int(text[swiftRange]), number > 0 {
+                return number
+            }
+        }
+        return nil
     }
 }
 
