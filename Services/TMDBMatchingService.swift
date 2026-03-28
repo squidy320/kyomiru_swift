@@ -98,9 +98,11 @@ final class TMDBMatchingService {
         preferredSeasonNumber: Int? = nil
     ) async -> TMDBResolvedMatch? {
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
-        let cacheKey = "tmdb:match:v2:\(media.id)"
+        let cacheKey = "tmdb:match:v3:\(media.id):preferred:\(preferredSeasonNumber ?? 0)"
         if let cached = cacheManager.load(aniListId: media.id) {
-            if let firstEpisodeNumber, firstEpisodeNumber > 1, cached.episodeOffset == 0 {
+            if let preferredSeasonNumber, preferredSeasonNumber > 0, cached.seasonNumber != preferredSeasonNumber {
+                AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=preferred-season-mismatch cached=\(cached.seasonNumber) preferred=\(preferredSeasonNumber)")
+            } else if let firstEpisodeNumber, firstEpisodeNumber > 1, cached.episodeOffset == 0 {
                 AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=offset-zero firstEp=\(firstEpisodeNumber)")
             } else {
                 return TMDBResolvedMatch(
@@ -119,7 +121,9 @@ final class TMDBMatchingService {
         let requestKey = "\(media.id):\(franchiseStartYear ?? 0):\(firstEpisodeNumber ?? 1):\(preferredSeasonNumber ?? 0)"
         return await matchRequests.value(for: requestKey) { [self] in
             if let cached = cacheManager.load(aniListId: media.id) {
-                if let firstEpisodeNumber, firstEpisodeNumber > 1, cached.episodeOffset == 0 {
+                if let preferredSeasonNumber, preferredSeasonNumber > 0, cached.seasonNumber != preferredSeasonNumber {
+                    AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=preferred-season-mismatch cached=\(cached.seasonNumber) preferred=\(preferredSeasonNumber)")
+                } else if let firstEpisodeNumber, firstEpisodeNumber > 1, cached.episodeOffset == 0 {
                     AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=offset-zero firstEp=\(firstEpisodeNumber)")
                 } else {
                     return TMDBResolvedMatch(

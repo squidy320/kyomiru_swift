@@ -1047,7 +1047,10 @@ struct DetailsView: View {
     }
 
     private func episodeThumbnailURL(for episode: SoraEpisode) -> URL? {
-        media.coverURL ?? media.bannerURL
+        episodeMetadata[episode.number]?.thumbnailURL
+            ?? streamingThumbnail(for: episode)
+            ?? media.bannerURL
+            ?? media.coverURL
     }
 
     private func episodeSubtitle() -> String {
