@@ -248,6 +248,7 @@ struct EpisodeRowView: View {
 
     var body: some View {
         let useComfortableLayout = appState.settings.useComfortableLayout
+        let isiPad = UIDevice.current.userInterfaceIdiom == .pad
         let thumbWidth = UIConstants.episodeThumbWidth + (useComfortableLayout ? 12 : 0)
         let thumbHeight = thumbWidth * 0.57
         let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
@@ -303,14 +304,19 @@ struct EpisodeRowView: View {
                 }
 
                 VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
-                    HStack(spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
                         Text("Episode \(episodeNumber)")
                             .font(.system(size: useComfortableLayout ? 13 : 12, weight: .semibold))
                             .foregroundColor(Theme.textSecondary)
-                        if let ratingText {
+
+                        if !isiPad, let ratingText {
                             Text(ratingText)
                                 .font(.system(size: useComfortableLayout ? 13 : 12, weight: .semibold))
                                 .foregroundColor(Theme.textSecondary)
+                        }
+                        Spacer(minLength: 0)
+                        if isiPad, let ratingText {
+                            episodeRatingBadge(text: ratingText, comfortable: useComfortableLayout)
                         }
                     }
                     Text(title)
@@ -339,6 +345,23 @@ struct EpisodeRowView: View {
                 transaction.animation = nil
             }
         }
+    }
+
+    @ViewBuilder
+    private func episodeRatingBadge(text: String, comfortable: Bool) -> some View {
+        Text(text)
+            .font(.system(size: comfortable ? 12 : 11, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, comfortable ? 10 : 8)
+            .padding(.vertical, comfortable ? 6 : 5)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.black.opacity(0.45))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
     }
 }
 

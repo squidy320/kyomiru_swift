@@ -126,7 +126,7 @@ final class TMDBMatchingService {
         expectedEpisodeCount: Int?,
         maxEpisodeNumber: Int?
     ) -> String {
-        "tmdb:match:v6:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
+        "tmdb:match:v7:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
     }
 
     func matchShowAndSeason(
@@ -498,6 +498,8 @@ final class TMDBMatchingService {
         let seasons = show.seasons
         guard !seasons.isEmpty else { return nil }
 
+        let explicitSeasonMarker = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best)
+        let explicitPartMarker = TitleMatcher.extractPartMarkerNumber(from: media.title.best)
         let targetDate = date(from: media.startDate)
         let targetYear = media.startDate?.year ?? media.seasonYear
         let rangeMatch = cumulativeRangeMatch(
@@ -506,35 +508,38 @@ final class TMDBMatchingService {
             firstEpisodeNumber: firstEpisodeNumber,
             maxEpisodeNumber: maxEpisodeNumber
         )
+        let dateMatch = nearestSeasonByAirDate(seasons: seasons, targetDate: targetDate)
+        let yearMatch = nearestSeasonByYear(seasons: seasons, targetYear: targetYear)
 
-        if let preferredSeasonNumber, preferredSeasonNumber > 0,
-           seasons.contains(where: { $0.seasonNumber == preferredSeasonNumber }) {
-            let offset = rangeMatch?.seasonNumber == preferredSeasonNumber ? (rangeMatch?.offset ?? 0) : 0
+        if let explicitSeasonMarker, explicitSeasonMarker > 0 {
+            guard seasons.contains(where: { $0.seasonNumber == explicitSeasonMarker }) else {
+                return nil
+            }
+            if hasHardRangeConflict(
+                explicitSeasonMarker,
+                rangeMatch: rangeMatch,
+                firstEpisodeNumber: firstEpisodeNumber,
+                expectedEpisodeCount: expectedEpisodeCount,
+                maxEpisodeNumber: maxEpisodeNumber
+            ) {
+                return nil
+            }
+            let offset = rangeMatch?.seasonNumber == explicitSeasonMarker ? (rangeMatch?.offset ?? 0) : 0
             return SelectedSeason(
-                seasonNumber: preferredSeasonNumber,
+                seasonNumber: explicitSeasonMarker,
                 episodeOffset: offset,
                 confidence: 0.98,
                 reason: "explicit-season-marker"
             )
         }
 
-        if let dateMatch = nearestSeasonByAirDate(seasons: seasons, targetDate: targetDate) {
-            let offset = rangeMatch?.seasonNumber == dateMatch.seasonNumber ? (rangeMatch?.offset ?? 0) : 0
-            return SelectedSeason(
-                seasonNumber: dateMatch.seasonNumber,
-                episodeOffset: offset,
-                confidence: dateMatch.score,
-                reason: "first-air-date"
-            )
-        }
-
-        if let yearMatch = nearestSeasonByYear(seasons: seasons, targetYear: targetYear) {
-            let offset = rangeMatch?.seasonNumber == yearMatch.seasonNumber ? (rangeMatch?.offset ?? 0) : 0
-            return SelectedSeason(
-                seasonNumber: yearMatch.seasonNumber,
-                episodeOffset: offset,
-                confidence: yearMatch.score,
-                reason: "season-year"
+        if let explicitPartMarker, explicitPartMarker > 0 {
+            return selectPartOrCourSeason(
+                seasons: seasons,
+                rangeMatch: rangeMatch,
+                dateMatch: dateMatch,
+                yearMatch: yearMatch,
+                partMarker: explicitPartMarker
             )
         }
 
@@ -542,8 +547,26 @@ final class TMDBMatchingService {
             return SelectedSeason(
                 seasonNumber: rangeMatch.seasonNumber,
                 episodeOffset: rangeMatch.offset,
-                confidence: 0.88,
+                confidence: 0.9,
                 reason: "episode-number-range"
+            )
+        }
+
+        if let dateMatch {
+            return SelectedSeason(
+                seasonNumber: dateMatch.seasonNumber,
+                episodeOffset: 0,
+                confidence: dateMatch.score,
+                reason: "first-air-date"
+            )
+        }
+
+        if let yearMatch {
+            return SelectedSeason(
+                seasonNumber: yearMatch.seasonNumber,
+                episodeOffset: 0,
+                confidence: yearMatch.score,
+                reason: "season-year"
             )
         }
 
@@ -553,6 +576,78 @@ final class TMDBMatchingService {
             confidence: 0.55,
             reason: "first-season-fallback"
         )
+    }
+
+    private func selectPartOrCourSeason(
+        seasons: [TMDBSeasonInfo],
+        rangeMatch: SeasonRangeMatch?,
+        dateMatch: (seasonNumber: Int, score: Double)?,
+        yearMatch: (seasonNumber: Int, score: Double)?,
+        partMarker: Int
+    ) -> SelectedSeason? {
+        if seasons.count == 1, let onlySeason = seasons.first {
+            return SelectedSeason(
+                seasonNumber: onlySeason.seasonNumber,
+                episodeOffset: rangeMatch?.offset ?? 0,
+                confidence: 0.84,
+                reason: "single-season-part-cour"
+            )
+        }
+
+        if let rangeMatch {
+            return SelectedSeason(
+                seasonNumber: rangeMatch.seasonNumber,
+                episodeOffset: rangeMatch.offset,
+                confidence: 0.96,
+                reason: "part-cour-episode-range"
+            )
+        }
+
+        if let dateMatch, dateMatch.score >= 0.78 {
+            return SelectedSeason(
+                seasonNumber: dateMatch.seasonNumber,
+                episodeOffset: 0,
+                confidence: dateMatch.score,
+                reason: "part-cour-first-air-date"
+            )
+        }
+
+        if let yearMatch, yearMatch.score >= 0.82 {
+            return SelectedSeason(
+                seasonNumber: yearMatch.seasonNumber,
+                episodeOffset: 0,
+                confidence: yearMatch.score,
+                reason: "part-cour-season-year"
+            )
+        }
+
+        if partMarker == 1, let firstSeason = seasons.first {
+            return SelectedSeason(
+                seasonNumber: firstSeason.seasonNumber,
+                episodeOffset: 0,
+                confidence: 0.62,
+                reason: "part-cour-first-season-fallback"
+            )
+        }
+
+        return nil
+    }
+
+    private func hasHardRangeConflict(
+        _ explicitSeasonNumber: Int,
+        rangeMatch: SeasonRangeMatch?,
+        firstEpisodeNumber: Int?,
+        expectedEpisodeCount: Int?,
+        maxEpisodeNumber: Int?
+    ) -> Bool {
+        guard let rangeMatch else { return false }
+        guard rangeMatch.seasonNumber != explicitSeasonNumber else { return false }
+
+        let firstNumber = firstEpisodeNumber ?? 1
+        let lastNumber = maxEpisodeNumber ?? firstNumber
+        let expected = expectedEpisodeCount ?? 0
+        let looksGlobal = firstNumber > 1 || (expected > 0 && lastNumber >= expected + 5)
+        return looksGlobal
     }
 
     private func cumulativeRangeMatch(
