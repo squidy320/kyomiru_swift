@@ -171,18 +171,6 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
             }
 
-            SettingsSectionCard(title: "Cards & Images", subtitle: "Choose the preferred image source for anime cards.") {
-                Picker("Anime Card Images", selection: Binding(
-                    get: { appState.settings.cardImageSource },
-                    set: { appState.settings.cardImageSource = $0 }
-                )) {
-                    ForEach(CardImageSource.allCases) { source in
-                        Text(source.title).tag(source)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-
             SettingsSectionCard(title: "Display", subtitle: "Practical UI preferences.") {
                 Toggle("Reduce Motion", isOn: Binding(
                     get: { appState.settings.reduceMotion },

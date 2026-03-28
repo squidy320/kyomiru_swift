@@ -148,9 +148,6 @@ struct DiscoveryView: View {
         .onChange(of: imdbTrending) { _, _ in
             Task { await prefetchDiscoveryImages() }
         }
-        .onChange(of: appState.settings.cardImageSource) { _, _ in
-            Task { await prefetchDiscoveryImages() }
-        }
         .onChange(of: librarySortRaw) { _, _ in
             Task { await loadDiscovery(forceRefresh: true) }
         }
@@ -527,15 +524,10 @@ private extension DiscoveryView {
     func prefetchDiscoveryImages(limit: Int = 16) async {
         guard networkMonitor.isOnWiFi else { return }
         var urls: [URL] = []
-        let useTMDB = appState.settings.cardImageSource == .tmdb
         let mediaItems = sections.flatMap(\.items).prefix(limit)
         for media in mediaItems {
-            if useTMDB {
-                if let tmdb = await appState.services.metadataService.posterURL(for: media) {
-                    urls.append(tmdb)
-                } else if let cover = media.coverURL {
-                    urls.append(cover)
-                }
+            if let tmdb = await appState.services.metadataService.posterURL(for: media) {
+                urls.append(tmdb)
             } else if let cover = media.coverURL {
                 urls.append(cover)
             }

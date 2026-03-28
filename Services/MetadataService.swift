@@ -39,10 +39,10 @@ private enum TMDBMetadataCacheResult {
 final class MetadataService {
     private static let metadataCacheTTL: TimeInterval = 60 * 60 * 24
     private static let negativeMetadataCacheTTL: TimeInterval = 60 * 30
+    private let tmdbImageBase = "https://image.tmdb.org/t/p"
     private let session: URLSession
     private let cacheStore: CacheStore
     private let apiKey: String?
-    private let imageBase = "https://image.tmdb.org/t/p/original"
     private let metadataRequests = TMDBTaskCoalescer<Int, TMDBMetadata?>()
     private let tmdbMatcher: TMDBMatchingService
 
@@ -242,8 +242,8 @@ final class MetadataService {
             let title = root?["name"] as? String ?? root?["original_name"] as? String ?? "Unknown"
             let posterPath = root?["poster_path"] as? String
             let backdropPath = root?["backdrop_path"] as? String
-            let posterURL = posterPath.flatMap { URL(string: "\(imageBase)\($0)") }
-            let backdropURL = backdropPath.flatMap { URL(string: "\(imageBase)\($0)") }
+            let posterURL = posterPath.flatMap { tmdbImageURL(path: $0, size: "w342") }
+            let backdropURL = backdropPath.flatMap { tmdbImageURL(path: $0, size: "w780") }
             let logoURL = await fetchBestLogo(showId: showId, apiKey: apiKey)
             return TMDBMetadata(
                 tmdbId: showId,
@@ -280,12 +280,16 @@ final class MetadataService {
                 return sizeA > sizeB
             }
             if let best = sorted.first, let path = best["file_path"] as? String {
-                return URL(string: "\(imageBase)\(path)")
+                return tmdbImageURL(path: path, size: "original")
             }
         } catch {
             return nil
         }
         return nil
+    }
+
+    private func tmdbImageURL(path: String, size: String) -> URL? {
+        URL(string: "\(tmdbImageBase)/\(size)\(path)")
     }
 
     private func yearFrom(_ dateString: String?) -> Int? {
@@ -704,7 +708,7 @@ final class EpisodeMetadataService {
 
             guard let seasonNumber else { return nil }
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
-            let cacheKey = "episode-meta:tmdb:v5:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let cacheKey = "episode-meta:tmdb:v6:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
             if let cached = cacheStore.readJSON(forKey: cacheKey),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
@@ -741,18 +745,18 @@ final class EpisodeMetadataService {
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
-            let cacheKey = "episode-meta:tmdb:v5:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let cacheKey = "episode-meta:tmdb:v6:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
             if accepted, let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
             }
-            let aniListFallback = await fetchFromAniListStreaming(media: media)
             if accepted, !primary.isEmpty {
-                mapped = mergeEpisodeMetadata(aniList: aniListFallback, tmdb: primary)
+                mapped = primary
                 if let data = try? JSONEncoder().encode(mapped) {
                     cacheStore.writeJSON(data, forKey: cacheKey)
                 }
             } else {
+                let aniListFallback = await fetchFromAniListStreaming(media: media)
                 if let reason = rejectReason {
                     AppLog.debug(.matching, "tmdb season rejected mediaId=\(media.id) reason=\(reason)")
                 }
@@ -760,42 +764,6 @@ final class EpisodeMetadataService {
             }
         }
         return mapped
-    }
-
-    private func mergeEpisodeMetadata(
-        aniList: [Int: EpisodeMetadata],
-        tmdb: [Int: EpisodeMetadata]
-    ) -> [Int: EpisodeMetadata] {
-        guard !aniList.isEmpty else { return tmdb }
-        guard !tmdb.isEmpty else { return aniList }
-
-        var result = aniList
-        for (number, tmdbMeta) in tmdb {
-            if let aniListMeta = result[number] {
-                let aniListTitle = aniListMeta.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                let tmdbTitle = tmdbMeta.title.trimmingCharacters(in: .whitespacesAndNewlines)
-                let preferAniListTitle = !aniListTitle.isEmpty && !isGenericEpisodeTitle(aniListTitle)
-                let preferTMDBTitle = !tmdbTitle.isEmpty && !isGenericEpisodeTitle(tmdbTitle)
-                let merged = EpisodeMetadata(
-                    number: number,
-                    title: preferAniListTitle ? aniListMeta.title : (preferTMDBTitle ? tmdbMeta.title : aniListMeta.title),
-                    summary: tmdbMeta.summary ?? aniListMeta.summary,
-                    airDate: tmdbMeta.airDate ?? aniListMeta.airDate,
-                    runtimeMinutes: tmdbMeta.runtimeMinutes ?? aniListMeta.runtimeMinutes,
-                    thumbnailURL: aniListMeta.thumbnailURL ?? tmdbMeta.thumbnailURL
-                )
-                result[number] = merged
-            } else {
-                result[number] = tmdbMeta
-            }
-        }
-        return result
-    }
-
-    private func isGenericEpisodeTitle(_ title: String) -> Bool {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return true }
-        return trimmed.lowercased().hasPrefix("episode ")
     }
 
     private func fetchFromKitsu(media: AniListMedia) async -> [Int: EpisodeMetadata] {

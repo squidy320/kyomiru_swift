@@ -262,9 +262,6 @@ struct LibraryView: View {
             Task { await prefetchLibraryImages(sections: sections) }
             Task { await prefetchContinueWatchingThumbnails(items: continueWatchingItems()) }
         }
-        .onChange(of: appState.settings.cardImageSource) { _, _ in
-            Task { await prefetchLibraryImages(sections: sections) }
-        }
     }
 
     private func filteredSections() -> [AniListLibrarySection] {
@@ -408,13 +405,12 @@ struct LibraryView: View {
 
     private func prefetchLibraryImages(sections: [AniListLibrarySection], limit: Int = 18) async {
         guard networkMonitor.isOnWiFi else { return }
-        let useTMDB = appState.settings.cardImageSource == .tmdb
         let mediaItems = sections.flatMap(\.items).map(\.media)
         var urls: [URL] = []
 
         let continueItems = continueWatchingItems()
         for item in continueItems.prefix(6) {
-            if useTMDB, let media = item.media,
+            if let media = item.media,
                let backdrop = await appState.services.metadataService.backdropURL(for: media) {
                 urls.append(backdrop)
             } else if let url = item.imageURL {
@@ -423,12 +419,8 @@ struct LibraryView: View {
         }
 
         for media in mediaItems.prefix(limit) {
-            if useTMDB {
-                if let poster = await appState.services.metadataService.posterURL(for: media) {
-                    urls.append(poster)
-                } else if let cover = media.coverURL {
-                    urls.append(cover)
-                }
+            if let poster = await appState.services.metadataService.posterURL(for: media) {
+                urls.append(poster)
             } else if let cover = media.coverURL {
                 urls.append(cover)
             }

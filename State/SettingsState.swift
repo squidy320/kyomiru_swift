@@ -6,7 +6,6 @@ final class SettingsState: ObservableObject {
     @AppStorage("settings.playerBackend") private var playerBackendRaw: String = PlayerBackend.avPlayer.rawValue
     @AppStorage("settings.autoSyncAniList") private var autoSyncAniListRaw: Bool = true
     @AppStorage("settings.showPlayerDebugOverlay") private var showPlayerDebugOverlayRaw: Bool = false
-    @AppStorage("settings.cardImageSource") private var cardImageSourceRaw: String = CardImageSource.tmdb.rawValue
     @AppStorage("settings.playerSkipIntervalSeconds") private var playerSkipIntervalRaw: Double = 85
     @AppStorage("settings.playerHoldSpeed") private var playerHoldSpeedRaw: Double = PlayerHoldSpeed.twoX.rawValue
     @AppStorage("settings.appearanceThemeMode") private var appearanceThemeModeRaw: String = AppearanceThemeMode.system.rawValue
@@ -49,14 +48,6 @@ final class SettingsState: ObservableObject {
         get { showPlayerDebugOverlayRaw }
         set {
             showPlayerDebugOverlayRaw = newValue
-            objectWillChange.send()
-        }
-    }
-
-    var cardImageSource: CardImageSource {
-        get { CardImageSource(rawValue: cardImageSourceRaw) ?? .tmdb }
-        set {
-            cardImageSourceRaw = newValue.rawValue
             objectWillChange.send()
         }
     }
@@ -123,19 +114,6 @@ enum PlayerBackend: String, CaseIterable, Identifiable {
             return "Best iOS integration with Picture in Picture support."
         case .mpv:
             return "Advanced playback pipeline with broader codec and subtitle handling."
-        }
-    }
-}
-
-enum CardImageSource: String, CaseIterable, Identifiable {
-    case tmdb
-    case anilist
-
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .tmdb: return "TMDB"
-        case .anilist: return "AniList"
         }
     }
 }

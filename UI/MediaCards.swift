@@ -12,8 +12,7 @@ struct MediaPosterCard: View {
     let overlayOpacity: Double
     let allowFallbackWhileLoading: Bool
     @EnvironmentObject private var appState: AppState
-    @State private var imdbPosterURL: URL?
-    @State private var tmdbLookupComplete = false
+    @State private var tmdbPosterURL: URL?
 
     init(
         title: String,
@@ -40,20 +39,16 @@ struct MediaPosterCard: View {
     }
 
     var body: some View {
-        let useTMDB = appState.settings.cardImageSource == .tmdb
         let useComfortableLayout = appState.settings.useComfortableLayout
         let cardWidth = size?.width ?? UIConstants.posterCardWidth
         let cardHeight = size?.height ?? UIConstants.posterCardHeight
         let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
         let textSpacing = UIConstants.tinyPadding + (useComfortableLayout ? 1 : 0)
         let resolvedURL: URL? = {
-            if useTMDB {
-                if tmdbLookupComplete {
-                    return imdbPosterURL ?? imageURL
-                }
-                return allowFallbackWhileLoading ? (imdbPosterURL ?? imageURL) : imdbPosterURL
+            if let tmdbPosterURL {
+                return tmdbPosterURL
             }
-            return imageURL
+            return allowFallbackWhileLoading ? imageURL : nil
         }()
         ZStack(alignment: .topTrailing) {
             ZStack(alignment: .bottomLeading) {
@@ -135,15 +130,9 @@ struct MediaPosterCard: View {
                 transaction.animation = nil
             }
         }
-        .task(id: "\(media?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
+        .task(id: media?.id ?? 0) {
             guard let media else { return }
-            if useTMDB {
-                imdbPosterURL = await appState.services.metadataService.posterURL(for: media)
-                tmdbLookupComplete = true
-            } else {
-                imdbPosterURL = nil
-                tmdbLookupComplete = false
-            }
+            tmdbPosterURL = await appState.services.metadataService.posterURL(for: media)
         }
     }
 }
@@ -157,18 +146,11 @@ struct ContinueWatchingCard: View {
     let episodeBadge: String?
     let media: AniListMedia?
     @EnvironmentObject private var appState: AppState
-    @State private var imdbImageURL: URL?
-    @State private var tmdbLookupComplete = false
+    @State private var tmdbImageURL: URL?
     var body: some View {
-        let useTMDB = appState.settings.cardImageSource == .tmdb
         let useComfortableLayout = appState.settings.useComfortableLayout
         let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
-        let resolvedURL: URL? = {
-            if useTMDB {
-                return imdbImageURL ?? imageURL
-            }
-            return imageURL
-        }()
+        let resolvedURL = tmdbImageURL ?? imageURL
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.06))
@@ -234,15 +216,9 @@ struct ContinueWatchingCard: View {
                 transaction.animation = nil
             }
         }
-        .task(id: "\(media?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
+        .task(id: media?.id ?? 0) {
             guard let media else { return }
-            if useTMDB {
-                imdbImageURL = await appState.services.metadataService.backdropURL(for: media)
-                tmdbLookupComplete = true
-            } else {
-                imdbImageURL = nil
-                tmdbLookupComplete = false
-            }
+            tmdbImageURL = await appState.services.metadataService.backdropURL(for: media)
         }
     }
 }
