@@ -11,7 +11,6 @@ final class CacheService {
         await ImageCache.shared.clearAll()
         clearCacheDirectories()
         clearTemporaryFiles()
-        clearDownloads()
         AppLog.debug(.cache, "clear all complete")
     }
 
@@ -50,7 +49,9 @@ final class CacheService {
             "KyomiruCache",
             "KyomiruImageCache",
             "KyomiruURLCache",
-            "tmdb_meta"
+            "tmdb_meta",
+            "tmdb_meta_v2",
+            "tmdb_meta_v3"
         ]
         for name in targets {
             let url = caches.appendingPathComponent(name, isDirectory: true)
@@ -82,7 +83,9 @@ final class CacheService {
                 "KyomiruCache",
                 "KyomiruImageCache",
                 "KyomiruURLCache",
-                "tmdb_meta"
+                "tmdb_meta",
+                "tmdb_meta_v2",
+                "tmdb_meta_v3"
             ]
             for name in targets {
                 let url = caches.appendingPathComponent(name, isDirectory: true)
