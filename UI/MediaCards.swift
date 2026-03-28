@@ -25,7 +25,7 @@ struct MediaPosterCard: View {
         cornerBadge: String?,
         size: CGSize? = nil,
         overlayOpacity: Double = 0.85,
-        allowFallbackWhileLoading: Bool = false
+        allowFallbackWhileLoading: Bool = true
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -165,7 +165,7 @@ struct ContinueWatchingCard: View {
         let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
         let resolvedURL: URL? = {
             if useTMDB {
-                return tmdbLookupComplete ? (imdbImageURL ?? imageURL) : imdbImageURL
+                return imdbImageURL ?? imageURL
             }
             return imageURL
         }()

@@ -25,7 +25,7 @@ struct HeroHeader: View {
         let contentPadding: CGFloat = useComfortableLayout ? 22 : 18
         let resolvedURL: URL? = {
             if useTMDB {
-                return tmdbLookupComplete ? (imdbBackdropURL ?? imageURL) : imdbBackdropURL
+                return imdbBackdropURL ?? imageURL
             }
             return imageURL
         }()
