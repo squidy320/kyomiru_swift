@@ -298,7 +298,8 @@ final class TMDBMatchingService {
            let showId = await findByMAL(malId: malId) {
             return showId
         }
-        return await searchShow(title: title, startYear: startYear)
+        let titles = candidateTitles(for: media, fallbackTitle: title)
+        return await searchShow(titles: titles, startYear: startYear)
     }
 
     private func findByMAL(malId: Int) async -> Int? {
@@ -321,11 +322,19 @@ final class TMDBMatchingService {
         }
     }
 
-    private func searchShow(title: String, startYear: Int?) async -> Int? {
+    private func searchShow(titles: [String], startYear: Int?) async -> Int? {
         guard let apiKey else { return nil }
-        let sanitized = TitleSanitizer.sanitize(title)
-        let queries = TitleMatcher.buildQueries(from: sanitized)
-        let normalizedTarget = TitleMatcher.cleanTitle(sanitized)
+        let sanitizedTitles = titles
+            .map(TitleSanitizer.sanitize)
+            .filter { !$0.isEmpty }
+        guard !sanitizedTitles.isEmpty else { return nil }
+
+        let queries = Array(Set(sanitizedTitles.flatMap { TitleMatcher.buildQueries(from: $0) }))
+        let normalizedTargets = sanitizedTitles
+            .map(TitleMatcher.cleanTitle)
+            .filter { !$0.isEmpty }
+        guard !normalizedTargets.isEmpty else { return nil }
+
         var best: (id: Int, score: Double)?
 
         for query in queries {
@@ -345,10 +354,10 @@ final class TMDBMatchingService {
                 for row in results {
                     guard let id = row["id"] as? Int else { continue }
                     let name = row["name"] as? String ?? row["original_name"] as? String ?? ""
-                    let titleScore = TitleMatcher.diceCoefficient(
-                        TitleMatcher.cleanTitle(name),
-                        normalizedTarget
-                    )
+                    let normalizedName = TitleMatcher.cleanTitle(name)
+                    let titleScore = normalizedTargets
+                        .map { TitleMatcher.diceCoefficient(normalizedName, $0) }
+                        .max() ?? 0.0
                     let firstAirDate = row["first_air_date"] as? String
                     let yearScore: Double
                     if let startYear, let year = yearFrom(firstAirDate) {
@@ -372,6 +381,23 @@ final class TMDBMatchingService {
             }
         }
         return best?.id
+    }
+
+    private func candidateTitles(for media: AniListMedia, fallbackTitle: String) -> [String] {
+        var titles = [
+            media.title.english,
+            media.title.romaji,
+            media.title.native,
+            media.title.best,
+            fallbackTitle
+        ].compactMap { value -> String? in
+            guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+                return nil
+            }
+            return value
+        }
+        titles.append(contentsOf: titles.map(TitleMatcher.stripSeasonMarkers))
+        return Array(Set(titles)).sorted()
     }
 
     private func fetchShowSummary(showId: Int, apiKey: String) async -> TMDBShowSummary? {
