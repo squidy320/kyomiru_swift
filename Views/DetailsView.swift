@@ -124,31 +124,22 @@ struct DetailsView: View {
     @State private var streamingEpisodes: [AniListStreamingEpisode] = []
     @State private var tmdbHeroBackdropURL: URL?
     @State private var tmdbHeroLogoURL: URL?
-    @State private var phoneHeroAccentColor: UIColor?
     @State private var showImportPicker = false
     @State private var showImportReview = false
     @State private var importCandidates: [EpisodeImportCandidate] = []
     @State private var importMessage: String?
     @State private var downloadMessage: String?
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
-    private var phoneHeroTintStyle: Theme.HeroTintStyle { Theme.heroTintStyle(from: phoneHeroAccentColor) }
 
     var body: some View {
         let useComfortableLayout = appState.settings.useComfortableLayout
         let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
         let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
+            Color.black.ignoresSafeArea()
             if isPad {
-                Color.black.ignoresSafeArea()
                 ipadEpisodeLayout
             } else {
-                LinearGradient(
-                    colors: phoneHeroTintStyle.pageBackground,
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
                         detailHeroHeader
@@ -527,21 +518,21 @@ struct DetailsView: View {
                 )
 
                 LinearGradient(
-                    colors: phoneHeroTintStyle.heroBottom,
+                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: phoneHeroTintStyle.heroTop,
+                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: phoneHeroTintStyle.heroFooter,
+                    colors: [Color.clear, Color.black.opacity(0.9)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -580,20 +571,6 @@ struct DetailsView: View {
             let fallback = media.bannerURL ?? media.coverURL
             let urls = [tmdbHeroBackdropURL, fallback].compactMap { $0 }
             await ImageCache.shared.prefetch(urls: urls)
-            await refreshPhoneHeroAccentColor()
-        }
-    }
-
-    private func refreshPhoneHeroAccentColor() async {
-        guard !isPad else { return }
-        let url = tmdbHeroBackdropURL ?? media.bannerURL ?? media.coverURL
-        guard let url else {
-            await MainActor.run { phoneHeroAccentColor = nil }
-            return
-        }
-        let color = await ImageAccentColorCache.shared.accentColor(for: url)
-        await MainActor.run {
-            phoneHeroAccentColor = color
         }
     }
 
