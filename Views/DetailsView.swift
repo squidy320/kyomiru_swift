@@ -380,8 +380,8 @@ struct DetailsView: View {
             LazyHStack(spacing: UIConstants.interCardSpacing) {
                 ForEach(episodes, id: \.id) { episode in
                     let meta = episodeMetadata[episode.number]
-                    let title = meta?.title ?? streamingTitle(for: episode) ?? "Episode \(episode.number)"
-                    let thumb = meta?.thumbnailURL ?? streamingThumbnail(for: episode) ?? episodeThumbnailURL(for: episode)
+                    let title = streamingTitle(for: episode) ?? meta?.title ?? "Episode \(episode.number)"
+                    let thumb = streamingThumbnail(for: episode) ?? meta?.thumbnailURL ?? episodeThumbnailURL(for: episode)
                     Button {
                         playerStartAt = nil
                         selectEpisode(episode)
@@ -716,10 +716,10 @@ struct DetailsView: View {
                 let meta = episodeMetadata[episode.number]
                 EpisodeRowView(
                     episodeNumber: episode.number,
-                    title: meta?.title ?? streamingTitle(for: episode) ?? "Episode \(episode.number)",
+                    title: streamingTitle(for: episode) ?? meta?.title ?? "Episode \(episode.number)",
                     ratingText: ratingText(for: episode.number),
                     description: meta?.summary,
-                    thumbnailURL: meta?.thumbnailURL ?? streamingThumbnail(for: episode) ?? episodeThumbnailURL(for: episode),
+                    thumbnailURL: streamingThumbnail(for: episode) ?? meta?.thumbnailURL ?? episodeThumbnailURL(for: episode),
                     isPlayable: true,
                     isWatched: isEpisodeWatched(episode.number),
                     isDownloaded: isEpisodeDownloaded(episode.number),
