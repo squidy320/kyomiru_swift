@@ -25,7 +25,7 @@ final class AppServices {
         self.mediaTracker = MediaTracker()
         self.playbackEngine = PlaybackEngine()
         self.offlineManager = OfflineManager()
-        self.tmdbMatchingService = TMDBMatchingService(cacheStore: cacheStore)
+        self.tmdbMatchingService = TMDBMatchingService(cacheStore: cacheStore, aniListClient: aniListClient)
         self.metadataService = MetadataService(cacheStore: cacheStore, tmdbMatcher: tmdbMatchingService)
         self.episodeMetadataService = EpisodeMetadataService(
             cacheStore: cacheStore,

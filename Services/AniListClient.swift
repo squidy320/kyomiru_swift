@@ -218,19 +218,20 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         let q = """
         query Search($search: String) {
           Page(page: 1, perPage: 10) {
-            media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              format
-              status
-              isAdult
-              genres
+              media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
+                id
+                idMal
+                title { romaji english native }
+                coverImage { extraLarge large }
+                bannerImage
+                averageScore
+                episodes
+                seasonYear
+                startDate { year month day }
+                format
+                status
+                isAdult
+                genres
               studios(isMain: true) { nodes { name } }
             }
           }
