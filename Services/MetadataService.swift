@@ -717,14 +717,14 @@ final class EpisodeMetadataService {
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
-            let cacheKey = "episode-meta:tmdb:v2:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let cacheKey = "episode-meta:tmdb:v3:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
             if accepted, let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
             }
             let aniListFallback = await fetchFromAniListStreaming(media: media)
             if accepted, !primary.isEmpty {
-                mapped = mergeEpisodeMetadata(primary: primary, fallback: aniListFallback)
+                mapped = mergeEpisodeMetadata(aniList: aniListFallback, tmdb: primary)
                 if let data = try? JSONEncoder().encode(mapped) {
                     cacheStore.writeJSON(data, forKey: cacheKey)
                 }
@@ -739,28 +739,30 @@ final class EpisodeMetadataService {
     }
 
     private func mergeEpisodeMetadata(
-        primary: [Int: EpisodeMetadata],
-        fallback: [Int: EpisodeMetadata]
+        aniList: [Int: EpisodeMetadata],
+        tmdb: [Int: EpisodeMetadata]
     ) -> [Int: EpisodeMetadata] {
-        guard !fallback.isEmpty else { return primary }
-        var result = primary
-        for (number, fallbackMeta) in fallback {
-            if let current = result[number] {
-                let needsTitle = isGenericEpisodeTitle(current.title)
-                let needsThumb = current.thumbnailURL == nil
-                if needsTitle || needsThumb {
-                    let merged = EpisodeMetadata(
-                        number: number,
-                        title: needsTitle ? fallbackMeta.title : current.title,
-                        summary: current.summary,
-                        airDate: current.airDate,
-                        runtimeMinutes: current.runtimeMinutes,
-                        thumbnailURL: needsThumb ? fallbackMeta.thumbnailURL : current.thumbnailURL
-                    )
-                    result[number] = merged
-                }
+        guard !aniList.isEmpty else { return tmdb }
+        guard !tmdb.isEmpty else { return aniList }
+
+        var result = aniList
+        for (number, tmdbMeta) in tmdb {
+            if let aniListMeta = result[number] {
+                let aniListTitle = aniListMeta.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                let tmdbTitle = tmdbMeta.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                let preferAniListTitle = !aniListTitle.isEmpty && !isGenericEpisodeTitle(aniListTitle)
+                let preferTMDBTitle = !tmdbTitle.isEmpty && !isGenericEpisodeTitle(tmdbTitle)
+                let merged = EpisodeMetadata(
+                    number: number,
+                    title: preferAniListTitle ? aniListMeta.title : (preferTMDBTitle ? tmdbMeta.title : aniListMeta.title),
+                    summary: tmdbMeta.summary ?? aniListMeta.summary,
+                    airDate: tmdbMeta.airDate ?? aniListMeta.airDate,
+                    runtimeMinutes: tmdbMeta.runtimeMinutes ?? aniListMeta.runtimeMinutes,
+                    thumbnailURL: aniListMeta.thumbnailURL ?? tmdbMeta.thumbnailURL
+                )
+                result[number] = merged
             } else {
-                result[number] = fallbackMeta
+                result[number] = tmdbMeta
             }
         }
         return result
