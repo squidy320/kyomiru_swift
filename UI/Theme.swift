@@ -3,13 +3,24 @@ import UIKit
 import CryptoKit
 import Foundation
 import ImageIO
+import CoreGraphics
 
 enum Theme {
+    struct HeroTintStyle {
+        let pageBackground: [Color]
+        let heroTop: [Color]
+        let heroBottom: [Color]
+        let heroFooter: [Color]
+    }
+
     private static func adaptiveColor(light: UIColor, dark: UIColor) -> Color {
         Color(UIColor { traitCollection in
             traitCollection.userInterfaceStyle == .dark ? dark : light
         })
     }
+
+    private static let darkBase = UIColor(red: 0.04, green: 0.04, blue: 0.06, alpha: 1.0)
+    private static let darkSurface = UIColor(red: 0.08, green: 0.09, blue: 0.12, alpha: 1.0)
 
     static var baseBackground: Color {
         adaptiveColor(
@@ -55,6 +66,155 @@ enum Theme {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+    }
+
+    static func heroTintStyle(from accent: UIColor?) -> HeroTintStyle {
+        let normalized = accent.map(normalizeHeroAccent(_:))
+        let topBase = normalized.map { mix($0, with: darkSurface, ratio: 0.42) } ?? darkSurface
+        let midBase = normalized.map { mix($0, with: darkBase, ratio: 0.58) } ?? darkBase
+        let bottomBase = normalized.map { mix($0, with: .black, ratio: 0.72) } ?? UIColor.black
+        let footerBase = normalized.map { mix($0, with: .black, ratio: 0.64) } ?? UIColor.black
+
+        return HeroTintStyle(
+            pageBackground: [
+                Color(uiColor: topBase),
+                Color(uiColor: midBase),
+                Color(uiColor: darkBase)
+            ],
+            heroTop: [
+                Color(uiColor: topBase).opacity(0.7),
+                Color(uiColor: midBase).opacity(0.18),
+                .clear
+            ],
+            heroBottom: [
+                Color(uiColor: bottomBase).opacity(0.96),
+                Color(uiColor: midBase).opacity(0.62),
+                .clear
+            ],
+            heroFooter: [
+                .clear,
+                Color(uiColor: footerBase).opacity(0.9)
+            ]
+        )
+    }
+
+    private static func mix(_ color: UIColor, with other: UIColor, ratio: CGFloat) -> UIColor {
+        let clamped = min(max(ratio, 0), 1)
+        var r1: CGFloat = 0
+        var g1: CGFloat = 0
+        var b1: CGFloat = 0
+        var a1: CGFloat = 0
+        var r2: CGFloat = 0
+        var g2: CGFloat = 0
+        var b2: CGFloat = 0
+        var a2: CGFloat = 0
+        color.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        other.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        return UIColor(
+            red: (r1 * (1 - clamped)) + (r2 * clamped),
+            green: (g1 * (1 - clamped)) + (g2 * clamped),
+            blue: (b1 * (1 - clamped)) + (b2 * clamped),
+            alpha: (a1 * (1 - clamped)) + (a2 * clamped)
+        )
+    }
+
+    private static func normalizeHeroAccent(_ color: UIColor) -> UIColor {
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        if color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) {
+            let adjustedSaturation = min(max((saturation * 0.72) + 0.12, 0.18), 0.58)
+            let adjustedBrightness = min(max((brightness * 0.5) + 0.16, 0.26), 0.56)
+            return UIColor(hue: hue, saturation: adjustedSaturation, brightness: adjustedBrightness, alpha: 1.0)
+        }
+
+        var white: CGFloat = 0
+        if color.getWhite(&white, alpha: &alpha) {
+            let adjusted = min(max((white * 0.45) + 0.18, 0.24), 0.5)
+            return UIColor(white: adjusted, alpha: 1.0)
+        }
+        return darkSurface
+    }
+}
+
+actor ImageAccentColorCache {
+    static let shared = ImageAccentColorCache()
+
+    private enum Entry {
+        case value(UIColor)
+        case missing
+    }
+
+    private var cache: [String: Entry] = [:]
+
+    func accentColor(for url: URL) async -> UIColor? {
+        let key = url.absoluteString
+        if let cached = cache[key] {
+            switch cached {
+            case .value(let color):
+                return color
+            case .missing:
+                return nil
+            }
+        }
+
+        guard let image = await ImageCache.shared.image(for: url, targetSize: CGSize(width: 32, height: 32), scale: 1),
+              let color = dominantColor(from: image) else {
+            cache[key] = .missing
+            return nil
+        }
+
+        cache[key] = .value(color)
+        return color
+    }
+
+    private func dominantColor(from image: UIImage) -> UIColor? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = 16
+        let height = 16
+        let bytesPerPixel = 4
+        let bytesPerRow = width * bytesPerPixel
+        let bitsPerComponent = 8
+        var data = [UInt8](repeating: 0, count: width * height * bytesPerPixel)
+        guard let context = CGContext(
+            data: &data,
+            width: width,
+            height: height,
+            bitsPerComponent: bitsPerComponent,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+
+        context.interpolationQuality = .low
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var weight: CGFloat = 0
+
+        for index in stride(from: 0, to: data.count, by: 4) {
+            let alpha = CGFloat(data[index + 3]) / 255
+            if alpha < 0.05 { continue }
+            let r = CGFloat(data[index]) / 255
+            let g = CGFloat(data[index + 1]) / 255
+            let b = CGFloat(data[index + 2]) / 255
+            let maxChannel = max(r, max(g, b))
+            let minChannel = min(r, min(g, b))
+            let saturation = maxChannel == 0 ? 0 : (maxChannel - minChannel) / maxChannel
+            let pixelWeight = max(0.2, saturation + (alpha * 0.4))
+            red += r * pixelWeight
+            green += g * pixelWeight
+            blue += b * pixelWeight
+            weight += pixelWeight
+        }
+
+        guard weight > 0 else { return nil }
+        return UIColor(red: red / weight, green: green / weight, blue: blue / weight, alpha: 1.0)
     }
 }
 

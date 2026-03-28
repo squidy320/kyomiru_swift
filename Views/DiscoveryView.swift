@@ -18,9 +18,11 @@ struct DiscoveryView: View {
     @State private var isLoadingImdbTrending = false
     @State private var imdbAniListMap: [Int: AniListMedia] = [:]
     @State private var navigateMedia: AniListMedia?
+    @State private var heroAccentColor: UIColor?
     @StateObject private var networkMonitor = NetworkMonitor.shared
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var heroTintStyle: Theme.HeroTintStyle { Theme.heroTintStyle(from: heroAccentColor) }
     private var coreSections: [AniListDiscoverySection] {
         let order = ["trending", "hotNow", "upcoming", "allTime"]
         let lookup = Dictionary(uniqueKeysWithValues: sections.map { ($0.id, $0) })
@@ -32,7 +34,12 @@ struct DiscoveryView: View {
         let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
         let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
-            Theme.baseBackground.ignoresSafeArea()
+            LinearGradient(
+                colors: heroTintStyle.pageBackground,
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
@@ -135,6 +142,7 @@ struct DiscoveryView: View {
             } else if !hasAllCoreSections(sections) {
                 await loadDiscovery(forceRefresh: true)
             }
+            await refreshHeroAccentColor()
         }
         .onChange(of: query) { _, _ in
             runSearch()
@@ -144,15 +152,24 @@ struct DiscoveryView: View {
                 heroIndex = 0
             }
             Task { await prefetchDiscoveryImages() }
+            Task { await refreshHeroAccentColor() }
         }
         .onChange(of: imdbTrending) { _, _ in
             Task { await prefetchDiscoveryImages() }
+            Task { await refreshHeroAccentColor() }
         }
         .onChange(of: appState.settings.cardImageSource) { _, _ in
             Task { await prefetchDiscoveryImages() }
+            Task { await refreshHeroAccentColor() }
         }
         .onChange(of: librarySortRaw) { _, _ in
             Task { await loadDiscovery(forceRefresh: true) }
+        }
+        .onChange(of: heroIndex) { _, _ in
+            Task { await refreshHeroAccentColor() }
+        }
+        .onChange(of: heroTrending?.id) { _, _ in
+            Task { await refreshHeroAccentColor() }
         }
     }
     private var heroCarousel: AnyView {
@@ -235,14 +252,14 @@ struct DiscoveryView: View {
                 )
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    colors: heroTintStyle.heroBottom,
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    colors: heroTintStyle.heroTop,
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -335,6 +352,32 @@ struct DiscoveryView: View {
             tags: tags,
             height: UIConstants.heroHeight
         )
+    }
+
+    private func refreshHeroAccentColor() async {
+        guard let url = await currentHeroImageURL() else {
+            await MainActor.run { heroAccentColor = nil }
+            return
+        }
+        let color = await ImageAccentColorCache.shared.accentColor(for: url)
+        await MainActor.run {
+            heroAccentColor = color
+        }
+    }
+
+    private func currentHeroImageURL() async -> URL? {
+        if let url = heroTrending?.backdropURL {
+            return url
+        }
+
+        let items = heroItems()
+        guard !items.isEmpty else { return nil }
+        let index = min(max(heroIndex, 0), items.count - 1)
+        let media = items[index]
+        if appState.settings.cardImageSource == .tmdb {
+            return await appState.services.metadataService.backdropURL(for: media) ?? media.bannerURL ?? media.coverURL
+        }
+        return media.bannerURL ?? media.coverURL
     }
 
     private var searchResultsSection: some View {
