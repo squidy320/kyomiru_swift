@@ -98,7 +98,7 @@ final class TMDBMatchingService {
         preferredSeasonNumber: Int? = nil
     ) async -> TMDBResolvedMatch? {
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
-        let cacheKey = "tmdb:match:v3:\(media.id):preferred:\(preferredSeasonNumber ?? 0)"
+        let cacheKey = "tmdb:match:v4:\(media.id):preferred:\(preferredSeasonNumber ?? 0)"
         if let cached = cacheManager.load(aniListId: media.id) {
             if let preferredSeasonNumber, preferredSeasonNumber > 0, cached.seasonNumber != preferredSeasonNumber {
                 AppLog.debug(.matching, "tmdb match cache bypass mediaId=\(media.id) reason=preferred-season-mismatch cached=\(cached.seasonNumber) preferred=\(preferredSeasonNumber)")
@@ -334,44 +334,116 @@ final class TMDBMatchingService {
                 }
             }
 
-            if let preferredSeasonNumber,
-               let preferred = seasons.first(where: { $0.seasonNumber == preferredSeasonNumber }) {
-                let confidenceBoost: Double
-                if let startYear = media.startDate?.year ?? media.seasonYear,
-                   let seasonYear = yearFrom(preferred.airDateString) {
-                    confidenceBoost = abs(startYear - seasonYear) <= 1 ? 0.93 : 0.82
-                } else {
-                    confidenceBoost = 0.84
+            let title = media.title.best
+            let titleLower = title.lowercased()
+            let targetYear = media.startDate?.year ?? media.seasonYear
+            let desiredEpisodes = media.episodes ?? 0
+            let trueSeasonMarker = TitleMatcher.extractSeasonMarkerNumber(from: title)
+            let partMarker = TitleMatcher.extractPartMarkerNumber(from: title)
+            let wantsFinal = titleLower.contains("final")
+            let wantsSplitMarker = partMarker != nil || titleLower.contains("part") || titleLower.contains("cour") || wantsFinal
+
+            var rangeMatchSeason: Int?
+            if aniFirstEpisode > 1 {
+                var cursor = 1
+                for season in seasons.sorted(by: { $0.seasonNumber < $1.seasonNumber }) {
+                    let span = max(season.episodeCount, 0)
+                    let start = cursor
+                    let end = cursor + max(span - 1, 0)
+                    if aniFirstEpisode >= start, aniFirstEpisode <= end {
+                        rangeMatchSeason = season.seasonNumber
+                        break
+                    }
+                    cursor = end + 1
                 }
-                return TMDBResolvedMatch(
-                    showId: showId,
-                    seasonNumber: preferred.seasonNumber,
-                    episodeOffset: 0,
-                    confidence: confidenceBoost,
-                    reason: "preferred-season-marker"
-                )
             }
 
-            if let episodes = media.episodes, episodes > 0 {
-                let ranked = seasons
-                    .map { season -> (season: TMDBSeasonInfo, delta: Int, score: Double) in
-                        let delta = abs(season.episodeCount - episodes)
-                        let score = 1.0 - min(Double(delta) / Double(max(episodes, 1)), 1.0)
-                        return (season, delta, score)
+            let ranked = seasons
+                .map { season -> (season: TMDBSeasonInfo, score: Double, confidence: Double, reason: String) in
+                    let yearScore: Double
+                    if let targetYear, let seasonYear = yearFrom(season.airDateString) {
+                        yearScore = 1.0 - min(Double(abs(targetYear - seasonYear)) / 3.0, 1.0)
+                    } else {
+                        yearScore = 0.5
                     }
-                    .sorted { lhs, rhs in
-                        if lhs.delta != rhs.delta { return lhs.delta < rhs.delta }
-                        return lhs.season.seasonNumber < rhs.season.seasonNumber
+
+                    let episodeScore: Double
+                    if desiredEpisodes > 0 {
+                        let delta = abs(season.episodeCount - desiredEpisodes)
+                        episodeScore = 1.0 - min(Double(delta) / Double(max(desiredEpisodes, 1)), 1.0)
+                    } else {
+                        episodeScore = 0.5
                     }
-                if let best = ranked.first, best.score >= 0.6 {
-                    let secondScore = ranked.dropFirst().first?.score ?? 0.0
-                    let confidence = min(max(best.score + max((best.score - secondScore) * 0.2, 0.0), 0.6), 0.88)
+
+                    let seasonName = (season.name ?? "").lowercased()
+                    var markerScore = 0.0
+                    if let trueSeasonMarker {
+                        if season.seasonNumber == trueSeasonMarker {
+                            markerScore += wantsSplitMarker ? 0.25 : 0.9
+                        } else if !wantsSplitMarker {
+                            markerScore -= 0.25
+                        }
+                    }
+                    if wantsFinal, seasonName.contains("final") {
+                        markerScore += 0.45
+                    }
+                    if titleLower.contains("part"), seasonName.contains("part") {
+                        markerScore += 0.2
+                    }
+                    if titleLower.contains("cour"), seasonName.contains("cour") {
+                        markerScore += 0.2
+                    }
+                    if let partMarker, partMarker > 1 {
+                        if seasonName.contains("part \(partMarker)") || seasonName.contains("cour \(partMarker)") {
+                            markerScore += 0.4
+                        } else if seasonName.contains("part") || seasonName.contains("cour") {
+                            markerScore -= 0.08
+                        }
+                    }
+                    if let rangeMatchSeason, rangeMatchSeason == season.seasonNumber {
+                        markerScore += 0.65
+                    }
+
+                    let score = (0.48 * episodeScore) + (0.30 * yearScore) + markerScore
+                    var confidence = (0.52 * episodeScore) + (0.30 * yearScore)
+                    if let trueSeasonMarker, season.seasonNumber == trueSeasonMarker {
+                        confidence += wantsSplitMarker ? 0.08 : 0.16
+                    }
+                    if let rangeMatchSeason, rangeMatchSeason == season.seasonNumber {
+                        confidence += 0.14
+                    }
+                    if wantsFinal, seasonName.contains("final") {
+                        confidence += 0.08
+                    }
+                    confidence = min(max(confidence, 0.0), 0.97)
+
+                    let reason: String
+                    if let rangeMatchSeason, rangeMatchSeason == season.seasonNumber {
+                        reason = "global-range"
+                    } else if wantsFinal, seasonName.contains("final") {
+                        reason = "final-marker"
+                    } else if let trueSeasonMarker, season.seasonNumber == trueSeasonMarker, !wantsSplitMarker {
+                        reason = "preferred-season-marker"
+                    } else {
+                        reason = "season-score"
+                    }
+                    return (season, score, confidence, reason)
+                }
+                .sorted { lhs, rhs in
+                    if lhs.score != rhs.score { return lhs.score > rhs.score }
+                    return lhs.season.seasonNumber < rhs.season.seasonNumber
+                }
+
+            if let best = ranked.first {
+                let secondConfidence = ranked.dropFirst().first?.confidence ?? 0.0
+                let confidence = min(max(best.confidence + max((best.confidence - secondConfidence) * 0.2, 0.0), 0.58), 0.94)
+                if confidence >= 0.62 {
                     return TMDBResolvedMatch(
                         showId: showId,
                         seasonNumber: best.season.seasonNumber,
                         episodeOffset: 0,
                         confidence: confidence,
-                        reason: "episode-count"
+                        reason: best.reason
                     )
                 }
             }
@@ -473,11 +545,13 @@ private struct TMDBSeasonInfo {
     let seasonNumber: Int
     let episodeCount: Int
     let airDateString: String?
+    let name: String?
 
     init?(from dict: [String: Any]) {
         guard let seasonNumber = dict["season_number"] as? Int else { return nil }
         self.seasonNumber = seasonNumber
         self.episodeCount = dict["episode_count"] as? Int ?? 0
         self.airDateString = dict["air_date"] as? String
+        self.name = dict["name"] as? String
     }
 }
