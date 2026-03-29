@@ -75,13 +75,21 @@ struct TMDBSearchResult: Identifiable, Equatable {
 }
 
 struct TMDBSeasonChoice: Identifiable, Equatable {
-    var id: String { "\(showId)-\(seasonNumber)" }
+    var id: String { "\(showId)-\(tmdbSeasonNumber)-\(episodeOffset)-\(displayLabel)" }
     let showId: Int
     let showTitle: String
-    let seasonNumber: Int
+    let tmdbSeasonNumber: Int
+    let episodeOffset: Int
+    let displayEpisodeCount: Int
+    let displayLabel: String
+    let isSynthetic: Bool
+    let mappedAniListMediaId: Int?
+    let mappingReason: String?
     let name: String
-    let episodeCount: Int
     let airYear: Int?
+
+    var seasonNumber: Int { tmdbSeasonNumber }
+    var episodeCount: Int { displayEpisodeCount }
 }
 
 struct TMDBSeasonDetails: Equatable, Codable {
@@ -114,6 +122,7 @@ final class TMDBMatchingService {
     private let cacheStore: CacheStore
     private let cacheManager: MetadataCacheManager
     private let overrideStore: TMDBOverrideStore
+    private let aniListClient: AniListClient?
     private let apiKey: String?
     private let dateFormatter: DateFormatter
     private let matchRequests = TMDBMatchTaskCoalescer<String, TMDBResolvedMatch?>()
@@ -130,6 +139,7 @@ final class TMDBMatchingService {
         self.session = session
         self.cacheManager = cacheManager
         self.overrideStore = overrideStore
+        self.aniListClient = aniListClient
         let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
         let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
         self.apiKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
@@ -256,7 +266,7 @@ final class TMDBMatchingService {
                     break
                 }
 
-                let titles = candidateTitles(for: media)
+                let titles = await candidateTitles(for: media)
                 let startYear = franchiseStartYear ?? media.startDate?.year ?? media.seasonYear
                 guard let showId = await findShowId(media: media, titles: titles, startYear: startYear),
                       let show = await fetchShowSummary(showId: showId, apiKey: apiKey),
@@ -408,21 +418,31 @@ final class TMDBMatchingService {
         }
     }
 
-    func fetchSeasonChoices(showId: Int) async -> [TMDBSeasonChoice] {
+    func fetchSeasonChoices(for media: AniListMedia, showId: Int) async -> [TMDBSeasonChoice] {
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return [] }
         guard let summary = await fetchShowSummary(showId: showId, apiKey: apiKey) else { return [] }
-        return summary.seasons
+        let rawChoices = summary.seasons
             .filter { !$0.isSpecial }
             .map { season in
                 TMDBSeasonChoice(
                     showId: showId,
                     showTitle: summary.title,
-                    seasonNumber: season.seasonNumber,
+                    tmdbSeasonNumber: season.seasonNumber,
+                    episodeOffset: 0,
+                    displayEpisodeCount: season.episodeCount,
+                    displayLabel: season.name ?? "Season \(season.seasonNumber)",
+                    isSynthetic: false,
+                    mappedAniListMediaId: nil,
+                    mappingReason: nil,
                     name: season.name ?? "Season \(season.seasonNumber)",
-                    episodeCount: season.episodeCount,
                     airYear: yearFrom(season.airDateString)
                 )
             }
+        if let syntheticChoices = await syntheticSeasonChoices(for: media, show: summary),
+           !syntheticChoices.isEmpty {
+            return syntheticChoices
+        }
+        return rawChoices
     }
 
     func fetchSeasonDetails(showId: Int, seasonNumber: Int) async -> TMDBSeasonDetails? {
@@ -584,21 +604,52 @@ final class TMDBMatchingService {
         return best?.id
     }
 
-    private func candidateTitles(for media: AniListMedia) -> [String] {
-        var titles = [
-            media.title.english,
-            media.title.romaji,
-            media.title.native,
-            media.title.best
-        ].compactMap { value -> String? in
-            guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
-                return nil
-            }
-            return value
+    private func candidateTitles(for media: AniListMedia) async -> [String] {
+        var titles = normalizedCandidateTitleSet(from: [media])
+
+        if let aniListClient {
+            let relations = (try? await aniListClient.relationsGraph(mediaId: media.id)) ?? []
+            let franchiseMedia = relations
+                .filter { ["PREQUEL", "SEQUEL"].contains($0.relationType.uppercased()) }
+                .map(\.media)
+            titles.formUnion(normalizedCandidateTitleSet(from: franchiseMedia))
         }
-        titles.append(contentsOf: titles.map(TitleMatcher.stripSeasonMarkers))
-        titles.append(contentsOf: titles.map(TitleMatcher.stripFinalSeasonMarkers))
-        return Array(Set(titles)).sorted()
+
+        return Array(titles).sorted()
+    }
+
+    private func normalizedCandidateTitleSet(from mediaItems: [AniListMedia]) -> Set<String> {
+        var titles: Set<String> = []
+        for item in mediaItems {
+            let rawTitles = [
+                item.title.english,
+                item.title.romaji,
+                item.title.native,
+                item.title.best
+            ].compactMap { value -> String? in
+                guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+                    return nil
+                }
+                return value
+            }
+
+            for title in rawTitles {
+                titles.insert(title)
+                let strippedSeason = TitleMatcher.stripSeasonMarkers(title)
+                if !strippedSeason.isEmpty {
+                    titles.insert(strippedSeason)
+                }
+                let strippedFinal = TitleMatcher.stripFinalSeasonMarkers(title)
+                if !strippedFinal.isEmpty {
+                    titles.insert(strippedFinal)
+                }
+                let strippedFinalSeason = TitleMatcher.stripSeasonMarkers(strippedFinal)
+                if !strippedFinalSeason.isEmpty {
+                    titles.insert(strippedFinalSeason)
+                }
+            }
+        }
+        return titles
     }
 
     private func fetchShowSummary(showId: Int, apiKey: String) async -> TMDBShowSummary? {
@@ -924,6 +975,155 @@ final class TMDBMatchingService {
         guard let airDate else { return nil }
         return dateFormatter.date(from: airDate)
     }
+
+    private func syntheticSeasonChoices(for media: AniListMedia, show: TMDBShowSummary) async -> [TMDBSeasonChoice]? {
+        guard let aniListClient else { return nil }
+
+        let relevantSeasons = show.seasons.filter { !$0.isSpecial && $0.episodeCount > 0 }
+        guard !relevantSeasons.isEmpty else { return nil }
+
+        let relations = (try? await aniListClient.relationsGraph(mediaId: media.id)) ?? []
+        let segments = buildAniListSegments(current: media, relations: relations)
+        guard segments.count >= 2 else { return nil }
+
+        guard let mapped = mapSegments(segments, onto: relevantSeasons, show: show) else {
+            return nil
+        }
+
+        let exactlyMatchesRawSeasons =
+            mapped.count == relevantSeasons.count &&
+            zip(mapped, relevantSeasons).allSatisfy { choice, season in
+                choice.tmdbSeasonNumber == season.seasonNumber &&
+                choice.episodeOffset == 0 &&
+                choice.displayEpisodeCount == season.episodeCount
+            }
+
+        return exactlyMatchesRawSeasons ? nil : mapped
+    }
+
+    private func buildAniListSegments(current media: AniListMedia, relations: [AniListRelationEdge]) -> [AniListSegment] {
+        var deduped: [Int: AniListSegment] = [:]
+
+        func insert(_ item: AniListMedia, relationType: String?) {
+            guard let episodeCount = item.episodes, episodeCount > 0 else { return }
+            deduped[item.id] = AniListSegment(
+                media: item,
+                relationType: relationType,
+                sortSeasonNumber: TitleMatcher.extractSeasonMarkerNumber(from: item.title.best),
+                sortPartNumber: TitleMatcher.extractPartMarkerNumber(from: item.title.best),
+                hasFinalSeasonMarker: TitleMatcher.hasFinalSeasonMarker(item.title.best),
+                displayLabel: syntheticDisplayLabel(for: item, relativeTo: media, fallbackIndex: deduped.count + 1)
+            )
+        }
+
+        insert(media, relationType: "CURRENT")
+        for edge in relations {
+            let relation = edge.relationType.uppercased()
+            guard ["PREQUEL", "SEQUEL"].contains(relation) else { continue }
+            insert(edge.media, relationType: relation)
+        }
+
+        return deduped.values.sorted(by: compareSegments)
+    }
+
+    private func compareSegments(_ lhs: AniListSegment, _ rhs: AniListSegment) -> Bool {
+        if let leftSeason = lhs.sortSeasonNumber, let rightSeason = rhs.sortSeasonNumber, leftSeason != rightSeason {
+            return leftSeason < rightSeason
+        }
+        if lhs.sortSeasonNumber != nil, rhs.sortSeasonNumber == nil {
+            return true
+        }
+        if lhs.sortSeasonNumber == nil, rhs.sortSeasonNumber != nil {
+            return false
+        }
+        if let leftDate = date(from: lhs.media.startDate), let rightDate = date(from: rhs.media.startDate), leftDate != rightDate {
+            return leftDate < rightDate
+        }
+        if let leftYear = lhs.media.startDate?.year ?? lhs.media.seasonYear,
+           let rightYear = rhs.media.startDate?.year ?? rhs.media.seasonYear,
+           leftYear != rightYear {
+            return leftYear < rightYear
+        }
+        if let leftPart = lhs.sortPartNumber, let rightPart = rhs.sortPartNumber, leftPart != rightPart {
+            return leftPart < rightPart
+        }
+        return lhs.media.id < rhs.media.id
+    }
+
+    private func mapSegments(
+        _ segments: [AniListSegment],
+        onto seasons: [TMDBSeasonInfo],
+        show: TMDBShowSummary
+    ) -> [TMDBSeasonChoice]? {
+        var mapped: [TMDBSeasonChoice] = []
+        var seasonIndex = 0
+        var offsetWithinSeason = 0
+
+        for (index, segment) in segments.enumerated() {
+            guard let episodeCount = segment.media.episodes, episodeCount > 0 else { return nil }
+
+            while seasonIndex < seasons.count, offsetWithinSeason >= seasons[seasonIndex].episodeCount {
+                seasonIndex += 1
+                offsetWithinSeason = 0
+            }
+
+            guard seasonIndex < seasons.count else { return nil }
+            let tmdbSeason = seasons[seasonIndex]
+            let remaining = tmdbSeason.episodeCount - offsetWithinSeason
+            guard remaining >= episodeCount else { return nil }
+
+            let mappingReason = offsetWithinSeason == 0 && tmdbSeason.episodeCount == episodeCount
+                ? "aniList-season-aligned"
+                : "aniList-synthetic-split"
+
+            mapped.append(
+                TMDBSeasonChoice(
+                    showId: show.showId,
+                    showTitle: show.title,
+                    tmdbSeasonNumber: tmdbSeason.seasonNumber,
+                    episodeOffset: offsetWithinSeason,
+                    displayEpisodeCount: episodeCount,
+                    displayLabel: segment.displayLabel ?? "Season \(index + 1)",
+                    isSynthetic: true,
+                    mappedAniListMediaId: segment.media.id,
+                    mappingReason: mappingReason,
+                    name: segment.displayLabel ?? "Season \(index + 1)",
+                    airYear: segment.media.startDate?.year ?? segment.media.seasonYear
+                )
+            )
+
+            offsetWithinSeason += episodeCount
+            if offsetWithinSeason == tmdbSeason.episodeCount {
+                seasonIndex += 1
+                offsetWithinSeason = 0
+            }
+        }
+
+        return mapped
+    }
+
+    private func syntheticDisplayLabel(for item: AniListMedia, relativeTo current: AniListMedia, fallbackIndex: Int) -> String {
+        let title = item.title.best
+        if TitleMatcher.hasFinalSeasonMarker(title) {
+            if let partNumber = TitleMatcher.extractPartMarkerNumber(from: title) {
+                return "Final Season Part \(partNumber)"
+            }
+            return "Final Season"
+        }
+        if let seasonNumber = TitleMatcher.extractSeasonMarkerNumber(from: title) {
+            return "Season \(seasonNumber)"
+        }
+        if let courNumber = TitleMatcher.extractCourMarkerNumber(from: title) {
+            return "Cour \(courNumber)"
+        }
+        if let partNumber = TitleMatcher.extractPartOnlyMarkerNumber(from: title) {
+            return "Part \(partNumber)"
+        }
+        if item.id == current.id {
+            return current.title.best
+        }
+        return "Season \(fallbackIndex)"
+    }
 }
 
 private struct TMDBShowSummary {
@@ -960,4 +1160,13 @@ private struct SelectedSeason {
     let episodeOffset: Int
     let confidence: Double
     let reason: String
+}
+
+private struct AniListSegment {
+    let media: AniListMedia
+    let relationType: String?
+    let sortSeasonNumber: Int?
+    let sortPartNumber: Int?
+    let hasFinalSeasonMarker: Bool
+    let displayLabel: String?
 }

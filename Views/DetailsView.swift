@@ -264,17 +264,18 @@ struct DetailsView: View {
                     performTMDBMatchSearch(query: term)
                 },
                 loadSeasons: { showId in
-                    await appState.services.tmdbMatchingService.fetchSeasonChoices(showId: showId)
+                    await appState.services.tmdbMatchingService.fetchSeasonChoices(for: media, showId: showId)
                 },
-                onSave: { choice, episodeOffset in
+                onSave: { choice, additionalOffset in
                     Task {
+                        let resolvedOffset = choice.episodeOffset + additionalOffset
                         await appState.services.metadataService.saveManualTMDBMatch(
                             media: media,
                             showId: choice.showId,
-                            seasonNumber: choice.seasonNumber,
-                            episodeOffset: episodeOffset,
+                            seasonNumber: choice.tmdbSeasonNumber,
+                            episodeOffset: resolvedOffset,
                             showTitle: choice.showTitle,
-                            seasonLabel: choice.name
+                            seasonLabel: choice.displayLabel
                         )
                         await reloadTMDBOverrideDependentState()
                     }
@@ -1834,10 +1835,10 @@ private struct TMDBMatchSheet: View {
                         .foregroundColor(.secondary)
                     }
 
-                    Section("Episode Offset") {
+                    Section("Additional Episode Offset") {
                         TextField("0", text: $episodeOffsetText)
                             .keyboardType(.numberPad)
-                        Text("Use an offset for split-cour or globally numbered cases.")
+                        Text("Adds to the choice's built-in TMDB offset for split-cour or globally numbered cases.")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
@@ -1853,14 +1854,24 @@ private struct TMDBMatchSheet: View {
                             ForEach(seasons) { season in
                                 HStack(spacing: UIConstants.interCardSpacing) {
                                     VStack(alignment: .leading, spacing: UIConstants.microPadding) {
-                                        Text(season.name)
+                                        Text(season.displayLabel)
                                             .font(.system(size: 15, weight: .semibold))
                                         Text("Season \(season.seasonNumber) • \(season.episodeCount) episodes")
                                             .font(.system(size: 12))
                                             .foregroundColor(.secondary)
+                                        if season.isSynthetic || season.episodeOffset > 0 {
+                                            Text("TMDB Season \(season.tmdbSeasonNumber)\(season.episodeOffset > 0 ? " • Offset \(season.episodeOffset)" : "")")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.secondary)
+                                        }
                                         if let airYear = season.airYear {
                                             Text("\(airYear)")
                                                 .font(.system(size: 12))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        if season.isSynthetic {
+                                            Text("AniList-aligned split")
+                                                .font(.system(size: 11, weight: .semibold))
                                                 .foregroundColor(.secondary)
                                         }
                                     }

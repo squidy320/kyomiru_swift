@@ -148,6 +148,18 @@ enum TitleMatcher {
         return nil
     }
 
+    static func extractPartOnlyMarkerNumber(from input: String) -> Int? {
+        extractMarkerNumber(from: input, patterns: [
+            #"(?i)\bpart\s*(\d+)\b"#
+        ])
+    }
+
+    static func extractCourMarkerNumber(from input: String) -> Int? {
+        extractMarkerNumber(from: input, patterns: [
+            #"(?i)\bcour\s*(\d+)\b"#
+        ])
+    }
+
     static func hasFinalSeasonMarker(_ input: String) -> Bool {
         let normalized = romanToArabic(input)
         return normalized.range(
@@ -227,6 +239,19 @@ enum TitleMatcher {
             )
         }
         return out
+    }
+
+    private static func extractMarkerNumber(from input: String, patterns: [String]) -> Int? {
+        let normalized = romanToArabic(input)
+        for p in patterns {
+            if let match = normalized.range(of: p, options: .regularExpression) {
+                let chunk = String(normalized[match])
+                if let number = chunk.compactMap({ $0.wholeNumberValue }).first {
+                    return number
+                }
+            }
+        }
+        return nil
     }
 }
 
