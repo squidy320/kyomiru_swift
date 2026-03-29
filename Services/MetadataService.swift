@@ -96,7 +96,7 @@ final class MetadataService {
     }
 
     func fetchTMDBMetadata(for media: AniListMedia) async -> TMDBMetadata? {
-        let cacheKey = "tmdb:media:v5:\(media.id)"
+        let cacheKey = metadataCacheKey(for: media.id)
         switch cachedMetadata(forKey: cacheKey) {
         case .hit(let cachedResult):
             return cachedResult
@@ -149,10 +149,26 @@ final class MetadataService {
         return meta?.logoURL
     }
 
-    func manualMatch(local: MediaItem, remoteId: String) async -> Bool {
-        AppLog.debug(.matching, "manual match local=\(local.title) remote=\(remoteId)")
-        try? await Task.sleep(nanoseconds: 200_000_000)
-        return true
+    func saveManualTMDBMatch(
+        media: AniListMedia,
+        showId: Int,
+        seasonNumber: Int,
+        episodeOffset: Int = 0,
+        showTitle: String? = nil,
+        seasonLabel: String? = nil
+    ) async {
+        await tmdbMatcher.saveManualOverride(
+            aniListId: media.id,
+            showId: showId,
+            seasonNumber: seasonNumber,
+            episodeOffset: episodeOffset,
+            showTitle: showTitle,
+            seasonLabel: seasonLabel
+        )
+    }
+
+    func clearManualTMDBMatch(for media: AniListMedia) {
+        tmdbMatcher.clearManualOverride(aniListId: media.id)
     }
 
     private func fetchSeasonAwareTMDBMetadata(for media: AniListMedia, apiKey: String) async -> TMDBMetadata? {
@@ -354,6 +370,13 @@ final class MetadataService {
             cacheStore.writeJSON(data, forKey: key)
         }
     }
+
+    private func metadataCacheKey(for mediaId: Int) -> String {
+        if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
+            return "tmdb:media:v5:manual:\(mediaId):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
+        }
+        return "tmdb:media:v5:\(mediaId)"
+    }
 }
 
 struct EpisodeMetadata: Equatable, Codable {
@@ -410,7 +433,7 @@ final class RatingService {
         let targetSeason = match.seasonNumber
         let episodeOffset = match.episodeOffset
 
-        let cacheKey = "tmdb:ratings:v5:\(media.id):season:\(targetSeason):offset:\(episodeOffset)"
+        let cacheKey = "tmdb:ratings:v5:\(media.id):show:\(match.showId):season:\(targetSeason):offset:\(episodeOffset)"
         if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
            let decoded = try? JSONDecoder().decode([Int: Double].self, from: cached) {
             return decoded
@@ -727,9 +750,11 @@ final class EpisodeMetadataService {
 
             var seasonNumber: Int?
             var episodeOffset: Int = 0
+            var showId: Int?
             if let cachedMeta = cacheManager.load(aniListId: media.id) {
                 seasonNumber = cachedMeta.seasonNumber
                 episodeOffset = cachedMeta.episodeOffset
+                showId = cachedMeta.showId
             } else if let cachedMatch = cacheStore.readJSON(
                 forKey: TMDBMatchingService.cacheKey(
                     mediaId: media.id,
@@ -742,11 +767,17 @@ final class EpisodeMetadataService {
                       let decoded = try? JSONDecoder().decode(TMDBResolvedMatch.self, from: cachedMatch) {
                 seasonNumber = decoded.seasonNumber
                 episodeOffset = decoded.episodeOffset
+                showId = decoded.showId
+            } else if let manualOverride = tmdbMatcher.manualOverride(for: media.id) {
+                seasonNumber = manualOverride.seasonNumber
+                episodeOffset = manualOverride.episodeOffset
+                showId = manualOverride.showId
             }
 
             guard let seasonNumber else { return nil }
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
-            let cacheKey = "episode-meta:tmdb:v8:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let showKey = ":show:\(showId ?? 0)"
+            let cacheKey = "episode-meta:tmdb:v8:\(media.id)\(showKey):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
             if let cached = cacheStore.readJSON(forKey: cacheKey),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
@@ -773,7 +804,7 @@ final class EpisodeMetadataService {
             let maxEpisodeNumber = episodes.map(\.number).max() ?? 0
             let preferredSeason = TitleMatcher.extractSeasonNumber(from: media.title.best)
             let firstEpisodeNumber = episodes.map(\.number).min()
-            let (primary, seasonNumber, episodeOffset, accepted, rejectReason) = await fetchFromTMDB(
+            let (primary, showId, seasonNumber, episodeOffset, accepted, rejectReason) = await fetchFromTMDB(
                 media: media,
                 preferredSeason: preferredSeason,
                 desiredCount: desiredCount,
@@ -783,7 +814,7 @@ final class EpisodeMetadataService {
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
-            let cacheKey = "episode-meta:tmdb:v8:\(media.id):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let cacheKey = "episode-meta:tmdb:v8:\(media.id):show:\(showId):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
             if accepted, let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
@@ -906,9 +937,9 @@ final class EpisodeMetadataService {
         desiredCount: Int,
         maxEpisodeNumber: Int,
         firstEpisodeNumber: Int?
-    ) async -> ([Int: EpisodeMetadata], Int, Int, Bool, String?) {
+    ) async -> ([Int: EpisodeMetadata], Int, Int, Int, Bool, String?) {
         guard let tmdbKey, !tmdbKey.isEmpty, tmdbKey != "CHANGE_ME" else {
-            return ([:], preferredSeason ?? 1, 0, false, "missing-key")
+            return ([:], 0, preferredSeason ?? 1, 0, false, "missing-key")
         }
         let franchiseStartYear = media.startDate?.year ?? media.seasonYear
         guard let match = await tmdbMatcher.matchShowAndSeason(
@@ -919,12 +950,12 @@ final class EpisodeMetadataService {
             expectedEpisodeCount: desiredCount,
             maxEpisodeNumber: maxEpisodeNumber,
         ) else {
-            return ([:], preferredSeason ?? 1, 0, false, "no-canonical-match")
+            return ([:], 0, preferredSeason ?? 1, 0, false, "no-canonical-match")
         }
 
         let data = await fetchTMDBSeason(showId: match.showId, seasonNumber: match.seasonNumber)
         let mapped = match.episodeOffset == 0 ? data : applyEpisodeOffset(data, offset: match.episodeOffset)
-        return (mapped, match.seasonNumber, match.episodeOffset, !mapped.isEmpty, mapped.isEmpty ? "empty-season" : nil)
+        return (mapped, match.showId, match.seasonNumber, match.episodeOffset, !mapped.isEmpty, mapped.isEmpty ? "empty-season" : nil)
     }
 
     private func fetchTMDBSeason(showId: Int, seasonNumber: Int) async -> [Int: EpisodeMetadata] {

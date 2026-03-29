@@ -67,6 +67,23 @@ struct TMDBResolvedMatch: Equatable, Codable {
     let reason: String
 }
 
+struct TMDBSearchResult: Identifiable, Equatable {
+    let id: Int
+    let title: String
+    let posterURL: URL?
+    let firstAirYear: Int?
+}
+
+struct TMDBSeasonChoice: Identifiable, Equatable {
+    var id: String { "\(showId)-\(seasonNumber)" }
+    let showId: Int
+    let showTitle: String
+    let seasonNumber: Int
+    let name: String
+    let episodeCount: Int
+    let airYear: Int?
+}
+
 struct TMDBSeasonDetails: Equatable, Codable {
     struct Episode: Equatable, Codable {
         let number: Int
@@ -96,6 +113,7 @@ final class TMDBMatchingService {
     private let session: URLSession
     private let cacheStore: CacheStore
     private let cacheManager: MetadataCacheManager
+    private let overrideStore: TMDBOverrideStore
     private let apiKey: String?
     private let dateFormatter: DateFormatter
     private let matchRequests = TMDBMatchTaskCoalescer<String, TMDBResolvedMatch?>()
@@ -105,11 +123,13 @@ final class TMDBMatchingService {
         cacheStore: CacheStore,
         session: URLSession = .custom,
         cacheManager: MetadataCacheManager = MetadataCacheManager(),
+        overrideStore: TMDBOverrideStore = .shared,
         aniListClient: AniListClient? = nil
     ) {
         self.cacheStore = cacheStore
         self.session = session
         self.cacheManager = cacheManager
+        self.overrideStore = overrideStore
         let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
         let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
         self.apiKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
@@ -162,6 +182,16 @@ final class TMDBMatchingService {
         maxEpisodeNumber: Int? = nil
     ) async -> TMDBResolvedMatch? {
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
+
+        if let overrideMatch = manualOverride(for: media.id) {
+            return TMDBResolvedMatch(
+                showId: overrideMatch.showId,
+                seasonNumber: overrideMatch.seasonNumber,
+                episodeOffset: overrideMatch.episodeOffset,
+                confidence: 1.0,
+                reason: "manual-override"
+            )
+        }
 
         let preferredSeason = preferredSeasonNumber ?? TitleMatcher.extractSeasonNumber(from: media.title.best)
         let cacheKey = Self.cacheKey(
@@ -288,6 +318,111 @@ final class TMDBMatchingService {
             return details
         }
         return await fetchSeasonDetails(showId: showId, seasonNumber: seasonNumber)
+    }
+
+    func manualOverride(for aniListId: Int) -> TMDBManualOverride? {
+        overrideStore.override(for: aniListId)
+    }
+
+    func saveManualOverride(
+        aniListId: Int,
+        showId: Int,
+        seasonNumber: Int,
+        episodeOffset: Int = 0,
+        showTitle: String? = nil,
+        seasonLabel: String? = nil
+    ) async {
+        let overrideMatch = TMDBManualOverride(
+            aniListId: aniListId,
+            showId: showId,
+            seasonNumber: seasonNumber,
+            episodeOffset: episodeOffset,
+            showTitle: showTitle,
+            seasonLabel: seasonLabel,
+            updatedAt: Date().timeIntervalSince1970
+        )
+        overrideStore.save(overrideMatch)
+        if let details = await fetchSeasonDetails(showId: showId, seasonNumber: seasonNumber) {
+            cacheManager.save(
+                TMDBCachedMetadata(
+                    aniListId: aniListId,
+                    showId: showId,
+                    seasonNumber: seasonNumber,
+                    episodeOffset: episodeOffset,
+                    cachedAt: Date(),
+                    seasonDetails: details
+                )
+            )
+        }
+    }
+
+    func clearManualOverride(aniListId: Int) {
+        overrideStore.clear(aniListId: aniListId)
+        cacheManager.clear(aniListId: aniListId)
+    }
+
+    func searchShows(query: String) async -> [TMDBSearchResult] {
+        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return [] }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        let queries = TitleMatcher.buildQueries(from: trimmed)
+        var resultsById: [Int: TMDBSearchResult] = [:]
+
+        for query in queries where !query.isEmpty {
+            var components = URLComponents(string: "https://api.themoviedb.org/3/search/tv")!
+            components.queryItems = [
+                URLQueryItem(name: "api_key", value: apiKey),
+                URLQueryItem(name: "query", value: query)
+            ]
+            guard let url = components.url else { continue }
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    continue
+                }
+                let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let rows = root?["results"] as? [[String: Any]] ?? []
+                for row in rows {
+                    guard let id = row["id"] as? Int else { continue }
+                    let title = row["name"] as? String ?? row["original_name"] as? String ?? "Unknown"
+                    let posterPath = row["poster_path"] as? String
+                    let firstAirYear = yearFrom(row["first_air_date"] as? String)
+                    resultsById[id] = TMDBSearchResult(
+                        id: id,
+                        title: title,
+                        posterURL: posterPath.flatMap { URL(string: "https://image.tmdb.org/t/p/w185\($0)") },
+                        firstAirYear: firstAirYear
+                    )
+                }
+            } catch {
+                continue
+            }
+        }
+
+        return resultsById.values.sorted { lhs, rhs in
+            if lhs.firstAirYear == rhs.firstAirYear {
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+            return (lhs.firstAirYear ?? 0) > (rhs.firstAirYear ?? 0)
+        }
+    }
+
+    func fetchSeasonChoices(showId: Int) async -> [TMDBSeasonChoice] {
+        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return [] }
+        guard let summary = await fetchShowSummary(showId: showId, apiKey: apiKey) else { return [] }
+        return summary.seasons
+            .filter { !$0.isSpecial }
+            .map { season in
+                TMDBSeasonChoice(
+                    showId: showId,
+                    showTitle: summary.title,
+                    seasonNumber: season.seasonNumber,
+                    name: season.name ?? "Season \(season.seasonNumber)",
+                    episodeCount: season.episodeCount,
+                    airYear: yearFrom(season.airDateString)
+                )
+            }
     }
 
     func fetchSeasonDetails(showId: Int, seasonNumber: Int) async -> TMDBSeasonDetails? {

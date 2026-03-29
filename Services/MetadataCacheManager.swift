@@ -35,6 +35,10 @@ final class MetadataCacheManager {
         try? data.write(to: url, options: .atomic)
     }
 
+    func clear(aniListId: Int) {
+        try? fileManager.removeItem(at: fileURL(for: aniListId))
+    }
+
     private func fileURL(for aniListId: Int) -> URL {
         directoryURL.appendingPathComponent("tmdb_meta_\(cacheVersion)_\(aniListId).json")
     }

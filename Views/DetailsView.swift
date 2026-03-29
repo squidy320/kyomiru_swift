@@ -108,6 +108,7 @@ struct DetailsView: View {
     @State private var isLoadingSources = false
     @State private var showSourceSheet = false
     @State private var showMatchSheet = false
+    @State private var showTMDBMatchSheet = false
     @State private var showListManager = false
     @State private var playerStartAt: Double?
     @State private var listManagerModel = ListManagerViewModel(item: MediaItem(title: "", status: .planning))
@@ -116,6 +117,11 @@ struct DetailsView: View {
     @State private var matchCandidates: [SoraAnimeMatch] = []
     @State private var matchError: String?
     @State private var matchQuery: String = ""
+    @State private var isLoadingTMDBMatch = false
+    @State private var tmdbMatchCandidates: [TMDBSearchResult] = []
+    @State private var tmdbMatchError: String?
+    @State private var tmdbMatchQuery: String = ""
+    @State private var tmdbManualOverride: TMDBManualOverride?
     @State private var selectedEpisodeTab: EpisodeTab = .currentSeries
     @State private var isBookmarked = false
     @State private var relatedSections: [AniListRelatedSection] = []
@@ -177,6 +183,7 @@ struct DetailsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             AppLog.debug(.ui, "details view load mediaId=\(media.id)")
+            tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
             await loadEpisodes()
             await loadRelated()
             isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
@@ -238,10 +245,44 @@ struct DetailsView: View {
                 },
                 onSelect: { match in
                     Task {
-                        _ = await appState.services.metadataService.manualMatch(local: detailItem, remoteId: match.session)
                         appState.services.episodeService.setManualMatch(media: media, match: match)
                         AppLog.debug(.matching, "manual match selected mediaId=\(media.id) session=\(match.session)")
                         await loadEpisodes()
+                    }
+                }
+            )
+        }
+        .sheet(isPresented: $showTMDBMatchSheet) {
+            TMDBMatchSheet(
+                media: media,
+                currentOverride: tmdbManualOverride,
+                query: $tmdbMatchQuery,
+                candidates: tmdbMatchCandidates,
+                isLoading: isLoadingTMDBMatch,
+                errorMessage: tmdbMatchError,
+                onSearch: { term in
+                    performTMDBMatchSearch(query: term)
+                },
+                loadSeasons: { showId in
+                    await appState.services.tmdbMatchingService.fetchSeasonChoices(showId: showId)
+                },
+                onSave: { choice, episodeOffset in
+                    Task {
+                        await appState.services.metadataService.saveManualTMDBMatch(
+                            media: media,
+                            showId: choice.showId,
+                            seasonNumber: choice.seasonNumber,
+                            episodeOffset: episodeOffset,
+                            showTitle: choice.showTitle,
+                            seasonLabel: choice.name
+                        )
+                        await reloadTMDBOverrideDependentState()
+                    }
+                },
+                onClear: {
+                    Task {
+                        appState.services.metadataService.clearManualTMDBMatch(for: media)
+                        await reloadTMDBOverrideDependentState()
                     }
                 }
             )
@@ -627,6 +668,19 @@ struct DetailsView: View {
             .buttonStyle(.plain)
 
             Button {
+                openTMDBMatchPicker()
+            } label: {
+                Image(systemName: "film.stack")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: UIConstants.circleButtonSize, height: UIConstants.circleButtonSize)
+                    .background(
+                        Circle().fill(Color.white.opacity(0.08))
+                    )
+            }
+            .buttonStyle(.plain)
+
+            Button {
                 downloadAllEpisodes()
             } label: {
                 Image(systemName: "arrow.down")
@@ -834,6 +888,13 @@ struct DetailsView: View {
         performMatchSearch(query: matchQuery)
     }
 
+    private func openTMDBMatchPicker() {
+        tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
+        tmdbMatchQuery = media.title.best
+        showTMDBMatchSheet = true
+        performTMDBMatchSearch(query: tmdbMatchQuery)
+    }
+
     private func refreshTrackingEntryForSheet() async {
         guard appState.authState.isSignedIn,
               let token = appState.authState.token else {
@@ -873,6 +934,34 @@ struct DetailsView: View {
             }
             isLoadingMatch = false
         }
+    }
+
+    private func performTMDBMatchSearch(query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        isLoadingTMDBMatch = true
+        tmdbMatchError = nil
+        tmdbMatchCandidates = []
+        Task {
+            let results = await appState.services.tmdbMatchingService.searchShows(query: trimmed)
+            tmdbMatchCandidates = results
+            if results.isEmpty {
+                tmdbMatchError = "No TMDB shows found."
+            }
+            isLoadingTMDBMatch = false
+        }
+    }
+
+    private func reloadTMDBOverrideDependentState() async {
+        tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
+        tmdbHeroBackdropURL = nil
+        tmdbHeroLogoURL = nil
+        tmdbHeroLookupComplete = false
+        episodeMetadata = [:]
+        episodeRatings = [:]
+        await loadEpisodes()
+        tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+        tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
+        tmdbHeroLookupComplete = true
     }
 
     private func selectEpisode(_ episode: SoraEpisode) {
@@ -1625,6 +1714,190 @@ private struct MatchPickerSheet: View {
                     Button("Close") { dismiss() }
                 }
             }
+        }
+    }
+}
+
+private struct TMDBMatchSheet: View {
+    let media: AniListMedia
+    let currentOverride: TMDBManualOverride?
+    @Binding var query: String
+    let candidates: [TMDBSearchResult]
+    let isLoading: Bool
+    let errorMessage: String?
+    let onSearch: (String) -> Void
+    let loadSeasons: (Int) async -> [TMDBSeasonChoice]
+    let onSave: (TMDBSeasonChoice, Int) -> Void
+    let onClear: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedShow: TMDBSearchResult?
+    @State private var seasons: [TMDBSeasonChoice] = []
+    @State private var isLoadingSeasons = false
+    @State private var seasonError: String?
+    @State private var episodeOffsetText = "0"
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Current Match") {
+                    if let currentOverride {
+                        VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
+                            Text(currentOverride.showTitle ?? "Manual TMDB Override")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text(currentOverride.seasonLabel ?? "Season \(currentOverride.seasonNumber)")
+                                .font(.system(size: 13))
+                                .foregroundColor(.secondary)
+                            if currentOverride.episodeOffset != 0 {
+                                Text("Offset \(currentOverride.episodeOffset)")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Button("Clear Manual Match", role: .destructive) {
+                            onClear()
+                            dismiss()
+                        }
+                    } else {
+                        Text("Using automatic TMDB matching.")
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                if selectedShow == nil {
+                    Section("Search") {
+                        HStack(spacing: UIConstants.mediumPadding) {
+                            TextField("Search TMDB shows...", text: $query)
+                                .textInputAutocapitalization(.words)
+                                .disableAutocorrection(true)
+                                .submitLabel(.search)
+                                .onSubmit { onSearch(query) }
+                            Button("Search") {
+                                onSearch(query)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+
+                    if isLoading {
+                        Text("Searching TMDB…")
+                            .foregroundColor(.secondary)
+                    } else if let errorMessage {
+                        Text(errorMessage)
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(candidates) { candidate in
+                            Button {
+                                selectedShow = candidate
+                                episodeOffsetText = "0"
+                                loadSeasonChoices(for: candidate)
+                            } label: {
+                                HStack(spacing: UIConstants.interCardSpacing) {
+                                    if let posterURL = candidate.posterURL {
+                                        CachedImage(
+                                            url: posterURL,
+                                            targetSize: CGSize(width: UIConstants.sourceRowImageWidth, height: UIConstants.sourceRowImageHeight)
+                                        ) { img in
+                                            img.resizable().scaledToFill()
+                                        } placeholder: {
+                                            Color.white.opacity(0.1)
+                                        }
+                                        .frame(width: UIConstants.sourceRowImageWidth, height: UIConstants.sourceRowImageHeight)
+                                        .clipShape(RoundedRectangle(cornerRadius: UIConstants.smallCornerRadius, style: .continuous))
+                                    }
+                                    VStack(alignment: .leading, spacing: UIConstants.microPadding) {
+                                        Text(candidate.title)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(.primary)
+                                        if let firstAirYear = candidate.firstAirYear {
+                                            Text("\(firstAirYear)")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.vertical, UIConstants.tinyPadding)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                } else {
+                    Section {
+                        Button("Back to Results") {
+                            selectedShow = nil
+                            seasons = []
+                            seasonError = nil
+                        }
+                        .foregroundColor(.secondary)
+                    }
+
+                    Section("Episode Offset") {
+                        TextField("0", text: $episodeOffsetText)
+                            .keyboardType(.numberPad)
+                        Text("Use an offset for split-cour or globally numbered cases.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+
+                    if isLoadingSeasons {
+                        Text("Loading seasons…")
+                            .foregroundColor(.secondary)
+                    } else if let seasonError {
+                        Text(seasonError)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Section(selectedShow?.title ?? "Seasons") {
+                            ForEach(seasons) { season in
+                                HStack(spacing: UIConstants.interCardSpacing) {
+                                    VStack(alignment: .leading, spacing: UIConstants.microPadding) {
+                                        Text(season.name)
+                                            .font(.system(size: 15, weight: .semibold))
+                                        Text("Season \(season.seasonNumber) • \(season.episodeCount) episodes")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.secondary)
+                                        if let airYear = season.airYear {
+                                            Text("\(airYear)")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    Spacer()
+                                    Button("Use") {
+                                        let offset = Int(episodeOffsetText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+                                        onSave(season, offset)
+                                        dismiss()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
+                                .padding(.vertical, UIConstants.tinyPadding)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("TMDB Match")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func loadSeasonChoices(for candidate: TMDBSearchResult) {
+        isLoadingSeasons = true
+        seasonError = nil
+        seasons = []
+        Task {
+            let loaded = await loadSeasons(candidate.id)
+            seasons = loaded
+            if loaded.isEmpty {
+                seasonError = "No TMDB seasons found."
+            }
+            isLoadingSeasons = false
         }
     }
 }
