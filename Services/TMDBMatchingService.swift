@@ -487,8 +487,31 @@ final class TMDBMatchingService {
         }
 
         let absoluteEpisodes = await flattenAbsoluteEpisodes(show: show)
-        guard !absoluteEpisodes.isEmpty,
-              let franchise = await buildLunaFranchise(for: media, show: show) else {
+        guard !absoluteEpisodes.isEmpty else {
+            return nil
+        }
+
+        if let overrideMatch = manualOverride(for: media.id),
+           overrideMatch.showId == show.showId,
+           (overrideMatch.mediaType ?? show.mediaType) == show.mediaType,
+           let currentSegment = buildManualOverrideSegment(
+                overrideMatch: overrideMatch,
+                media: media,
+                show: show,
+                absoluteEpisodes: absoluteEpisodes
+           ) {
+            return TMDBAnimeStructureMatch(
+                showId: show.showId,
+                mediaType: show.mediaType,
+                showTitle: show.title,
+                absoluteEpisodes: absoluteEpisodes,
+                segments: [currentSegment],
+                currentSegment: currentSegment,
+                reason: "manual-override"
+            )
+        }
+
+        guard let franchise = await buildLunaFranchise(for: media, show: show) else {
             return nil
         }
 
@@ -511,6 +534,53 @@ final class TMDBMatchingService {
             segments: segments,
             currentSegment: currentSegment,
             reason: fittedCurrent?.reason ?? "soupy-luna-franchise-fallback"
+        )
+    }
+
+    private func buildManualOverrideSegment(
+        overrideMatch: TMDBManualOverride,
+        media: AniListMedia,
+        show: TMDBShowSummary,
+        absoluteEpisodes: [AbsoluteTMDBEpisode]
+    ) -> AniListTMDBSegment? {
+        if show.mediaType == "movie" {
+            guard let first = absoluteEpisodes.first else { return nil }
+            return AniListTMDBSegment(
+                mediaId: media.id,
+                displayLabel: overrideMatch.seasonLabel ?? "Movie",
+                episodeCount: 1,
+                tmdbSeasonNumber: first.seasonNumber,
+                episodeOffset: 0,
+                absoluteStart: 1,
+                absoluteEnd: 1,
+                posterSeasonNumber: first.seasonNumber,
+                reason: "manual-override"
+            )
+        }
+
+        let seasonEpisodes = absoluteEpisodes.filter { $0.seasonNumber == overrideMatch.seasonNumber }
+        guard !seasonEpisodes.isEmpty else { return nil }
+
+        let startInSeason = min(max(overrideMatch.episodeOffset, 0), max(seasonEpisodes.count - 1, 0))
+        let requestedCount = max(media.episodes ?? (seasonEpisodes.count - startInSeason), 1)
+        let availableCount = max(seasonEpisodes.count - startInSeason, 1)
+        let episodeCount = min(requestedCount, availableCount)
+        guard episodeCount > 0 else { return nil }
+
+        let firstSeasonEpisode = seasonEpisodes[startInSeason]
+        let absoluteStart = firstSeasonEpisode.absoluteNumber
+        let absoluteEnd = min(absoluteStart + episodeCount - 1, absoluteEpisodes.count)
+
+        return AniListTMDBSegment(
+            mediaId: media.id,
+            displayLabel: overrideMatch.seasonLabel ?? "Season \(overrideMatch.seasonNumber)",
+            episodeCount: episodeCount,
+            tmdbSeasonNumber: overrideMatch.seasonNumber,
+            episodeOffset: startInSeason,
+            absoluteStart: absoluteStart,
+            absoluteEnd: absoluteEnd,
+            posterSeasonNumber: overrideMatch.seasonNumber,
+            reason: "manual-override"
         )
     }
 
