@@ -457,17 +457,21 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v6:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v7:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v8:\(mediaId):")
+        cacheStore.removeKeys(withPrefix: "tmdb:ratings:v9:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v9:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v9:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v10:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v10:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v11:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v11:\(mediaId):")
+        cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v12:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v12:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v1:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v2:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v3:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v4:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v5:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:structure:v6:\(mediaId)")
     }
 }
 
@@ -512,7 +516,7 @@ final class RatingService {
 
         if let structured = await tmdbMatcher.resolveAnimeStructure(media: media) {
             let desiredCount = media.episodes ?? structured.currentSegment.episodeCount
-            let cacheKey = "tmdb:ratings:v8:\(media.id):show:\(structured.showId):abs:\(structured.currentSegment.absoluteStart)-\(structured.currentSegment.absoluteEnd)"
+            let cacheKey = "tmdb:ratings:v9:\(media.id):show:\(structured.showId):abs:\(structured.currentSlice.absoluteStart)-\(structured.currentSlice.absoluteEnd)"
             if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
                let decoded = try? JSONDecoder().decode([Int: Double].self, from: cached) {
                 return decoded
@@ -842,18 +846,18 @@ final class EpisodeMetadataService {
             let maxEpisodeNumber = episodes.map(\.number).max() ?? 0
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
-            let structureKey = "tmdb:structure:v5:\(media.id)"
+            let structureKey = "tmdb:structure:v6:\(media.id)"
             guard let cachedStructure = cacheStore.readJSON(forKey: structureKey),
                   let structured = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cachedStructure) else {
                 return nil
             }
-            let seasonNumber = structured.currentSegment.tmdbSeasonNumber
-            let episodeOffset = structured.currentSegment.episodeOffset
+            let seasonNumber = structured.currentSlice.tmdbSeasonNumber
+            let episodeOffset = structured.currentSlice.episodeOffset
             let showId = structured.showId
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
             let showKey = ":show:\(showId)"
-            let absoluteKey = ":abs:\(structured.currentSegment.absoluteStart)-\(structured.currentSegment.absoluteEnd)"
-            let cacheKey = "episode-meta:tmdb:v11:\(media.id)\(showKey):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)\(absoluteKey)"
+            let absoluteKey = ":abs:\(structured.currentSlice.absoluteStart)-\(structured.currentSlice.absoluteEnd)"
+            let cacheKey = "episode-meta:tmdb:v12:\(media.id)\(showKey):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)\(absoluteKey)"
             if let cached = cacheStore.readJSON(forKey: cacheKey),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
@@ -891,7 +895,7 @@ final class EpisodeMetadataService {
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
             let absoluteKey = absoluteStart > 0 && absoluteEnd > 0 ? ":abs:\(absoluteStart)-\(absoluteEnd)" : ""
-            let genericCacheKey = "episode-meta:tmdb:v11:\(media.id):show:\(showId):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let genericCacheKey = "episode-meta:tmdb:v12:\(media.id):show:\(showId):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
             let cacheKey = "\(genericCacheKey)\(absoluteKey)"
             if accepted, let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {

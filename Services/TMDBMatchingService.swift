@@ -101,6 +101,11 @@ struct TMDBAnimeStructureMatch: Equatable, Codable {
     let segments: [AniListTMDBSegment]
     let currentSegment: AniListTMDBSegment
     let reason: String
+
+    var tmdbId: Int { showId }
+    var currentAniListMediaId: Int { currentSegment.mediaId }
+    var currentSlice: AniListTMDBSegment { currentSegment }
+    var franchiseContext: [AniListTMDBSegment]? { segments }
 }
 
 struct TMDBSearchResult: Identifiable, Equatable {
@@ -402,7 +407,7 @@ final class TMDBMatchingService {
     }
 
     func resolveAnimeStructure(media: AniListMedia) async -> TMDBAnimeStructureMatch? {
-        let requestKey = "tmdb:structure:v5:\(media.id)"
+        let requestKey = "tmdb:structure:v6:\(media.id)"
         if let cached = cacheStore.readJSON(forKey: requestKey, maxAge: Self.structureCacheTTL),
            let decoded = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cached) {
             return decoded
@@ -483,11 +488,20 @@ final class TMDBMatchingService {
 
         let absoluteEpisodes = await flattenAbsoluteEpisodes(show: show)
         guard !absoluteEpisodes.isEmpty,
-              let franchise = await buildLunaFranchise(for: media, show: show),
-              let segments = mapFranchise(franchise, onto: absoluteEpisodes, show: show),
-              let currentSegment = segments.first(where: { $0.mediaId == media.id }) else {
+              let franchise = await buildLunaFranchise(for: media, show: show) else {
             return nil
         }
+
+        let fittedCurrent = fitCurrentNode(
+            media: media,
+            franchise: franchise,
+            onto: absoluteEpisodes,
+            show: show
+        )
+        let fullSegments = mapFranchise(franchise, onto: absoluteEpisodes, show: show)
+        let currentSegment = fittedCurrent ?? fullSegments?.first(where: { $0.mediaId == media.id })
+        guard let currentSegment else { return nil }
+        let segments = fullSegments ?? [currentSegment]
 
         return TMDBAnimeStructureMatch(
             showId: show.showId,
@@ -496,7 +510,7 @@ final class TMDBMatchingService {
             absoluteEpisodes: absoluteEpisodes,
             segments: segments,
             currentSegment: currentSegment,
-            reason: "soupy-luna-anilist-structure"
+            reason: fittedCurrent?.reason ?? "soupy-luna-franchise-fallback"
         )
     }
 
@@ -1527,6 +1541,155 @@ final class TMDBMatchingService {
         }
 
         return mapped.isEmpty ? nil : mapped
+    }
+
+    private func fitCurrentNode(
+        media: AniListMedia,
+        franchise: [AniListSegment],
+        onto absoluteEpisodes: [AbsoluteTMDBEpisode],
+        show: TMDBShowSummary
+    ) -> AniListTMDBSegment? {
+        guard let currentIndex = franchise.firstIndex(where: { $0.media.id == media.id }) else { return nil }
+        let current = franchise[currentIndex]
+        let currentCount = inferredEpisodeCount(
+            for: current,
+            index: currentIndex,
+            franchise: franchise,
+            cursor: 0,
+            totalEpisodes: absoluteEpisodes.count
+        )
+        guard currentCount > 0 else { return nil }
+
+        let seasons = show.seasons.filter { !$0.isSpecial && $0.episodeCount > 0 }
+        let knownBefore = franchise.prefix(currentIndex).compactMap(\.media.episodes).filter { $0 > 0 }.reduce(0, +)
+        let knownAfter = franchise.dropFirst(currentIndex + 1).compactMap(\.media.episodes).filter { $0 > 0 }.reduce(0, +)
+        let minStart = knownBefore
+        let maxStart = absoluteEpisodes.count - knownAfter - currentCount
+        guard maxStart >= minStart, minStart >= 0 else { return nil }
+
+        if minStart == maxStart {
+            return buildCurrentSlice(
+                segment: current,
+                startIndex: minStart,
+                episodeCount: currentCount,
+                absoluteEpisodes: absoluteEpisodes,
+                fallbackIndex: currentIndex + 1,
+                reason: "current-node-neighbor-fit"
+            )
+        }
+
+        let explicitSeason = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best)
+        if let explicitSeason, explicitSeason > 1, !seasons.contains(where: { $0.seasonNumber == explicitSeason }) {
+            return nil
+        }
+
+        var candidates: [(start: Int, score: Double, reason: String)] = []
+
+        if let explicitSeason,
+           let start = startIndexForSeason(
+                explicitSeason,
+                in: absoluteEpisodes,
+                offset: 0
+           ),
+           start >= minStart,
+           start <= maxStart {
+            candidates.append((start, 0.99, "current-node-explicit-season"))
+        }
+
+        if let anchoredSeason = anchoredSeasonForCurrentNode(media: media, show: show, episodeCount: currentCount),
+           let start = startIndexForSeason(
+                anchoredSeason.seasonNumber,
+                in: absoluteEpisodes,
+                offset: anchoredSeason.episodeOffset
+           ),
+           start >= minStart,
+           start <= maxStart {
+            candidates.append((start, anchoredSeason.confidence, anchoredSeason.reason))
+        }
+
+        if minStart == 0 {
+            candidates.append((minStart, 0.74, "current-node-prefix-start"))
+        }
+        if maxStart == minStart {
+            candidates.append((maxStart, 0.74, "current-node-fixed-range"))
+        } else if currentIndex == franchise.count - 1 {
+            candidates.append((maxStart, 0.76, "current-node-suffix-fit"))
+        }
+
+        let best = candidates
+            .filter { candidate in
+                candidate.start >= 0 && candidate.start + currentCount <= absoluteEpisodes.count
+            }
+            .sorted { lhs, rhs in
+                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                return lhs.start < rhs.start
+            }
+            .first
+
+        if let best {
+            return buildCurrentSlice(
+                segment: current,
+                startIndex: best.start,
+                episodeCount: currentCount,
+                absoluteEpisodes: absoluteEpisodes,
+                fallbackIndex: currentIndex + 1,
+                reason: best.reason
+            )
+        }
+
+        return nil
+    }
+
+    private func anchoredSeasonForCurrentNode(
+        media: AniListMedia,
+        show: TMDBShowSummary,
+        episodeCount: Int
+    ) -> SelectedSeason? {
+        selectSeason(
+            media: media,
+            show: show,
+            preferredSeasonNumber: TitleMatcher.extractSeasonNumber(from: media.title.best),
+            firstEpisodeNumber: nil,
+            expectedEpisodeCount: episodeCount,
+            maxEpisodeNumber: episodeCount
+        )
+    }
+
+    private func startIndexForSeason(
+        _ seasonNumber: Int,
+        in absoluteEpisodes: [AbsoluteTMDBEpisode],
+        offset: Int
+    ) -> Int? {
+        guard let seasonStart = absoluteEpisodes.firstIndex(where: { $0.seasonNumber == seasonNumber }) else {
+            return nil
+        }
+        return seasonStart + max(0, offset)
+    }
+
+    private func buildCurrentSlice(
+        segment: AniListSegment,
+        startIndex: Int,
+        episodeCount: Int,
+        absoluteEpisodes: [AbsoluteTMDBEpisode],
+        fallbackIndex: Int,
+        reason: String
+    ) -> AniListTMDBSegment? {
+        guard startIndex >= 0, startIndex < absoluteEpisodes.count else { return nil }
+        let endIndex = startIndex + episodeCount - 1
+        guard endIndex >= startIndex, endIndex < absoluteEpisodes.count else { return nil }
+
+        let startEpisode = absoluteEpisodes[startIndex]
+        return AniListTMDBSegment(
+            mediaId: segment.media.id,
+            displayLabel: segment.displayLabel ?? "Season \(fallbackIndex)",
+            episodeCount: episodeCount,
+            tmdbSeasonNumber: startEpisode.seasonNumber,
+            episodeOffset: max(0, startEpisode.episodeNumber - 1),
+            absoluteStart: startIndex + 1,
+            absoluteEnd: endIndex + 1,
+            posterSeasonNumber: startEpisode.seasonNumber,
+            reason: reason
+        )
     }
 
     private func inferredEpisodeCount(
