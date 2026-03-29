@@ -264,8 +264,8 @@ struct DetailsView: View {
                 onSearch: { term in
                     performTMDBMatchSearch(query: term)
                 },
-                loadSeasons: { showId in
-                    await appState.services.tmdbMatchingService.fetchSeasonChoices(for: media, showId: showId)
+                loadSeasons: { candidate in
+                    await appState.services.tmdbMatchingService.fetchSeasonChoices(for: media, showId: candidate.id, mediaType: candidate.mediaType)
                 },
                 onSave: { choice, additionalOffset in
                     Task {
@@ -273,6 +273,7 @@ struct DetailsView: View {
                         await appState.services.metadataService.saveManualTMDBMatch(
                             media: media,
                             showId: choice.showId,
+                            mediaType: choice.mediaType,
                             seasonNumber: choice.tmdbSeasonNumber,
                             episodeOffset: resolvedOffset,
                             showTitle: choice.showTitle,
@@ -1737,7 +1738,7 @@ private struct TMDBMatchSheet: View {
     let isLoading: Bool
     let errorMessage: String?
     let onSearch: (String) -> Void
-    let loadSeasons: (Int) async -> [TMDBSeasonChoice]
+    let loadSeasons: (TMDBSearchResult) async -> [TMDBSeasonChoice]
     let onSave: (TMDBSeasonChoice, Int) -> Void
     let onClear: () -> Void
 
@@ -1756,7 +1757,7 @@ private struct TMDBMatchSheet: View {
                         VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
                             Text(currentOverride.showTitle ?? "Manual TMDB Override")
                                 .font(.system(size: 16, weight: .semibold))
-                            Text(currentOverride.seasonLabel ?? "Season \(currentOverride.seasonNumber)")
+                            Text(currentOverride.seasonLabel ?? "\((currentOverride.mediaType ?? "tv") == "movie" ? "Movie" : "Season \(currentOverride.seasonNumber)")")
                                 .font(.system(size: 13))
                                 .foregroundColor(.secondary)
                             if currentOverride.episodeOffset != 0 {
@@ -1866,11 +1867,11 @@ private struct TMDBMatchSheet: View {
                                     VStack(alignment: .leading, spacing: UIConstants.microPadding) {
                                         Text(season.displayLabel)
                                             .font(.system(size: 15, weight: .semibold))
-                                        Text("Season \(season.seasonNumber) • \(season.episodeCount) episodes")
+                                        Text("\(season.mediaType == "movie" ? "Movie" : "Season \(season.seasonNumber)") • \(season.episodeCount) episodes")
                                             .font(.system(size: 12))
                                             .foregroundColor(.secondary)
                                         if season.isSynthetic || season.episodeOffset > 0 {
-                                            Text("TMDB Season \(season.tmdbSeasonNumber)\(season.episodeOffset > 0 ? " • Offset \(season.episodeOffset)" : "")")
+                                            Text("\(season.mediaType == "movie" ? "TMDB Movie" : "TMDB Season \(season.tmdbSeasonNumber)")\(season.episodeOffset > 0 ? " • Offset \(season.episodeOffset)" : "")")
                                                 .font(.system(size: 12))
                                                 .foregroundColor(.secondary)
                                         }
@@ -1913,7 +1914,7 @@ private struct TMDBMatchSheet: View {
         seasonError = nil
         seasons = []
         Task {
-            let loaded = await loadSeasons(candidate.id)
+            let loaded = await loadSeasons(candidate)
             seasons = loaded
             if loaded.isEmpty {
                 seasonError = "No TMDB seasons found."

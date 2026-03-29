@@ -152,6 +152,7 @@ final class MetadataService {
     func saveManualTMDBMatch(
         media: AniListMedia,
         showId: Int,
+        mediaType: String = "tv",
         seasonNumber: Int,
         episodeOffset: Int = 0,
         showTitle: String? = nil,
@@ -160,6 +161,7 @@ final class MetadataService {
         await tmdbMatcher.saveManualOverride(
             aniListId: media.id,
             showId: showId,
+            mediaType: mediaType,
             seasonNumber: seasonNumber,
             episodeOffset: episodeOffset,
             showTitle: showTitle,
@@ -174,20 +176,23 @@ final class MetadataService {
     }
 
     private func fetchSeasonAwareTMDBMetadata(for media: AniListMedia, apiKey: String) async -> TMDBMetadata? {
-        guard let showId = await tmdbMatcher.resolveShowId(media: media) else {
+        let structured = await tmdbMatcher.resolveAnimeStructure(media: media)
+        let mediaType = structured?.mediaType ?? tmdbMatcher.manualOverride(for: media.id)?.mediaType ?? "tv"
+        let showId = structured?.showId ?? await tmdbMatcher.resolveShowId(media: media)
+        guard let showId else {
             AppLog.debug(.matching, "tmdb metadata unresolved mediaId=\(media.id)")
             return nil
         }
 
-        guard let details = await fetchTMDBDetails(showId: showId, apiKey: apiKey) else {
+        guard let details = await fetchTMDBDetails(showId: showId, mediaType: mediaType, apiKey: apiKey) else {
             return nil
         }
         let posterSeasonNumber =
-            (await tmdbMatcher.resolveAnimeStructure(media: media))?.currentSegment.posterSeasonNumber ??
+            structured?.currentSegment.posterSeasonNumber ??
             tmdbMatcher.manualOverride(for: media.id)?.seasonNumber ??
             cacheStoreSeasonNumber(for: media.id)
         let seasonPosterURL: URL?
-        if let posterSeasonNumber {
+        if mediaType == "tv", let posterSeasonNumber {
             seasonPosterURL = await tmdbMatcher.fetchSeasonDetails(
                 aniListId: media.id,
                 showId: showId,
@@ -289,8 +294,9 @@ final class MetadataService {
         return best?.id
     }
 
-    private func fetchTMDBDetails(showId: Int, apiKey: String) async -> TMDBMetadata? {
-        guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)?api_key=\(apiKey)") else {
+    private func fetchTMDBDetails(showId: Int, mediaType: String, apiKey: String) async -> TMDBMetadata? {
+        let path = mediaType == "movie" ? "movie" : "tv"
+        guard let url = URL(string: "https://api.themoviedb.org/3/\(path)/\(showId)?api_key=\(apiKey)") else {
             return nil
         }
         do {
@@ -299,12 +305,14 @@ final class MetadataService {
                 return nil
             }
             let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            let title = root?["name"] as? String ?? root?["original_name"] as? String ?? "Unknown"
+            let title = mediaType == "movie"
+                ? (root?["title"] as? String ?? root?["original_title"] as? String ?? "Unknown")
+                : (root?["name"] as? String ?? root?["original_name"] as? String ?? "Unknown")
             let posterPath = root?["poster_path"] as? String
             let backdropPath = root?["backdrop_path"] as? String
             let posterURL = posterPath.flatMap { tmdbImageURL(path: $0, size: "w342") }
             let backdropURL = backdropPath.flatMap { tmdbImageURL(path: $0, size: "w780") }
-            let logoURL = await fetchBestLogo(showId: showId, apiKey: apiKey)
+            let logoURL = await fetchBestLogo(showId: showId, mediaType: mediaType, apiKey: apiKey)
             return TMDBMetadata(
                 tmdbId: showId,
                 title: title,
@@ -317,8 +325,9 @@ final class MetadataService {
         }
     }
 
-    private func fetchBestLogo(showId: Int, apiKey: String) async -> URL? {
-        guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)/images?api_key=\(apiKey)") else {
+    private func fetchBestLogo(showId: Int, mediaType: String = "tv", apiKey: String) async -> URL? {
+        let path = mediaType == "movie" ? "movie" : "tv"
+        guard let url = URL(string: "https://api.themoviedb.org/3/\(path)/\(showId)/images?api_key=\(apiKey)") else {
             return nil
         }
         do {
@@ -379,7 +388,7 @@ final class MetadataService {
 
     private func metadataCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:media:v8:manual:\(mediaId):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
+            return "tmdb:media:v8:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
         }
         return "tmdb:media:v8:\(mediaId)"
     }

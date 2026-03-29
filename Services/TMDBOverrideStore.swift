@@ -3,6 +3,7 @@ import Foundation
 struct TMDBManualOverride: Codable, Equatable {
     let aniListId: Int
     let showId: Int
+    let mediaType: String? = "tv"
     let seasonNumber: Int
     let episodeOffset: Int
     let showTitle: String?

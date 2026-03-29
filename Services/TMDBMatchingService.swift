@@ -55,12 +55,14 @@ private actor TMDBMatchRequestLimiter {
 
 struct TMDBSeasonMatch: Equatable, Codable {
     let showId: Int
+    let mediaType: String = "tv"
     let seasonNumber: Int
     let episodeOffset: Int
 }
 
 struct TMDBResolvedMatch: Equatable, Codable {
     let showId: Int
+    let mediaType: String = "tv"
     let seasonNumber: Int
     let episodeOffset: Int
     let confidence: Double
@@ -93,6 +95,7 @@ struct AniListTMDBSegment: Equatable, Codable {
 
 struct TMDBAnimeStructureMatch: Equatable, Codable {
     let showId: Int
+    let mediaType: String = "tv"
     let showTitle: String
     let absoluteEpisodes: [AbsoluteTMDBEpisode]
     let segments: [AniListTMDBSegment]
@@ -102,14 +105,16 @@ struct TMDBAnimeStructureMatch: Equatable, Codable {
 
 struct TMDBSearchResult: Identifiable, Equatable {
     let id: Int
+    let mediaType: String = "tv"
     let title: String
     let posterURL: URL?
     let firstAirYear: Int?
 }
 
 struct TMDBSeasonChoice: Identifiable, Equatable {
-    var id: String { "\(showId)-\(tmdbSeasonNumber)-\(episodeOffset)-\(displayLabel)" }
+    var id: String { "\(mediaType)-\(showId)-\(tmdbSeasonNumber)-\(episodeOffset)-\(displayLabel)" }
     let showId: Int
+    let mediaType: String = "tv"
     let showTitle: String
     let tmdbSeasonNumber: Int
     let episodeOffset: Int
@@ -140,6 +145,16 @@ struct TMDBSeasonDetails: Equatable, Codable {
     let episodes: [Episode]
 }
 
+private struct TMDBMovieDetails: Equatable, Codable {
+    let title: String
+    let summary: String?
+    let releaseDate: String?
+    let runtimeMinutes: Int?
+    let posterURL: URL?
+    let backdropURL: URL?
+    let rating: Double?
+}
+
 private struct TMDBSeasonMatchNegativeCacheEntry: Codable {
     let missing: Bool
 }
@@ -166,6 +181,7 @@ final class TMDBMatchingService {
     private let matchRequests = TMDBMatchTaskCoalescer<String, TMDBResolvedMatch?>()
     private let seasonDetailRequests = TMDBMatchTaskCoalescer<String, TMDBSeasonDetails?>()
     private let structureRequests = TMDBMatchTaskCoalescer<String, TMDBAnimeStructureMatch?>()
+    private let movieDetailRequests = TMDBMatchTaskCoalescer<Int, TMDBMovieDetails?>()
 
     init(
         cacheStore: CacheStore,
@@ -217,6 +233,7 @@ final class TMDBMatchingService {
         guard let resolved else { return nil }
         return TMDBSeasonMatch(
             showId: resolved.showId,
+            mediaType: resolved.mediaType,
             seasonNumber: resolved.seasonNumber,
             episodeOffset: resolved.episodeOffset
         )
@@ -235,6 +252,7 @@ final class TMDBMatchingService {
         if let overrideMatch = manualOverride(for: media.id) {
             return TMDBResolvedMatch(
                 showId: overrideMatch.showId,
+                mediaType: overrideMatch.mediaType ?? "tv",
                 seasonNumber: overrideMatch.seasonNumber,
                 episodeOffset: overrideMatch.episodeOffset,
                 confidence: 1.0,
@@ -261,6 +279,7 @@ final class TMDBMatchingService {
            ) {
             return TMDBResolvedMatch(
                 showId: cached.showId,
+                mediaType: "tv",
                 seasonNumber: cached.seasonNumber,
                 episodeOffset: cached.episodeOffset,
                 confidence: 0.95,
@@ -289,6 +308,7 @@ final class TMDBMatchingService {
                    ) {
                     return TMDBResolvedMatch(
                         showId: cached.showId,
+                        mediaType: "tv",
                         seasonNumber: cached.seasonNumber,
                         episodeOffset: cached.episodeOffset,
                         confidence: 0.95,
@@ -307,15 +327,16 @@ final class TMDBMatchingService {
 
                 let titles = await self.candidateTitles(for: media)
                 let startYear = franchiseStartYear ?? media.startDate?.year ?? media.seasonYear
-                guard let showId = await self.findShowId(media: media, titles: titles, startYear: startYear),
-                      let show = await self.fetchShowSummary(showId: showId, apiKey: apiKey) else {
+                guard let target = await self.findTarget(media: media, titles: titles, startYear: startYear),
+                      let show = await self.fetchShowSummary(showId: target.id, mediaType: target.mediaType, apiKey: apiKey) else {
                     self.writeNegativeSeasonMatchCache(forKey: cacheKey)
                     return nil
                 }
 
                 let structured = await self.resolveAnimeStructure(
                     media: media,
-                    showIdOverride: showId,
+                    showIdOverride: target.id,
+                    mediaTypeOverride: target.mediaType,
                     showOverride: show
                 )
 
@@ -342,13 +363,15 @@ final class TMDBMatchingService {
 
                 let resolved = TMDBResolvedMatch(
                     showId: show.showId,
+                    mediaType: show.mediaType,
                     seasonNumber: selection.seasonNumber,
                     episodeOffset: selection.episodeOffset,
                     confidence: selection.confidence,
                     reason: selection.reason
                 )
 
-                if let seasonDetails = await self.fetchSeasonDetails(
+                if show.mediaType == "tv",
+                   let seasonDetails = await self.fetchSeasonDetails(
                     aniListId: media.id,
                     showId: resolved.showId,
                     seasonNumber: resolved.seasonNumber
@@ -385,10 +408,11 @@ final class TMDBMatchingService {
             return decoded
         }
 
-        let resolved = await structureRequests.value(for: requestKey) { [self] in
+                let resolved = await structureRequests.value(for: requestKey) { [self] in
             await resolveAnimeStructure(
                 media: media,
                 showIdOverride: nil,
+                mediaTypeOverride: nil,
                 showOverride: nil
             )
         }
@@ -405,39 +429,44 @@ final class TMDBMatchingService {
         }
         let startYear = media.startDate?.year ?? media.seasonYear
         let directTitles = Array(normalizedCandidateTitleSet(from: [media]))
-        if let direct = await findShowId(media: media, titles: directTitles, startYear: startYear) {
-            return direct
+        if let direct = await findTarget(media: media, titles: directTitles, startYear: startYear) {
+            return direct.id
         }
         let titles = await candidateTitles(for: media)
-        return await findShowId(media: media, titles: titles, startYear: startYear)
+        return await findTarget(media: media, titles: titles, startYear: startYear)?.id
     }
 
     private func resolveAnimeStructure(
         media: AniListMedia,
         showIdOverride: Int? = nil,
+        mediaTypeOverride: String? = nil,
         showOverride: TMDBShowSummary? = nil
     ) async -> TMDBAnimeStructureMatch? {
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
 
         let showId: Int
+        let mediaType: String
         if let showIdOverride {
             showId = showIdOverride
+            mediaType = mediaTypeOverride ?? "tv"
         } else if let overrideMatch = manualOverride(for: media.id) {
             showId = overrideMatch.showId
+            mediaType = overrideMatch.mediaType ?? "tv"
         } else {
             let titles = await candidateTitles(for: media)
             let startYear = media.startDate?.year ?? media.seasonYear
-            guard let resolvedShowId = await findShowId(media: media, titles: titles, startYear: startYear) else {
+            guard let target = await findTarget(media: media, titles: titles, startYear: startYear) else {
                 return nil
             }
-            showId = resolvedShowId
+            showId = target.id
+            mediaType = target.mediaType
         }
 
         let show: TMDBShowSummary?
         if let showOverride {
             show = showOverride
         } else {
-            show = await fetchShowSummary(showId: showId, apiKey: apiKey)
+            show = await fetchShowSummary(showId: showId, mediaType: mediaType, apiKey: apiKey)
         }
 
         guard let show else {
@@ -454,6 +483,7 @@ final class TMDBMatchingService {
 
         return TMDBAnimeStructureMatch(
             showId: show.showId,
+            mediaType: show.mediaType,
             showTitle: show.title,
             absoluteEpisodes: absoluteEpisodes,
             segments: segments,
@@ -479,6 +509,7 @@ final class TMDBMatchingService {
     func saveManualOverride(
         aniListId: Int,
         showId: Int,
+        mediaType: String = "tv",
         seasonNumber: Int,
         episodeOffset: Int = 0,
         showTitle: String? = nil,
@@ -487,6 +518,7 @@ final class TMDBMatchingService {
         let overrideMatch = TMDBManualOverride(
             aniListId: aniListId,
             showId: showId,
+            mediaType: mediaType,
             seasonNumber: seasonNumber,
             episodeOffset: episodeOffset,
             showTitle: showTitle,
@@ -519,36 +551,41 @@ final class TMDBMatchingService {
         guard !trimmed.isEmpty else { return [] }
 
         let queries = TitleMatcher.buildQueries(from: trimmed)
-        var resultsById: [Int: TMDBSearchResult] = [:]
+        var resultsById: [String: TMDBSearchResult] = [:]
 
         for query in queries where !query.isEmpty {
-            var components = URLComponents(string: "https://api.themoviedb.org/3/search/tv")!
-            components.queryItems = [
-                URLQueryItem(name: "api_key", value: apiKey),
-                URLQueryItem(name: "query", value: query)
-            ]
-            guard let url = components.url else { continue }
-            do {
-                let (data, response) = try await session.data(from: url)
-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            for mediaType in ["tv", "movie"] {
+                var components = URLComponents(string: "https://api.themoviedb.org/3/search/\(mediaType)")!
+                components.queryItems = [
+                    URLQueryItem(name: "api_key", value: apiKey),
+                    URLQueryItem(name: "query", value: query)
+                ]
+                guard let url = components.url else { continue }
+                do {
+                    let (data, response) = try await session.data(from: url)
+                    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                        continue
+                    }
+                    let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                    let rows = root?["results"] as? [[String: Any]] ?? []
+                    for row in rows {
+                        guard let id = row["id"] as? Int else { continue }
+                        let title = mediaType == "movie"
+                            ? (row["title"] as? String ?? row["original_title"] as? String ?? "Unknown")
+                            : (row["name"] as? String ?? row["original_name"] as? String ?? "Unknown")
+                        let posterPath = row["poster_path"] as? String
+                        let year = yearFrom(mediaType == "movie" ? row["release_date"] as? String : row["first_air_date"] as? String)
+                        resultsById["\(mediaType):\(id)"] = TMDBSearchResult(
+                            id: id,
+                            mediaType: mediaType,
+                            title: title,
+                            posterURL: posterPath.flatMap { URL(string: "https://image.tmdb.org/t/p/w185\($0)") },
+                            firstAirYear: year
+                        )
+                    }
+                } catch {
                     continue
                 }
-                let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                let rows = root?["results"] as? [[String: Any]] ?? []
-                for row in rows {
-                    guard let id = row["id"] as? Int else { continue }
-                    let title = row["name"] as? String ?? row["original_name"] as? String ?? "Unknown"
-                    let posterPath = row["poster_path"] as? String
-                    let firstAirYear = yearFrom(row["first_air_date"] as? String)
-                    resultsById[id] = TMDBSearchResult(
-                        id: id,
-                        title: title,
-                        posterURL: posterPath.flatMap { URL(string: "https://image.tmdb.org/t/p/w185\($0)") },
-                        firstAirYear: firstAirYear
-                    )
-                }
-            } catch {
-                continue
             }
         }
 
@@ -560,13 +597,14 @@ final class TMDBMatchingService {
         }
     }
 
-    func fetchSeasonChoices(for media: AniListMedia, showId: Int) async -> [TMDBSeasonChoice] {
+    func fetchSeasonChoices(for media: AniListMedia, showId: Int, mediaType: String = "tv") async -> [TMDBSeasonChoice] {
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return [] }
-        guard let summary = await fetchShowSummary(showId: showId, apiKey: apiKey) else { return [] }
-        if let structured = await resolveAnimeStructure(media: media, showIdOverride: showId, showOverride: summary) {
+        guard let summary = await fetchShowSummary(showId: showId, mediaType: mediaType, apiKey: apiKey) else { return [] }
+        if let structured = await resolveAnimeStructure(media: media, showIdOverride: showId, mediaTypeOverride: mediaType, showOverride: summary) {
             let structuredChoices = structured.segments.map { segment in
                 TMDBSeasonChoice(
                     showId: showId,
+                    mediaType: mediaType,
                     showTitle: structured.showTitle,
                     tmdbSeasonNumber: segment.tmdbSeasonNumber,
                     episodeOffset: segment.episodeOffset,
@@ -588,6 +626,7 @@ final class TMDBMatchingService {
             .map { season in
                 TMDBSeasonChoice(
                     showId: showId,
+                    mediaType: mediaType,
                     showTitle: summary.title,
                     tmdbSeasonNumber: season.seasonNumber,
                     episodeOffset: 0,
@@ -600,6 +639,24 @@ final class TMDBMatchingService {
                     airYear: yearFrom(season.airDateString)
                 )
             }
+        if mediaType == "movie" {
+            return [
+                TMDBSeasonChoice(
+                    showId: showId,
+                    mediaType: mediaType,
+                    showTitle: summary.title,
+                    tmdbSeasonNumber: 1,
+                    episodeOffset: 0,
+                    displayEpisodeCount: max(media.episodes ?? 1, 1),
+                    displayLabel: "Movie",
+                    isSynthetic: true,
+                    mappedAniListMediaId: media.id,
+                    mappingReason: "movie-target",
+                    name: "Movie",
+                    airYear: summary.seasons.first.flatMap { yearFrom($0.airDateString) }
+                )
+            ]
+        }
         if let syntheticChoices = await syntheticSeasonChoices(for: media, show: summary),
            !syntheticChoices.isEmpty {
             return syntheticChoices
@@ -649,6 +706,39 @@ final class TMDBMatchingService {
         }
     }
 
+    private func fetchMovieDetails(movieId: Int, apiKey: String) async -> TMDBMovieDetails? {
+        return await movieDetailRequests.value(for: movieId) { [self] in
+            guard let url = URL(string: "https://api.themoviedb.org/3/movie/\(movieId)?api_key=\(apiKey)") else {
+                return nil
+            }
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    return nil
+                }
+                let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let title = root?["title"] as? String ?? root?["original_title"] as? String ?? "Unknown"
+                let summary = root?["overview"] as? String
+                let releaseDate = root?["release_date"] as? String
+                let runtime = root?["runtime"] as? Int
+                let posterURL = (root?["poster_path"] as? String).flatMap { URL(string: "https://image.tmdb.org/t/p/original\($0)") }
+                let backdropURL = (root?["backdrop_path"] as? String).flatMap { URL(string: "https://image.tmdb.org/t/p/w780\($0)") }
+                let rating = root?["vote_average"] as? Double
+                return TMDBMovieDetails(
+                    title: title,
+                    summary: summary,
+                    releaseDate: releaseDate,
+                    runtimeMinutes: runtime,
+                    posterURL: posterURL,
+                    backdropURL: backdropURL,
+                    rating: rating
+                )
+            } catch {
+                return nil
+            }
+        }
+    }
+
     private func isCachedMetadataUsable(
         _ cached: TMDBCachedMetadata,
         firstEpisodeNumber: Int?,
@@ -690,15 +780,15 @@ final class TMDBMatchingService {
         }
     }
 
-    private func findShowId(media: AniListMedia, titles: [String], startYear: Int?) async -> Int? {
+    private func findTarget(media: AniListMedia, titles: [String], startYear: Int?) async -> TMDBSearchResult? {
         if let malId = media.idMal,
-           let showId = await findByMAL(malId: malId) {
-            return showId
+           let target = await findByMAL(malId: malId) {
+            return target
         }
-        return await searchShow(titles: titles, startYear: startYear)
+        return await searchShow(titles: titles, startYear: startYear, preferMovie: isMovieLike(media))
     }
 
-    private func findByMAL(malId: Int) async -> Int? {
+    private func findByMAL(malId: Int) async -> TMDBSearchResult? {
         guard let apiKey else { return nil }
         var components = URLComponents(string: "https://api.themoviedb.org/3/find/\(malId)")!
         components.queryItems = [
@@ -712,13 +802,33 @@ final class TMDBMatchingService {
                 return nil
             }
             let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            return (root?["tv_results"] as? [[String: Any]])?.first?["id"] as? Int
+            if let tv = (root?["tv_results"] as? [[String: Any]])?.first,
+               let id = tv["id"] as? Int {
+                return TMDBSearchResult(
+                    id: id,
+                    mediaType: "tv",
+                    title: tv["name"] as? String ?? tv["original_name"] as? String ?? "Unknown",
+                    posterURL: (tv["poster_path"] as? String).flatMap { URL(string: "https://image.tmdb.org/t/p/w185\($0)") },
+                    firstAirYear: yearFrom(tv["first_air_date"] as? String)
+                )
+            }
+            if let movie = (root?["movie_results"] as? [[String: Any]])?.first,
+               let id = movie["id"] as? Int {
+                return TMDBSearchResult(
+                    id: id,
+                    mediaType: "movie",
+                    title: movie["title"] as? String ?? movie["original_title"] as? String ?? "Unknown",
+                    posterURL: (movie["poster_path"] as? String).flatMap { URL(string: "https://image.tmdb.org/t/p/w185\($0)") },
+                    firstAirYear: yearFrom(movie["release_date"] as? String)
+                )
+            }
+            return nil
         } catch {
             return nil
         }
     }
 
-    private func searchShow(titles: [String], startYear: Int?) async -> Int? {
+    private func searchShow(titles: [String], startYear: Int?, preferMovie: Bool) async -> TMDBSearchResult? {
         guard let apiKey else { return nil }
         let sanitizedTitles = titles
             .map(TitleSanitizer.sanitize)
@@ -731,47 +841,62 @@ final class TMDBMatchingService {
             .filter { !$0.isEmpty }
         guard !normalizedTargets.isEmpty else { return nil }
 
-        var best: (id: Int, score: Double)?
+        var best: TMDBSearchResult?
+        var bestScore = -1.0
         for query in queries {
-            var components = URLComponents(string: "https://api.themoviedb.org/3/search/tv")!
-            components.queryItems = [
-                URLQueryItem(name: "api_key", value: apiKey),
-                URLQueryItem(name: "query", value: query)
-            ]
-            guard let url = components.url else { continue }
-            do {
-                let (data, response) = try await session.data(from: url)
-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            for mediaType in ["tv", "movie"] {
+                var components = URLComponents(string: "https://api.themoviedb.org/3/search/\(mediaType)")!
+                components.queryItems = [
+                    URLQueryItem(name: "api_key", value: apiKey),
+                    URLQueryItem(name: "query", value: query)
+                ]
+                guard let url = components.url else { continue }
+                do {
+                    let (data, response) = try await session.data(from: url)
+                    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                        continue
+                    }
+                    let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                    let results = root?["results"] as? [[String: Any]] ?? []
+                    for row in results {
+                        guard let id = row["id"] as? Int else { continue }
+                        let name = mediaType == "movie"
+                            ? (row["title"] as? String ?? row["original_title"] as? String ?? "")
+                            : (row["name"] as? String ?? row["original_name"] as? String ?? "")
+                        let normalizedName = TitleMatcher.cleanTitle(name)
+                        let titleScore = normalizedTargets
+                            .map { TitleMatcher.diceCoefficient(normalizedName, $0) }
+                            .max() ?? 0.0
+
+                        let dateString = mediaType == "movie"
+                            ? (row["release_date"] as? String)
+                            : (row["first_air_date"] as? String)
+                        let yearScore: Double
+                        if let startYear, let year = yearFrom(dateString) {
+                            yearScore = 1.0 - min(Double(abs(startYear - year)) / 3.0, 1.0)
+                        } else {
+                            yearScore = 0.5
+                        }
+
+                        let typeBias = mediaType == "movie" ? (preferMovie ? 1.0 : 0.7) : (preferMovie ? 0.7 : 1.0)
+                        let score = (0.6 * titleScore) + (0.22 * yearScore) + (0.18 * typeBias)
+                        if score > bestScore {
+                            bestScore = score
+                            best = TMDBSearchResult(
+                                id: id,
+                                mediaType: mediaType,
+                                title: name,
+                                posterURL: (row["poster_path"] as? String).flatMap { URL(string: "https://image.tmdb.org/t/p/w185\($0)") },
+                                firstAirYear: yearFrom(dateString)
+                            )
+                        }
+                    }
+                } catch {
                     continue
                 }
-                let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                let results = root?["results"] as? [[String: Any]] ?? []
-                for row in results {
-                    guard let id = row["id"] as? Int else { continue }
-                    let name = row["name"] as? String ?? row["original_name"] as? String ?? ""
-                    let normalizedName = TitleMatcher.cleanTitle(name)
-                    let titleScore = normalizedTargets
-                        .map { TitleMatcher.diceCoefficient(normalizedName, $0) }
-                        .max() ?? 0.0
-
-                    let firstAirDate = row["first_air_date"] as? String
-                    let yearScore: Double
-                    if let startYear, let year = yearFrom(firstAirDate) {
-                        yearScore = 1.0 - min(Double(abs(startYear - year)) / 3.0, 1.0)
-                    } else {
-                        yearScore = 0.5
-                    }
-
-                    let score = (0.72 * titleScore) + (0.28 * yearScore)
-                    if best == nil || score > best!.score {
-                        best = (id, score)
-                    }
-                }
-            } catch {
-                continue
             }
         }
-        return best?.id
+        return best
     }
 
     private func candidateTitles(for media: AniListMedia) async -> [String] {
@@ -835,7 +960,19 @@ final class TMDBMatchingService {
         return titles
     }
 
-    private func fetchShowSummary(showId: Int, apiKey: String) async -> TMDBShowSummary? {
+    private func fetchShowSummary(showId: Int, mediaType: String, apiKey: String) async -> TMDBShowSummary? {
+        if mediaType == "movie" {
+            guard let movie = await fetchMovieDetails(movieId: showId, apiKey: apiKey) else { return nil }
+            return TMDBShowSummary(
+                showId: showId,
+                mediaType: "movie",
+                title: movie.title,
+                numberOfEpisodes: 1,
+                seasons: [
+                    TMDBSeasonInfo(seasonNumber: 1, episodeCount: 1, airDateString: movie.releaseDate, name: "Movie", isSpecial: false)
+                ]
+            )
+        }
         guard let url = URL(string: "https://api.themoviedb.org/3/tv/\(showId)?api_key=\(apiKey)") else {
             return nil
         }
@@ -851,7 +988,7 @@ final class TMDBMatchingService {
                 .compactMap { TMDBSeasonInfo(from: $0) }
                 .filter { $0.seasonNumber > 0 }
                 .sorted { $0.seasonNumber < $1.seasonNumber }
-            return TMDBShowSummary(showId: showId, title: title, numberOfEpisodes: total, seasons: seasons)
+            return TMDBShowSummary(showId: showId, mediaType: "tv", title: title, numberOfEpisodes: total, seasons: seasons)
         } catch {
             return nil
         }
@@ -1159,6 +1296,13 @@ final class TMDBMatchingService {
         return dateFormatter.date(from: airDate)
     }
 
+    private func isMovieLike(_ media: AniListMedia) -> Bool {
+        let format = (media.format ?? "").uppercased()
+        if format.contains("MOVIE") { return true }
+        let title = media.title.best.lowercased()
+        return title.contains("movie") || title.contains("film")
+    }
+
     private func syntheticSeasonChoices(for media: AniListMedia, show: TMDBShowSummary) async -> [TMDBSeasonChoice]? {
         guard let aniListClient else { return nil }
 
@@ -1195,7 +1339,12 @@ final class TMDBMatchingService {
         var visited: Set<Int> = []
 
         func insert(_ item: AniListMedia, relationType: String?) {
-            guard let episodeCount = item.episodes, episodeCount > 0 else { return }
+            let hasCount = (item.episodes ?? 0) > 0
+            let markerHint =
+                TitleMatcher.extractSeasonMarkerNumber(from: item.title.best) != nil ||
+                TitleMatcher.extractPartMarkerNumber(from: item.title.best) != nil ||
+                TitleMatcher.hasFinalSeasonMarker(item.title.best)
+            guard hasCount || item.id == media.id || markerHint else { return }
             discovered[item.id] = AniListSegment(
                 media: item,
                 relationType: relationType,
@@ -1269,7 +1418,12 @@ final class TMDBMatchingService {
             let results = (try? await aniListClient.searchAnime(query: query)) ?? []
             let ranked = results
                 .filter { candidate in
-                    guard let episodes = candidate.episodes, episodes > 0 else { return false }
+                    let hasEpisodes = (candidate.episodes ?? 0) > 0
+                    let hasMarker =
+                        TitleMatcher.extractSeasonMarkerNumber(from: candidate.title.best) != nil ||
+                        TitleMatcher.extractPartMarkerNumber(from: candidate.title.best) != nil ||
+                        TitleMatcher.hasFinalSeasonMarker(candidate.title.best)
+                    guard hasEpisodes || hasMarker else { return false }
                     guard !seenIds.contains(candidate.id) else { return false }
                     return true
                 }
@@ -1327,7 +1481,14 @@ final class TMDBMatchingService {
         var cursor = 0
 
         for (index, segment) in franchise.enumerated() {
-            guard let episodeCount = segment.media.episodes, episodeCount > 0 else { continue }
+            let episodeCount = inferredEpisodeCount(
+                for: segment,
+                index: index,
+                franchise: franchise,
+                cursor: cursor,
+                totalEpisodes: absoluteEpisodes.count
+            )
+            guard episodeCount > 0 else { continue }
 
             let start = cursor
             let end = cursor + episodeCount - 1
@@ -1360,7 +1521,40 @@ final class TMDBMatchingService {
         return mapped.isEmpty ? nil : mapped
     }
 
+    private func inferredEpisodeCount(
+        for segment: AniListSegment,
+        index: Int,
+        franchise: [AniListSegment],
+        cursor: Int,
+        totalEpisodes: Int
+    ) -> Int {
+        if let count = segment.media.episodes, count > 0 {
+            return count
+        }
+        let remaining = max(0, totalEpisodes - cursor)
+        guard remaining > 0 else { return 0 }
+        let knownAfter = franchise.dropFirst(index + 1).compactMap(\.media.episodes).filter { $0 > 0 }.reduce(0, +)
+        let inferred = max(remaining - knownAfter, 0)
+        return inferred > 0 ? inferred : (segment.media.id == franchise.last?.media.id ? remaining : 0)
+    }
+
     private func flattenAbsoluteEpisodes(show: TMDBShowSummary) async -> [AbsoluteTMDBEpisode] {
+        if show.mediaType == "movie" {
+            guard let apiKey, let movie = await fetchMovieDetails(movieId: show.showId, apiKey: apiKey) else { return [] }
+            return [
+                AbsoluteTMDBEpisode(
+                    absoluteNumber: 1,
+                    seasonNumber: 1,
+                    episodeNumber: 1,
+                    title: movie.title,
+                    summary: movie.summary,
+                    airDate: movie.releaseDate,
+                    runtimeMinutes: movie.runtimeMinutes,
+                    stillURL: movie.backdropURL ?? movie.posterURL,
+                    rating: movie.rating
+                )
+            ]
+        }
         let seasons = show.seasons.filter { !$0.isSpecial && $0.episodeCount > 0 }
         guard !seasons.isEmpty else { return [] }
 
@@ -1535,6 +1729,7 @@ final class TMDBMatchingService {
 
 private struct TMDBShowSummary {
     let showId: Int
+    let mediaType: String = "tv"
     let title: String
     let numberOfEpisodes: Int
     let seasons: [TMDBSeasonInfo]
@@ -1546,6 +1741,14 @@ private struct TMDBSeasonInfo {
     let airDateString: String?
     let name: String?
     let isSpecial: Bool
+
+    init(seasonNumber: Int, episodeCount: Int, airDateString: String?, name: String?, isSpecial: Bool) {
+        self.seasonNumber = seasonNumber
+        self.episodeCount = episodeCount
+        self.airDateString = airDateString
+        self.name = name
+        self.isSpecial = isSpecial
+    }
 
     init?(from dict: [String: Any]) {
         guard let seasonNumber = dict["season_number"] as? Int else { return nil }
