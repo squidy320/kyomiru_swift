@@ -37,6 +37,15 @@ final class CacheStore {
         AppLog.debug(.cache, "cache remove key=\(key)")
     }
 
+    func removeKeys(withPrefix prefix: String) {
+        let safePrefix = prefix.replacingOccurrences(of: "/", with: "_")
+        guard let urls = try? fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil) else { return }
+        for url in urls where url.lastPathComponent.hasPrefix(safePrefix) {
+            try? fm.removeItem(at: url)
+            AppLog.debug(.cache, "cache remove key-prefix=\(prefix) file=\(url.lastPathComponent)")
+        }
+    }
+
     private func fileURL(forKey key: String) -> URL {
         let safe = key.replacingOccurrences(of: "/", with: "_")
         return dirURL.appendingPathComponent(safe).appendingPathExtension("json")

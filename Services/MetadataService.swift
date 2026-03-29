@@ -165,10 +165,12 @@ final class MetadataService {
             showTitle: showTitle,
             seasonLabel: seasonLabel
         )
+        invalidateTMDBCaches(for: media.id)
     }
 
     func clearManualTMDBMatch(for media: AniListMedia) {
         tmdbMatcher.clearManualOverride(aniListId: media.id)
+        invalidateTMDBCaches(for: media.id)
     }
 
     private func fetchSeasonAwareTMDBMetadata(for media: AniListMedia, apiKey: String) async -> TMDBMetadata? {
@@ -376,6 +378,14 @@ final class MetadataService {
             return "tmdb:media:v5:manual:\(mediaId):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
         }
         return "tmdb:media:v5:\(mediaId)"
+    }
+
+    private func invalidateTMDBCaches(for mediaId: Int) {
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v5:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v5:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:ratings:v5:\(mediaId):")
+        cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v8:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v8:\(mediaId):")
     }
 }
 

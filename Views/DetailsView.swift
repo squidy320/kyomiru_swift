@@ -128,6 +128,7 @@ struct DetailsView: View {
     @State private var episodeMetadata: [Int: EpisodeMetadata] = [:]
     @State private var episodeRatings: [Int: Double] = [:]
     @State private var streamingEpisodes: [AniListStreamingEpisode] = []
+    @State private var episodeLoadGeneration = 0
     @State private var tmdbHeroBackdropURL: URL?
     @State private var tmdbHeroLogoURL: URL?
     @State private var tmdbHeroLookupComplete = false
@@ -844,10 +845,13 @@ struct DetailsView: View {
     }
 
     private func loadEpisodes() async {
+        episodeLoadGeneration += 1
+        let loadGeneration = episodeLoadGeneration
         isLoading = true
         errorMessage = nil
         do {
             let result = try await appState.services.episodeService.loadEpisodes(media: media)
+            guard loadGeneration == episodeLoadGeneration else { return }
             episodes = result.episodes
             isLoading = false
 
@@ -857,6 +861,7 @@ struct DetailsView: View {
 
             Task { @MainActor in
                 let meta = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: result.episodes)
+                guard loadGeneration == episodeLoadGeneration else { return }
                 episodeMetadata = meta
             }
             Task { @MainActor in
@@ -866,17 +871,22 @@ struct DetailsView: View {
                     seasonNumber: 1,
                     firstEpisodeNumber: firstEpisodeNumber
                 )
+                guard loadGeneration == episodeLoadGeneration else { return }
                 episodeRatings = ratings
             }
             Task { @MainActor in
                 do {
-                    streamingEpisodes = try await appState.services.aniListClient.streamingEpisodes(mediaId: media.id)
+                    let loadedEpisodes = try await appState.services.aniListClient.streamingEpisodes(mediaId: media.id)
+                    guard loadGeneration == episodeLoadGeneration else { return }
+                    streamingEpisodes = loadedEpisodes
                 } catch {
+                    guard loadGeneration == episodeLoadGeneration else { return }
                     AppLog.error(.network, "streaming episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
                     streamingEpisodes = []
                 }
             }
         } catch {
+            guard loadGeneration == episodeLoadGeneration else { return }
             errorMessage = "Failed to load episodes."
             AppLog.error(.network, "details episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
             isLoading = false
