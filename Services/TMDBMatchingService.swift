@@ -153,6 +153,7 @@ private enum TMDBMatchCacheResult {
 final class TMDBMatchingService {
     private static let matchCacheTTL: TimeInterval = 60 * 60 * 12
     private static let negativeMatchCacheTTL: TimeInterval = 60 * 30
+    private static let structureCacheTTL: TimeInterval = 60 * 30
     private static let requestLimiter = TMDBMatchRequestLimiter(maxConcurrent: 3)
 
     private let session: URLSession
@@ -164,6 +165,7 @@ final class TMDBMatchingService {
     private let dateFormatter: DateFormatter
     private let matchRequests = TMDBMatchTaskCoalescer<String, TMDBResolvedMatch?>()
     private let seasonDetailRequests = TMDBMatchTaskCoalescer<String, TMDBSeasonDetails?>()
+    private let structureRequests = TMDBMatchTaskCoalescer<String, TMDBAnimeStructureMatch?>()
 
     init(
         cacheStore: CacheStore,
@@ -377,11 +379,24 @@ final class TMDBMatchingService {
     }
 
     func resolveAnimeStructure(media: AniListMedia) async -> TMDBAnimeStructureMatch? {
-        await resolveAnimeStructure(
-            media: media,
-            showIdOverride: nil,
-            showOverride: nil
-        )
+        let requestKey = "tmdb:structure:v1:\(media.id)"
+        if let cached = cacheStore.readJSON(forKey: requestKey, maxAge: Self.structureCacheTTL),
+           let decoded = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cached) {
+            return decoded
+        }
+
+        let resolved = await structureRequests.value(for: requestKey) { [self] in
+            await resolveAnimeStructure(
+                media: media,
+                showIdOverride: nil,
+                showOverride: nil
+            )
+        }
+
+        if let resolved, let data = try? JSONEncoder().encode(resolved) {
+            cacheStore.writeJSON(data, forKey: requestKey)
+        }
+        return resolved
     }
 
     func resolveShowId(media: AniListMedia) async -> Int? {
@@ -1168,6 +1183,12 @@ final class TMDBMatchingService {
         let orderedSegments = buildAniListSegments(current: media, relations: relations)
         guard !orderedSegments.isEmpty,
               let currentIndex = orderedSegments.firstIndex(where: { $0.media.id == media.id }) else { return nil }
+
+        if let explicitSeason = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best),
+           explicitSeason > 1,
+           currentIndex == 0 {
+            return nil
+        }
 
         let scopedSegments = Array(orderedSegments.prefix(through: currentIndex))
 

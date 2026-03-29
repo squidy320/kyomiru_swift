@@ -389,6 +389,7 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v6:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v9:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v9:\(mediaId):")
+        cacheStore.removeKeys(withPrefix: "tmdb:structure:v1:\(mediaId)")
     }
 }
 
@@ -448,6 +449,11 @@ final class RatingService {
                 cacheStore.writeJSON(data, forKey: cacheKey)
             }
             return mapped
+        }
+
+        if let explicitSeason = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best),
+           explicitSeason > 1 {
+            return [:]
         }
 
         let preferredSeasonNumber = TitleMatcher.extractSeasonNumber(from: media.title.best)
@@ -1029,6 +1035,11 @@ final class EpisodeMetadataService {
                 !mapped.isEmpty,
                 mapped.isEmpty ? "empty-absolute-segment" : nil
             )
+        }
+
+        if let explicitSeason = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best),
+           explicitSeason > 1 {
+            return ([:], 0, preferredSeason ?? explicitSeason, 0, 0, 0, false, "explicit-season-unmapped")
         }
         let franchiseStartYear = media.startDate?.year ?? media.seasonYear
         guard let match = await tmdbMatcher.matchShowAndSeason(
