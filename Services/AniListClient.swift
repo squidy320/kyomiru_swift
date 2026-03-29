@@ -26,7 +26,7 @@ enum AniListError: Error {
 }
 
 final class AniListClient {
-    private let endpoint = URL(string: "https://graphql.anilist.co")!
+    private let endpoint = URL(string: "https://graphql.anilist.co/")!
     private let cacheStore: CacheStore
     private let session: URLSession
     private let rateLimiter = AniListRateLimiter()
@@ -1058,19 +1058,8 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         await requestGate.acquire()
         defer { Task { await self.requestGate.release() } }
         await rateLimiter.waitForSlot()
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("https://anilist.co", forHTTPHeaderField: "Origin")
-        request.setValue("https://anilist.co", forHTTPHeaderField: "Referer")
-        request.setValue(URLSession.randomUserAgent, forHTTPHeaderField: "User-Agent")
-        if let token, !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        let request = makeGraphQLRequest(query: query, variables: variables, token: token)
         AppLog.debug(.network, "graphql request start")
-        let body: [String: Any] = ["query": query, "variables": variables]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response): (Data, URLResponse) = try await NetworkRetry.withRetries(
             label: "anilist-graphql",
@@ -1083,6 +1072,41 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             }
             return (data, response)
         }
+        guard let http = response as? HTTPURLResponse else {
+            AppLog.error(.network, "graphql invalid response")
+            throw AniListError.invalidResponse
+        }
+        if http.statusCode == 403 {
+            let fallbackRequest = makeGraphQLRequest(query: query, variables: variables, token: token, minimalHeaders: true)
+            let (fallbackData, fallbackResponse) = try await session.data(for: fallbackRequest)
+            if let fallbackHTTP = fallbackResponse as? HTTPURLResponse, fallbackHTTP.statusCode != 403 {
+                return try handleGraphQLResponse(data: fallbackData, response: fallbackResponse, token: token)
+            }
+        }
+        return try handleGraphQLResponse(data: data, response: response, token: token)
+    }
+
+    private func makeGraphQLRequest(
+        query: String,
+        variables: [String: Any],
+        token: String?,
+        minimalHeaders: Bool = false
+    ) -> URLRequest {
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        request.setValue(minimalHeaders ? "Kyomiru/1.0" : "Kyomiru/1.0 CFNetwork", forHTTPHeaderField: "User-Agent")
+        if let token, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let body: [String: Any] = ["query": query, "variables": variables]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+
+    private func handleGraphQLResponse(data: Data, response: URLResponse, token: String?) throws -> Data {
         guard let http = response as? HTTPURLResponse else {
             AppLog.error(.network, "graphql invalid response")
             throw AniListError.invalidResponse
