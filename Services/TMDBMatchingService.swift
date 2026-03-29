@@ -195,7 +195,7 @@ final class TMDBMatchingService {
         expectedEpisodeCount: Int?,
         maxEpisodeNumber: Int?
     ) -> String {
-        "tmdb:match:v9:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
+        "tmdb:match:v10:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
     }
 
     func matchShowAndSeason(
@@ -379,7 +379,7 @@ final class TMDBMatchingService {
     }
 
     func resolveAnimeStructure(media: AniListMedia) async -> TMDBAnimeStructureMatch? {
-        let requestKey = "tmdb:structure:v2:\(media.id)"
+        let requestKey = "tmdb:structure:v3:\(media.id)"
         if let cached = cacheStore.readJSON(forKey: requestKey, maxAge: Self.structureCacheTTL),
            let decoded = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cached) {
             return decoded
@@ -1318,15 +1318,6 @@ final class TMDBMatchingService {
     }
 
     private func compareSegments(_ lhs: AniListSegment, _ rhs: AniListSegment) -> Bool {
-        if let leftSeason = lhs.sortSeasonNumber, let rightSeason = rhs.sortSeasonNumber, leftSeason != rightSeason {
-            return leftSeason < rightSeason
-        }
-        if lhs.sortSeasonNumber != nil, rhs.sortSeasonNumber == nil {
-            return true
-        }
-        if lhs.sortSeasonNumber == nil, rhs.sortSeasonNumber != nil {
-            return false
-        }
         if let leftDate = date(from: lhs.media.startDate), let rightDate = date(from: rhs.media.startDate), leftDate != rightDate {
             return leftDate < rightDate
         }
@@ -1335,10 +1326,35 @@ final class TMDBMatchingService {
            leftYear != rightYear {
             return leftYear < rightYear
         }
+        if relationRank(lhs.relationType) != relationRank(rhs.relationType) {
+            return relationRank(lhs.relationType) < relationRank(rhs.relationType)
+        }
+        if let leftSeason = lhs.sortSeasonNumber, let rightSeason = rhs.sortSeasonNumber, leftSeason != rightSeason {
+            return leftSeason < rightSeason
+        }
+        if lhs.sortSeasonNumber != nil, rhs.sortSeasonNumber == nil {
+            return false
+        }
+        if lhs.sortSeasonNumber == nil, rhs.sortSeasonNumber != nil {
+            return true
+        }
         if let leftPart = lhs.sortPartNumber, let rightPart = rhs.sortPartNumber, leftPart != rightPart {
             return leftPart < rightPart
         }
         return lhs.media.id < rhs.media.id
+    }
+
+    private func relationRank(_ relationType: String?) -> Int {
+        switch relationType?.uppercased() {
+        case "PREQUEL":
+            return 0
+        case "CURRENT":
+            return 1
+        case "SEQUEL":
+            return 2
+        default:
+            return 3
+        }
     }
 
     private func mapSegments(
