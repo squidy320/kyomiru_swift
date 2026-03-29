@@ -424,16 +424,26 @@ final class TMDBMatchingService {
     }
 
     func resolveShowId(media: AniListMedia) async -> Int? {
+        await resolveArtworkTarget(media: media)?.id
+    }
+
+    func resolveArtworkTarget(media: AniListMedia) async -> TMDBSearchResult? {
         if let overrideMatch = manualOverride(for: media.id) {
-            return overrideMatch.showId
+            return TMDBSearchResult(
+                id: overrideMatch.showId,
+                mediaType: overrideMatch.mediaType ?? "tv",
+                title: overrideMatch.showTitle ?? media.title.best,
+                posterURL: nil,
+                firstAirYear: media.startDate?.year ?? media.seasonYear
+            )
         }
         let startYear = media.startDate?.year ?? media.seasonYear
         let directTitles = Array(normalizedCandidateTitleSet(from: [media]))
         if let direct = await findTarget(media: media, titles: directTitles, startYear: startYear) {
-            return direct.id
+            return direct
         }
         let titles = await candidateTitles(for: media)
-        return await findTarget(media: media, titles: titles, startYear: startYear)?.id
+        return await findTarget(media: media, titles: titles, startYear: startYear)
     }
 
     private func resolveAnimeStructure(

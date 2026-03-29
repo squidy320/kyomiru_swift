@@ -65,6 +65,10 @@ private struct TMDBMetadataNegativeCacheEntry: Codable {
     let missing: Bool
 }
 
+private struct TMDBLogoCacheEntry: Codable {
+    let url: URL?
+}
+
 private enum TMDBMetadataCacheResult {
     case hit(TMDBMetadata)
     case negative
@@ -80,6 +84,7 @@ final class MetadataService {
     private let cacheStore: CacheStore
     private let apiKey: String?
     private let metadataRequests = TMDBTaskCoalescer<Int, TMDBMetadata?>()
+    private let logoRequests = TMDBTaskCoalescer<Int, URL?>()
     private let tmdbMatcher: TMDBMatchingService
 
     init(
@@ -122,7 +127,7 @@ final class MetadataService {
                     return nil
                 }
 
-                guard let details = await self.fetchSeasonAwareTMDBMetadata(for: media, apiKey: apiKey) else {
+                guard let details = await self.fetchArtworkTMDBMetadata(for: media, apiKey: apiKey) else {
                     self.writeNegativeMetadataCache(forKey: cacheKey)
                     return nil
                 }
@@ -145,8 +150,26 @@ final class MetadataService {
     }
 
     func logoURL(for media: AniListMedia) async -> URL? {
-        let meta = await fetchTMDBMetadata(for: media)
-        return meta?.logoURL
+        let cacheKey = logoCacheKey(for: media.id)
+        if let cached = cachedLogo(forKey: cacheKey) {
+            return cached
+        }
+
+        return await logoRequests.value(for: media.id) { [self] in
+            if let cached = self.cachedLogo(forKey: cacheKey) {
+                return cached
+            }
+            guard let apiKey = self.apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
+                return nil
+            }
+            guard let target = await self.tmdbMatcher.resolveArtworkTarget(media: media) else {
+                self.writeLogo(nil, forKey: cacheKey)
+                return nil
+            }
+            let logo = await self.fetchBestLogo(showId: target.id, mediaType: target.mediaType, apiKey: apiKey)
+            self.writeLogo(logo, forKey: cacheKey)
+            return logo
+        }
     }
 
     func saveManualTMDBMatch(
@@ -175,32 +198,23 @@ final class MetadataService {
         invalidateTMDBCaches(for: media.id)
     }
 
-    private func fetchSeasonAwareTMDBMetadata(for media: AniListMedia, apiKey: String) async -> TMDBMetadata? {
-        let structured = await tmdbMatcher.resolveAnimeStructure(media: media)
-        let mediaType = structured?.mediaType ?? tmdbMatcher.manualOverride(for: media.id)?.mediaType ?? "tv"
-        let showId: Int?
-        if let structured {
-            showId = structured.showId
-        } else {
-            showId = await tmdbMatcher.resolveShowId(media: media)
-        }
-        guard let showId else {
+    private func fetchArtworkTMDBMetadata(for media: AniListMedia, apiKey: String) async -> TMDBMetadata? {
+        guard let target = await tmdbMatcher.resolveArtworkTarget(media: media) else {
             AppLog.debug(.matching, "tmdb metadata unresolved mediaId=\(media.id)")
             return nil
         }
 
-        guard let details = await fetchTMDBDetails(showId: showId, mediaType: mediaType, apiKey: apiKey) else {
+        guard let details = await fetchTMDBDetails(showId: target.id, mediaType: target.mediaType, apiKey: apiKey, includeLogo: false) else {
             return nil
         }
         let posterSeasonNumber =
-            structured?.currentSegment.posterSeasonNumber ??
             tmdbMatcher.manualOverride(for: media.id)?.seasonNumber ??
             cacheStoreSeasonNumber(for: media.id)
         let seasonPosterURL: URL?
-        if mediaType == "tv", let posterSeasonNumber {
+        if target.mediaType == "tv", let posterSeasonNumber {
             seasonPosterURL = await tmdbMatcher.fetchSeasonDetails(
                 aniListId: media.id,
-                showId: showId,
+                showId: target.id,
                 seasonNumber: posterSeasonNumber
             )?.posterURL
         } else {
@@ -299,7 +313,7 @@ final class MetadataService {
         return best?.id
     }
 
-    private func fetchTMDBDetails(showId: Int, mediaType: String, apiKey: String) async -> TMDBMetadata? {
+    private func fetchTMDBDetails(showId: Int, mediaType: String, apiKey: String, includeLogo: Bool) async -> TMDBMetadata? {
         let path = mediaType == "movie" ? "movie" : "tv"
         guard let url = URL(string: "https://api.themoviedb.org/3/\(path)/\(showId)?api_key=\(apiKey)") else {
             return nil
@@ -317,7 +331,7 @@ final class MetadataService {
             let backdropPath = root?["backdrop_path"] as? String
             let posterURL = posterPath.flatMap { tmdbImageURL(path: $0, size: "w342") }
             let backdropURL = backdropPath.flatMap { tmdbImageURL(path: $0, size: "w780") }
-            let logoURL = await fetchBestLogo(showId: showId, mediaType: mediaType, apiKey: apiKey)
+            let logoURL = includeLogo ? await fetchBestLogo(showId: showId, mediaType: mediaType, apiKey: apiKey) : nil
             return TMDBMetadata(
                 tmdbId: showId,
                 title: title,
@@ -393,9 +407,40 @@ final class MetadataService {
 
     private func metadataCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:media:v8:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
+            return "tmdb:media:v9:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
         }
-        return "tmdb:media:v8:\(mediaId)"
+        return "tmdb:media:v9:\(mediaId)"
+    }
+
+    private func logoCacheKey(for mediaId: Int) -> String {
+        if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
+            return "tmdb:logo:v1:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId)"
+        }
+        return "tmdb:logo:v1:\(mediaId)"
+    }
+
+    private func cachedLogo(forKey key: String) -> URL?? {
+        if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.metadataCacheTTL),
+           let decoded = try? JSONDecoder().decode(TMDBLogoCacheEntry.self, from: cached) {
+            return decoded.url
+        }
+        if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.negativeMetadataCacheTTL),
+           let negative = try? JSONDecoder().decode(TMDBMetadataNegativeCacheEntry.self, from: cached),
+           negative.missing {
+            return .some(nil)
+        }
+        return nil
+    }
+
+    private func writeLogo(_ url: URL?, forKey key: String) {
+        if let url {
+            let entry = TMDBLogoCacheEntry(url: url)
+            if let data = try? JSONEncoder().encode(entry) {
+                cacheStore.writeJSON(data, forKey: key)
+            }
+        } else {
+            writeNegativeMetadataCache(forKey: key)
+        }
     }
 
     private func invalidateTMDBCaches(for mediaId: Int) {
@@ -405,6 +450,10 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:media:v7:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v8:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v8:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v9:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v9:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v6:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v7:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v8:\(mediaId):")
