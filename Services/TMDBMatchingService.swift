@@ -405,7 +405,14 @@ final class TMDBMatchingService {
             showId = resolvedShowId
         }
 
-        guard let show = showOverride ?? await fetchShowSummary(showId: showId, apiKey: apiKey) else {
+        let show: TMDBShowSummary?
+        if let showOverride {
+            show = showOverride
+        } else {
+            show = await fetchShowSummary(showId: showId, apiKey: apiKey)
+        }
+
+        guard let show else {
             return nil
         }
 
