@@ -174,27 +174,34 @@ final class MetadataService {
     }
 
     private func fetchSeasonAwareTMDBMetadata(for media: AniListMedia, apiKey: String) async -> TMDBMetadata? {
-        let franchiseStartYear = media.startDate?.year ?? media.seasonYear
-        let preferredSeasonNumber = TitleMatcher.extractSeasonNumber(from: media.title.best)
-        guard let match = await tmdbMatcher.resolveShowAndSeason(
-            media: media,
-            franchiseStartYear: franchiseStartYear,
-            firstEpisodeNumber: nil,
-            preferredSeasonNumber: preferredSeasonNumber,
-            expectedEpisodeCount: media.episodes,
-            maxEpisodeNumber: media.episodes
-        ) else {
+        let structured = await tmdbMatcher.resolveAnimeStructure(media: media)
+        let resolvedMatch: TMDBResolvedMatch?
+        if structured == nil {
+            resolvedMatch = await tmdbMatcher.resolveShowAndSeason(
+                media: media,
+                franchiseStartYear: media.startDate?.year ?? media.seasonYear,
+                firstEpisodeNumber: nil,
+                preferredSeasonNumber: TitleMatcher.extractSeasonNumber(from: media.title.best),
+                expectedEpisodeCount: media.episodes,
+                maxEpisodeNumber: media.episodes
+            )
+        } else {
+            resolvedMatch = nil
+        }
+
+        guard let showId = structured?.showId ?? resolvedMatch?.showId else {
             AppLog.debug(.matching, "tmdb metadata unresolved mediaId=\(media.id)")
             return nil
         }
 
-        guard let details = await fetchTMDBDetails(showId: match.showId, apiKey: apiKey) else {
+        guard let details = await fetchTMDBDetails(showId: showId, apiKey: apiKey) else {
             return nil
         }
+        let posterSeasonNumber = structured?.currentSegment.posterSeasonNumber ?? resolvedMatch?.seasonNumber ?? 1
         let seasonPosterURL = await tmdbMatcher.fetchSeasonDetails(
             aniListId: media.id,
-            showId: match.showId,
-            seasonNumber: match.seasonNumber
+            showId: showId,
+            seasonNumber: posterSeasonNumber
         )?.posterURL
         return TMDBMetadata(
             tmdbId: details.tmdbId,
@@ -375,17 +382,17 @@ final class MetadataService {
 
     private func metadataCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:media:v5:manual:\(mediaId):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
+            return "tmdb:media:v6:manual:\(mediaId):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
         }
-        return "tmdb:media:v5:\(mediaId)"
+        return "tmdb:media:v6:\(mediaId)"
     }
 
     private func invalidateTMDBCaches(for mediaId: Int) {
-        cacheStore.removeKeys(withPrefix: "tmdb:media:v5:\(mediaId)")
-        cacheStore.removeKeys(withPrefix: "tmdb:media:v5:manual:\(mediaId)")
-        cacheStore.removeKeys(withPrefix: "tmdb:ratings:v5:\(mediaId):")
-        cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v8:\(mediaId)")
-        cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v8:\(mediaId):")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v6:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v6:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:ratings:v6:\(mediaId):")
+        cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v9:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v9:\(mediaId):")
     }
 }
 
@@ -428,6 +435,25 @@ final class RatingService {
             return [:]
         }
 
+        if let structured = await tmdbMatcher.resolveAnimeStructure(media: media) {
+            let desiredCount = media.episodes ?? structured.currentSegment.episodeCount
+            let cacheKey = "tmdb:ratings:v6:\(media.id):show:\(structured.showId):abs:\(structured.currentSegment.absoluteStart)-\(structured.currentSegment.absoluteEnd)"
+            if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
+               let decoded = try? JSONDecoder().decode([Int: Double].self, from: cached) {
+                return decoded
+            }
+
+            let mapped = mapAbsoluteRatings(
+                structured,
+                firstEpisodeNumber: firstEpisodeNumber,
+                desiredCount: desiredCount
+            )
+            if let data = try? JSONEncoder().encode(mapped) {
+                cacheStore.writeJSON(data, forKey: cacheKey)
+            }
+            return mapped
+        }
+
         let preferredSeasonNumber = TitleMatcher.extractSeasonNumber(from: media.title.best)
         guard let match = await tmdbMatcher.matchShowAndSeason(
             media: media,
@@ -443,7 +469,7 @@ final class RatingService {
         let targetSeason = match.seasonNumber
         let episodeOffset = match.episodeOffset
 
-        let cacheKey = "tmdb:ratings:v5:\(media.id):show:\(match.showId):season:\(targetSeason):offset:\(episodeOffset)"
+        let cacheKey = "tmdb:ratings:v6:\(media.id):show:\(match.showId):season:\(targetSeason):offset:\(episodeOffset)"
         if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
            let decoded = try? JSONDecoder().decode([Int: Double].self, from: cached) {
             return decoded
@@ -477,6 +503,41 @@ final class RatingService {
         } catch {
             return [:]
         }
+    }
+
+    private func mapAbsoluteRatings(
+        _ structured: TMDBAnimeStructureMatch,
+        firstEpisodeNumber: Int?,
+        desiredCount: Int
+    ) -> [Int: Double] {
+        let startIndex = max(0, structured.currentSegment.absoluteStart - 1)
+        let endIndex = min(structured.absoluteEpisodes.count - 1, structured.currentSegment.absoluteEnd - 1)
+        guard startIndex <= endIndex else { return [:] }
+
+        let displayStart = displayEpisodeStart(
+            firstEpisodeNumber: firstEpisodeNumber,
+            desiredCount: desiredCount,
+            segmentCount: structured.currentSegment.episodeCount
+        )
+        let slice = Array(structured.absoluteEpisodes[startIndex...endIndex])
+        var result: [Int: Double] = [:]
+        for (index, episode) in slice.enumerated() {
+            guard let rating = episode.rating else { continue }
+            result[displayStart + index] = rating
+        }
+        return result
+    }
+
+    private func displayEpisodeStart(
+        firstEpisodeNumber: Int?,
+        desiredCount: Int,
+        segmentCount: Int
+    ) -> Int {
+        guard let firstEpisodeNumber else { return 1 }
+        if firstEpisodeNumber > 1 && (firstEpisodeNumber > segmentCount || firstEpisodeNumber > desiredCount) {
+            return firstEpisodeNumber
+        }
+        return 1
     }
 
     private func resolveTMDBShowId(media: AniListMedia, apiKey: String) async -> Int? {
@@ -787,7 +848,7 @@ final class EpisodeMetadataService {
             guard let seasonNumber else { return nil }
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
             let showKey = ":show:\(showId ?? 0)"
-            let cacheKey = "episode-meta:tmdb:v8:\(media.id)\(showKey):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let cacheKey = "episode-meta:tmdb:v9:\(media.id)\(showKey):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
             if let cached = cacheStore.readJSON(forKey: cacheKey),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
@@ -814,7 +875,7 @@ final class EpisodeMetadataService {
             let maxEpisodeNumber = episodes.map(\.number).max() ?? 0
             let preferredSeason = TitleMatcher.extractSeasonNumber(from: media.title.best)
             let firstEpisodeNumber = episodes.map(\.number).min()
-            let (primary, showId, seasonNumber, episodeOffset, accepted, rejectReason) = await fetchFromTMDB(
+            let (primary, showId, seasonNumber, episodeOffset, absoluteStart, absoluteEnd, accepted, rejectReason) = await fetchFromTMDB(
                 media: media,
                 preferredSeason: preferredSeason,
                 desiredCount: desiredCount,
@@ -824,7 +885,9 @@ final class EpisodeMetadataService {
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
             let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
-            let cacheKey = "episode-meta:tmdb:v8:\(media.id):show:\(showId):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let absoluteKey = absoluteStart > 0 && absoluteEnd > 0 ? ":abs:\(absoluteStart)-\(absoluteEnd)" : ""
+            let genericCacheKey = "episode-meta:tmdb:v9:\(media.id):show:\(showId):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+            let cacheKey = "\(genericCacheKey)\(absoluteKey)"
             if accepted, let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
@@ -833,6 +896,7 @@ final class EpisodeMetadataService {
                 mapped = primary
                 if let data = try? JSONEncoder().encode(mapped) {
                     cacheStore.writeJSON(data, forKey: cacheKey)
+                    cacheStore.writeJSON(data, forKey: genericCacheKey)
                 }
             } else {
                 let aniListFallback = await fetchFromAniListStreaming(media: media)
@@ -947,9 +1011,28 @@ final class EpisodeMetadataService {
         desiredCount: Int,
         maxEpisodeNumber: Int,
         firstEpisodeNumber: Int?
-    ) async -> ([Int: EpisodeMetadata], Int, Int, Int, Bool, String?) {
+    ) async -> ([Int: EpisodeMetadata], Int, Int, Int, Int, Int, Bool, String?) {
         guard let tmdbKey, !tmdbKey.isEmpty, tmdbKey != "CHANGE_ME" else {
-            return ([:], 0, preferredSeason ?? 1, 0, false, "missing-key")
+            return ([:], 0, preferredSeason ?? 1, 0, 0, 0, false, "missing-key")
+        }
+
+        if let structured = await tmdbMatcher.resolveAnimeStructure(media: media) {
+            let mapped = mapAbsoluteEpisodes(
+                structured,
+                firstEpisodeNumber: firstEpisodeNumber,
+                desiredCount: desiredCount,
+                maxEpisodeNumber: maxEpisodeNumber
+            )
+            return (
+                mapped,
+                structured.showId,
+                structured.currentSegment.tmdbSeasonNumber,
+                structured.currentSegment.episodeOffset,
+                structured.currentSegment.absoluteStart,
+                structured.currentSegment.absoluteEnd,
+                !mapped.isEmpty,
+                mapped.isEmpty ? "empty-absolute-segment" : nil
+            )
         }
         let franchiseStartYear = media.startDate?.year ?? media.seasonYear
         guard let match = await tmdbMatcher.matchShowAndSeason(
@@ -958,14 +1041,14 @@ final class EpisodeMetadataService {
             firstEpisodeNumber: firstEpisodeNumber,
             preferredSeasonNumber: preferredSeason,
             expectedEpisodeCount: desiredCount,
-            maxEpisodeNumber: maxEpisodeNumber,
+            maxEpisodeNumber: maxEpisodeNumber
         ) else {
-            return ([:], 0, preferredSeason ?? 1, 0, false, "no-canonical-match")
+            return ([:], 0, preferredSeason ?? 1, 0, 0, 0, false, "no-canonical-match")
         }
 
         let data = await fetchTMDBSeason(showId: match.showId, seasonNumber: match.seasonNumber)
         let mapped = match.episodeOffset == 0 ? data : applyEpisodeOffset(data, offset: match.episodeOffset)
-        return (mapped, match.showId, match.seasonNumber, match.episodeOffset, !mapped.isEmpty, mapped.isEmpty ? "empty-season" : nil)
+        return (mapped, match.showId, match.seasonNumber, match.episodeOffset, 0, 0, !mapped.isEmpty, mapped.isEmpty ? "empty-season" : nil)
     }
 
     private func fetchTMDBSeason(showId: Int, seasonNumber: Int) async -> [Int: EpisodeMetadata] {
@@ -1024,5 +1107,51 @@ final class EpisodeMetadataService {
             result[newNumber] = shifted
         }
         return result
+    }
+
+    private func mapAbsoluteEpisodes(
+        _ structured: TMDBAnimeStructureMatch,
+        firstEpisodeNumber: Int?,
+        desiredCount: Int,
+        maxEpisodeNumber: Int
+    ) -> [Int: EpisodeMetadata] {
+        let startIndex = max(0, structured.currentSegment.absoluteStart - 1)
+        let endIndex = min(structured.absoluteEpisodes.count - 1, structured.currentSegment.absoluteEnd - 1)
+        guard startIndex <= endIndex else { return [:] }
+
+        let displayStart = displayEpisodeStart(
+            firstEpisodeNumber: firstEpisodeNumber,
+            desiredCount: desiredCount,
+            maxEpisodeNumber: maxEpisodeNumber,
+            segmentCount: structured.currentSegment.episodeCount
+        )
+        let slice = Array(structured.absoluteEpisodes[startIndex...endIndex])
+        var result: [Int: EpisodeMetadata] = [:]
+        for (index, episode) in slice.enumerated() {
+            let number = displayStart + index
+            result[number] = EpisodeMetadata(
+                number: number,
+                title: episode.title ?? "Episode \(episode.episodeNumber)",
+                summary: episode.summary,
+                airDate: episode.airDate,
+                runtimeMinutes: episode.runtimeMinutes,
+                thumbnailURL: episode.stillURL
+            )
+        }
+        return result
+    }
+
+    private func displayEpisodeStart(
+        firstEpisodeNumber: Int?,
+        desiredCount: Int,
+        maxEpisodeNumber: Int,
+        segmentCount: Int
+    ) -> Int {
+        guard let firstEpisodeNumber else { return 1 }
+        let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
+        if globalNumbering || firstEpisodeNumber > segmentCount {
+            return firstEpisodeNumber
+        }
+        return 1
     }
 }

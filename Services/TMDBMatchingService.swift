@@ -67,6 +67,39 @@ struct TMDBResolvedMatch: Equatable, Codable {
     let reason: String
 }
 
+struct AbsoluteTMDBEpisode: Equatable, Codable {
+    let absoluteNumber: Int
+    let seasonNumber: Int
+    let episodeNumber: Int
+    let title: String?
+    let summary: String?
+    let airDate: String?
+    let runtimeMinutes: Int?
+    let stillURL: URL?
+    let rating: Double?
+}
+
+struct AniListTMDBSegment: Equatable, Codable {
+    let mediaId: Int
+    let displayLabel: String
+    let episodeCount: Int
+    let tmdbSeasonNumber: Int
+    let episodeOffset: Int
+    let absoluteStart: Int
+    let absoluteEnd: Int
+    let posterSeasonNumber: Int
+    let reason: String
+}
+
+struct TMDBAnimeStructureMatch: Equatable, Codable {
+    let showId: Int
+    let showTitle: String
+    let absoluteEpisodes: [AbsoluteTMDBEpisode]
+    let segments: [AniListTMDBSegment]
+    let currentSegment: AniListTMDBSegment
+    let reason: String
+}
+
 struct TMDBSearchResult: Identifiable, Equatable {
     let id: Int
     let title: String
@@ -95,6 +128,10 @@ struct TMDBSeasonChoice: Identifiable, Equatable {
 struct TMDBSeasonDetails: Equatable, Codable {
     struct Episode: Equatable, Codable {
         let number: Int
+        let title: String?
+        let summary: String?
+        let airDate: String?
+        let runtimeMinutes: Int?
         let stillURL: URL?
         let rating: Double?
     }
@@ -156,7 +193,7 @@ final class TMDBMatchingService {
         expectedEpisodeCount: Int?,
         maxEpisodeNumber: Int?
     ) -> String {
-        "tmdb:match:v8:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
+        "tmdb:match:v9:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
     }
 
     func matchShowAndSeason(
@@ -269,15 +306,34 @@ final class TMDBMatchingService {
                 let titles = await candidateTitles(for: media)
                 let startYear = franchiseStartYear ?? media.startDate?.year ?? media.seasonYear
                 guard let showId = await findShowId(media: media, titles: titles, startYear: startYear),
-                      let show = await fetchShowSummary(showId: showId, apiKey: apiKey),
-                      let selection = selectSeason(
-                            media: media,
-                            show: show,
-                            preferredSeasonNumber: preferredSeason,
-                            firstEpisodeNumber: firstEpisodeNumber,
-                            expectedEpisodeCount: expectedEpisodeCount,
-                            maxEpisodeNumber: maxEpisodeNumber
-                      ) else {
+                      let show = await fetchShowSummary(showId: showId, apiKey: apiKey) else {
+                    writeNegativeSeasonMatchCache(forKey: cacheKey)
+                    return nil
+                }
+
+                let structured = await resolveAnimeStructure(
+                    media: media,
+                    showIdOverride: showId,
+                    showOverride: show
+                )
+
+                let selection = structured.map {
+                    SelectedSeason(
+                        seasonNumber: $0.currentSegment.tmdbSeasonNumber,
+                        episodeOffset: $0.currentSegment.episodeOffset,
+                        confidence: 0.99,
+                        reason: $0.reason
+                    )
+                } ?? selectSeason(
+                    media: media,
+                    show: show,
+                    preferredSeasonNumber: preferredSeason,
+                    firstEpisodeNumber: firstEpisodeNumber,
+                    expectedEpisodeCount: expectedEpisodeCount,
+                    maxEpisodeNumber: maxEpisodeNumber
+                )
+
+                guard let selection else {
                     writeNegativeSeasonMatchCache(forKey: cacheKey)
                     return nil
                 }
@@ -318,6 +374,57 @@ final class TMDBMatchingService {
                 return resolved
             }
         }
+    }
+
+    func resolveAnimeStructure(media: AniListMedia) async -> TMDBAnimeStructureMatch? {
+        await resolveAnimeStructure(
+            media: media,
+            showIdOverride: nil,
+            showOverride: nil
+        )
+    }
+
+    private func resolveAnimeStructure(
+        media: AniListMedia,
+        showIdOverride: Int? = nil,
+        showOverride: TMDBShowSummary? = nil
+    ) async -> TMDBAnimeStructureMatch? {
+        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
+
+        let showId: Int
+        if let showIdOverride {
+            showId = showIdOverride
+        } else if let overrideMatch = manualOverride(for: media.id) {
+            showId = overrideMatch.showId
+        } else {
+            let titles = await candidateTitles(for: media)
+            let startYear = media.startDate?.year ?? media.seasonYear
+            guard let resolvedShowId = await findShowId(media: media, titles: titles, startYear: startYear) else {
+                return nil
+            }
+            showId = resolvedShowId
+        }
+
+        guard let show = showOverride ?? await fetchShowSummary(showId: showId, apiKey: apiKey) else {
+            return nil
+        }
+
+        guard let segments = await buildStructuredSegments(for: media, show: show),
+              let currentSegment = segments.first(where: { $0.mediaId == media.id }) else {
+            return nil
+        }
+
+        let absoluteEpisodes = await flattenAbsoluteEpisodes(show: show)
+        guard !absoluteEpisodes.isEmpty else { return nil }
+
+        return TMDBAnimeStructureMatch(
+            showId: show.showId,
+            showTitle: show.title,
+            absoluteEpisodes: absoluteEpisodes,
+            segments: segments,
+            currentSegment: currentSegment,
+            reason: "anilist-structure-absolute-order"
+        )
     }
 
     func fetchSeasonDetails(aniListId: Int, showId: Int, seasonNumber: Int) async -> TMDBSeasonDetails? {
@@ -421,6 +528,26 @@ final class TMDBMatchingService {
     func fetchSeasonChoices(for media: AniListMedia, showId: Int) async -> [TMDBSeasonChoice] {
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return [] }
         guard let summary = await fetchShowSummary(showId: showId, apiKey: apiKey) else { return [] }
+        if let structured = await resolveAnimeStructure(media: media, showIdOverride: showId, showOverride: summary) {
+            let structuredChoices = structured.segments.map { segment in
+                TMDBSeasonChoice(
+                    showId: showId,
+                    showTitle: structured.showTitle,
+                    tmdbSeasonNumber: segment.tmdbSeasonNumber,
+                    episodeOffset: segment.episodeOffset,
+                    displayEpisodeCount: segment.episodeCount,
+                    displayLabel: segment.displayLabel,
+                    isSynthetic: true,
+                    mappedAniListMediaId: segment.mediaId,
+                    mappingReason: segment.reason,
+                    name: segment.displayLabel,
+                    airYear: nil
+                )
+            }
+            if !structuredChoices.isEmpty {
+                return structuredChoices
+            }
+        }
         let rawChoices = summary.seasons
             .filter { !$0.isSpecial }
             .map { season in
@@ -463,11 +590,19 @@ final class TMDBMatchingService {
                 let rows = root?["episodes"] as? [[String: Any]] ?? []
                 let episodes = rows.compactMap { row -> TMDBSeasonDetails.Episode? in
                     let number = row["episode_number"] as? Int ?? 0
+                    let title = row["name"] as? String
+                    let summary = row["overview"] as? String
+                    let airDate = row["air_date"] as? String
+                    let runtimeMinutes = (row["runtime"] as? Int) ?? (row["runtime"] as? [Int])?.first
                     let still = row["still_path"] as? String
                     let rating = row["vote_average"] as? Double
                     guard number > 0 else { return nil }
                     return TMDBSeasonDetails.Episode(
                         number: number,
+                        title: title,
+                        summary: summary,
+                        airDate: airDate,
+                        runtimeMinutes: runtimeMinutes,
                         stillURL: still.flatMap { URL(string: "https://image.tmdb.org/t/p/w780\($0)") },
                         rating: rating
                     )
@@ -999,6 +1134,82 @@ final class TMDBMatchingService {
             }
 
         return exactlyMatchesRawSeasons ? nil : mapped
+    }
+
+    private func buildStructuredSegments(for media: AniListMedia, show: TMDBShowSummary) async -> [AniListTMDBSegment]? {
+        guard let aniListClient else { return nil }
+        let relevantSeasons = show.seasons.filter { !$0.isSpecial && $0.episodeCount > 0 }
+        guard !relevantSeasons.isEmpty else { return nil }
+
+        let relations = (try? await aniListClient.relationsGraph(mediaId: media.id)) ?? []
+        let orderedSegments = buildAniListSegments(current: media, relations: relations)
+        guard !orderedSegments.isEmpty else { return nil }
+
+        let absoluteEpisodes = await flattenAbsoluteEpisodes(show: show)
+        guard !absoluteEpisodes.isEmpty else { return nil }
+
+        var mapped: [AniListTMDBSegment] = []
+        var cursor = 0
+
+        for (index, segment) in orderedSegments.enumerated() {
+            guard let episodeCount = segment.media.episodes, episodeCount > 0 else { return nil }
+            let start = cursor
+            let end = cursor + episodeCount - 1
+            guard end < absoluteEpisodes.count else { return nil }
+            let startEpisode = absoluteEpisodes[start]
+            let endEpisode = absoluteEpisodes[end]
+            let reason = startEpisode.seasonNumber == endEpisode.seasonNumber
+                ? "absolute-season-aligned"
+                : "absolute-cross-season"
+            mapped.append(
+                AniListTMDBSegment(
+                    mediaId: segment.media.id,
+                    displayLabel: segment.displayLabel ?? "Season \(index + 1)",
+                    episodeCount: episodeCount,
+                    tmdbSeasonNumber: startEpisode.seasonNumber,
+                    episodeOffset: max(0, startEpisode.episodeNumber - 1),
+                    absoluteStart: start + 1,
+                    absoluteEnd: end + 1,
+                    posterSeasonNumber: startEpisode.seasonNumber,
+                    reason: reason
+                )
+            )
+            cursor += episodeCount
+        }
+
+        return mapped
+    }
+
+    private func flattenAbsoluteEpisodes(show: TMDBShowSummary) async -> [AbsoluteTMDBEpisode] {
+        let seasons = show.seasons.filter { !$0.isSpecial && $0.episodeCount > 0 }
+        guard !seasons.isEmpty else { return [] }
+
+        var flattened: [AbsoluteTMDBEpisode] = []
+        var absoluteNumber = 1
+
+        for season in seasons {
+            guard let details = await fetchSeasonDetails(showId: show.showId, seasonNumber: season.seasonNumber) else {
+                return []
+            }
+            for episode in details.episodes.sorted(by: { $0.number < $1.number }) {
+                flattened.append(
+                    AbsoluteTMDBEpisode(
+                        absoluteNumber: absoluteNumber,
+                        seasonNumber: season.seasonNumber,
+                        episodeNumber: episode.number,
+                        title: episode.title,
+                        summary: episode.summary,
+                        airDate: episode.airDate,
+                        runtimeMinutes: episode.runtimeMinutes,
+                        stillURL: episode.stillURL,
+                        rating: episode.rating
+                    )
+                )
+                absoluteNumber += 1
+            }
+        }
+
+        return flattened
     }
 
     private func buildAniListSegments(current media: AniListMedia, relations: [AniListRelationEdge]) -> [AniListSegment] {
