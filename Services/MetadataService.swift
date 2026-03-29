@@ -174,22 +174,7 @@ final class MetadataService {
     }
 
     private func fetchSeasonAwareTMDBMetadata(for media: AniListMedia, apiKey: String) async -> TMDBMetadata? {
-        let structured = await tmdbMatcher.resolveAnimeStructure(media: media)
-        let resolvedMatch: TMDBResolvedMatch?
-        if structured == nil {
-            resolvedMatch = await tmdbMatcher.resolveShowAndSeason(
-                media: media,
-                franchiseStartYear: media.startDate?.year ?? media.seasonYear,
-                firstEpisodeNumber: nil,
-                preferredSeasonNumber: TitleMatcher.extractSeasonNumber(from: media.title.best),
-                expectedEpisodeCount: media.episodes,
-                maxEpisodeNumber: media.episodes
-            )
-        } else {
-            resolvedMatch = nil
-        }
-
-        guard let showId = structured?.showId ?? resolvedMatch?.showId else {
+        guard let showId = await tmdbMatcher.resolveShowId(media: media) else {
             AppLog.debug(.matching, "tmdb metadata unresolved mediaId=\(media.id)")
             return nil
         }
@@ -197,12 +182,19 @@ final class MetadataService {
         guard let details = await fetchTMDBDetails(showId: showId, apiKey: apiKey) else {
             return nil
         }
-        let posterSeasonNumber = structured?.currentSegment.posterSeasonNumber ?? resolvedMatch?.seasonNumber ?? 1
-        let seasonPosterURL = await tmdbMatcher.fetchSeasonDetails(
-            aniListId: media.id,
-            showId: showId,
-            seasonNumber: posterSeasonNumber
-        )?.posterURL
+        let posterSeasonNumber =
+            tmdbMatcher.manualOverride(for: media.id)?.seasonNumber ??
+            cacheStoreSeasonNumber(for: media.id)
+        let seasonPosterURL: URL?
+        if let posterSeasonNumber {
+            seasonPosterURL = await tmdbMatcher.fetchSeasonDetails(
+                aniListId: media.id,
+                showId: showId,
+                seasonNumber: posterSeasonNumber
+            )?.posterURL
+        } else {
+            seasonPosterURL = nil
+        }
         return TMDBMetadata(
             tmdbId: details.tmdbId,
             title: details.title,
@@ -210,6 +202,10 @@ final class MetadataService {
             backdropURL: details.backdropURL,
             logoURL: details.logoURL
         )
+    }
+
+    private func cacheStoreSeasonNumber(for aniListId: Int) -> Int? {
+        MetadataCacheManager().load(aniListId: aniListId)?.seasonNumber
     }
 
     private func resolveTMDBShowId(media: AniListMedia) async -> Int? {
