@@ -1653,6 +1653,29 @@ final class TMDBMatchingService {
         guard currentCount > 0 else { return nil }
 
         let seasons = show.seasons.filter { !$0.isSpecial && $0.episodeCount > 0 }
+        let explicitSeason = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best)
+        let explicitPart = TitleMatcher.extractPartMarkerNumber(from: media.title.best)
+        let hasFinalSeason = TitleMatcher.hasFinalSeasonMarker(media.title.best)
+
+        if let anchoredSeason = anchoredSeasonForCurrentNode(media: media, show: show, episodeCount: currentCount),
+           let anchoredStart = startIndexForSeason(
+                anchoredSeason.seasonNumber,
+                in: absoluteEpisodes,
+                offset: anchoredSeason.episodeOffset
+           ),
+           anchoredStart >= 0,
+           anchoredStart + currentCount <= absoluteEpisodes.count,
+           (explicitSeason != nil || explicitPart != nil || hasFinalSeason) {
+            return buildCurrentSlice(
+                segment: current,
+                startIndex: anchoredStart,
+                episodeCount: currentCount,
+                absoluteEpisodes: absoluteEpisodes,
+                fallbackIndex: currentIndex + 1,
+                reason: anchoredSeason.reason
+            )
+        }
+
         let knownBefore = franchise.prefix(currentIndex).compactMap(\.media.episodes).filter { $0 > 0 }.reduce(0, +)
         let knownAfter = franchise.dropFirst(currentIndex + 1).compactMap(\.media.episodes).filter { $0 > 0 }.reduce(0, +)
         let minStart = knownBefore
@@ -1670,7 +1693,6 @@ final class TMDBMatchingService {
             )
         }
 
-        let explicitSeason = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best)
         if let explicitSeason, explicitSeason > 1, !seasons.contains(where: { $0.seasonNumber == explicitSeason }) {
             return nil
         }
