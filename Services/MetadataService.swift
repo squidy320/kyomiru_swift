@@ -178,7 +178,12 @@ final class MetadataService {
     private func fetchSeasonAwareTMDBMetadata(for media: AniListMedia, apiKey: String) async -> TMDBMetadata? {
         let structured = await tmdbMatcher.resolveAnimeStructure(media: media)
         let mediaType = structured?.mediaType ?? tmdbMatcher.manualOverride(for: media.id)?.mediaType ?? "tv"
-        let showId = structured?.showId ?? await tmdbMatcher.resolveShowId(media: media)
+        let showId: Int?
+        if let structured {
+            showId = structured.showId
+        } else {
+            showId = await tmdbMatcher.resolveShowId(media: media)
+        }
         guard let showId else {
             AppLog.debug(.matching, "tmdb metadata unresolved mediaId=\(media.id)")
             return nil

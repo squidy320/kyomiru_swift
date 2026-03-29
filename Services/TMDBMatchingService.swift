@@ -55,14 +55,14 @@ private actor TMDBMatchRequestLimiter {
 
 struct TMDBSeasonMatch: Equatable, Codable {
     let showId: Int
-    let mediaType: String = "tv"
+    let mediaType: String
     let seasonNumber: Int
     let episodeOffset: Int
 }
 
 struct TMDBResolvedMatch: Equatable, Codable {
     let showId: Int
-    let mediaType: String = "tv"
+    let mediaType: String
     let seasonNumber: Int
     let episodeOffset: Int
     let confidence: Double
@@ -95,7 +95,7 @@ struct AniListTMDBSegment: Equatable, Codable {
 
 struct TMDBAnimeStructureMatch: Equatable, Codable {
     let showId: Int
-    let mediaType: String = "tv"
+    let mediaType: String
     let showTitle: String
     let absoluteEpisodes: [AbsoluteTMDBEpisode]
     let segments: [AniListTMDBSegment]
@@ -105,7 +105,7 @@ struct TMDBAnimeStructureMatch: Equatable, Codable {
 
 struct TMDBSearchResult: Identifiable, Equatable {
     let id: Int
-    let mediaType: String = "tv"
+    let mediaType: String
     let title: String
     let posterURL: URL?
     let firstAirYear: Int?
@@ -114,7 +114,7 @@ struct TMDBSearchResult: Identifiable, Equatable {
 struct TMDBSeasonChoice: Identifiable, Equatable {
     var id: String { "\(mediaType)-\(showId)-\(tmdbSeasonNumber)-\(episodeOffset)-\(displayLabel)" }
     let showId: Int
-    let mediaType: String = "tv"
+    let mediaType: String
     let showTitle: String
     let tmdbSeasonNumber: Int
     let episodeOffset: Int
@@ -1680,6 +1680,7 @@ final class TMDBMatchingService {
             mapped.append(
                 TMDBSeasonChoice(
                     showId: show.showId,
+                    mediaType: show.mediaType,
                     showTitle: show.title,
                     tmdbSeasonNumber: tmdbSeason.seasonNumber,
                     episodeOffset: offsetWithinSeason,
@@ -1729,7 +1730,7 @@ final class TMDBMatchingService {
 
 private struct TMDBShowSummary {
     let showId: Int
-    let mediaType: String = "tv"
+    let mediaType: String
     let title: String
     let numberOfEpisodes: Int
     let seasons: [TMDBSeasonInfo]
