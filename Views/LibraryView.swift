@@ -229,7 +229,7 @@ struct LibraryView: View {
         .task {
             AppLog.debug(.ui, "library view load")
             if let token = appState.authState.token,
-               let cached = appState.services.aniListClient.cachedLibrarySections(token: token),
+               let cached = appState.services.aniListClient.cachedLibrarySections(token: token, allowStale: true),
                !cached.isEmpty {
                 applyLibrarySections(cached)
                 await prefetchAvailability(sections: cached)
@@ -360,7 +360,7 @@ struct LibraryView: View {
             await prefetchLibraryImages(sections: items)
         } catch {
             if sections.isEmpty {
-                errorMessage = "Failed to load AniList library."
+                errorMessage = "AniList is temporarily unavailable. Showing your cached library when available."
             }
             AppLog.error(.network, "library load failed \(error.localizedDescription)")
         }

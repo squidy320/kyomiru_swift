@@ -8,6 +8,7 @@ struct DiscoveryView: View {
     @AppStorage("library.sort") private var librarySortRaw: String = LibrarySortOption.lastUpdated.rawValue
     @State private var sections: [AniListDiscoverySection] = []
     @State private var isLoading = false
+    @State private var errorMessage: String?
     @State private var isSearching = false
     @State private var searchResults: [AniListMedia] = []
     @State private var searchTask: Task<Void, Never>?
@@ -55,6 +56,12 @@ struct DiscoveryView: View {
                             if isLoading {
                                 GlassCard {
                                     Text("Loading discovery...")
+                                        .foregroundColor(Theme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else if let errorMessage, coreSections.isEmpty {
+                                GlassCard {
+                                    Text(errorMessage)
                                         .foregroundColor(Theme.textSecondary)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
@@ -126,7 +133,7 @@ struct DiscoveryView: View {
         .task {
             AppLog.debug(.ui, "discovery view load")
             if sections.isEmpty,
-               let cached = appState.services.aniListClient.cachedDiscoverySectionsSnapshot(sort: discoverySort()) {
+               let cached = appState.services.aniListClient.cachedDiscoverySectionsSnapshot(sort: discoverySort(), allowStale: true) {
                 sections = cached
             }
             await loadImdbTrending()
@@ -412,6 +419,7 @@ private extension DiscoveryView {
     func loadDiscovery(forceRefresh: Bool) async {
         AppLog.debug(.network, "discovery load start")
         isLoading = true
+        errorMessage = nil
         do {
             sections = try await appState.services.aniListClient.discoverySections(
                 sort: discoverySort(),
@@ -420,6 +428,7 @@ private extension DiscoveryView {
         } catch {
             if sections.isEmpty {
                 sections = []
+                errorMessage = "AniList is temporarily unavailable. Showing fallback content until it comes back."
             }
             AppLog.error(.network, "discovery load failed \(error.localizedDescription)")
         }

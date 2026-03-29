@@ -35,7 +35,7 @@ final class AppState: ObservableObject {
     @MainActor
     func loadLibraryStoreIfNeeded(forceRefresh: Bool = false) async {
         guard let token = authState.token, authState.isSignedIn else { return }
-        if !forceRefresh, let cached = services.aniListClient.cachedLibrarySections(token: token), !cached.isEmpty {
+        if !forceRefresh, let cached = services.aniListClient.cachedLibrarySections(token: token, allowStale: true), !cached.isEmpty {
             updateLibraryStore(with: cached)
         }
         do {
