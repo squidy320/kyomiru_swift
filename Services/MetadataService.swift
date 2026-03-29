@@ -108,7 +108,7 @@ final class MetadataService {
 
         return await metadataRequests.value(for: media.id) { [self] in
             await Self.requestLimiter.run {
-                switch cachedMetadata(forKey: cacheKey) {
+                switch self.cachedMetadata(forKey: cacheKey) {
                 case .hit(let cachedResult):
                     return cachedResult
                 case .negative:
@@ -117,17 +117,17 @@ final class MetadataService {
                     break
                 }
 
-                guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
+                guard let apiKey = self.apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
                     AppLog.error(.network, "tmdb api key missing")
                     return nil
                 }
 
-                guard let details = await fetchSeasonAwareTMDBMetadata(for: media, apiKey: apiKey) else {
-                    writeNegativeMetadataCache(forKey: cacheKey)
+                guard let details = await self.fetchSeasonAwareTMDBMetadata(for: media, apiKey: apiKey) else {
+                    self.writeNegativeMetadataCache(forKey: cacheKey)
                     return nil
                 }
                 if let data = try? JSONEncoder().encode(details) {
-                    cacheStore.writeJSON(data, forKey: cacheKey)
+                    self.cacheStore.writeJSON(data, forKey: cacheKey)
                 }
                 return details
             }
@@ -775,11 +775,14 @@ final class EpisodeMetadataService {
             return nil
         case .tmdb:
             let desiredCount = episodes.isEmpty ? (media.episodes ?? 0) : episodes.count
-            let firstEpisodeNumber = episodes.map(\.number).min()
             let maxEpisodeNumber = episodes.map(\.number).max() ?? 0
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
-            guard let structured = await tmdbMatcher.resolveAnimeStructure(media: media) else { return nil }
+            let structureKey = "tmdb:structure:v4:\(media.id)"
+            guard let cachedStructure = cacheStore.readJSON(forKey: structureKey),
+                  let structured = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cachedStructure) else {
+                return nil
+            }
             let seasonNumber = structured.currentSegment.tmdbSeasonNumber
             let episodeOffset = structured.currentSegment.episodeOffset
             let showId = structured.showId

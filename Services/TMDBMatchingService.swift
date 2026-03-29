@@ -279,8 +279,8 @@ final class TMDBMatchingService {
 
         return await matchRequests.value(for: cacheKey) { [self] in
             await Self.requestLimiter.run {
-                if let cached = cacheManager.load(aniListId: media.id),
-                   isCachedMetadataUsable(
+                if let cached = self.cacheManager.load(aniListId: media.id),
+                   self.isCachedMetadataUsable(
                         cached,
                         firstEpisodeNumber: firstEpisodeNumber,
                         preferredSeasonNumber: preferredSeason,
@@ -296,7 +296,7 @@ final class TMDBMatchingService {
                     )
                 }
 
-                switch cachedSeasonMatch(forKey: cacheKey) {
+                switch self.cachedSeasonMatch(forKey: cacheKey) {
                 case .hit(let cachedResult):
                     return cachedResult
                 case .negative:
@@ -305,15 +305,15 @@ final class TMDBMatchingService {
                     break
                 }
 
-                let titles = await candidateTitles(for: media)
+                let titles = await self.candidateTitles(for: media)
                 let startYear = franchiseStartYear ?? media.startDate?.year ?? media.seasonYear
-                guard let showId = await findShowId(media: media, titles: titles, startYear: startYear),
-                      let show = await fetchShowSummary(showId: showId, apiKey: apiKey) else {
-                    writeNegativeSeasonMatchCache(forKey: cacheKey)
+                guard let showId = await self.findShowId(media: media, titles: titles, startYear: startYear),
+                      let show = await self.fetchShowSummary(showId: showId, apiKey: apiKey) else {
+                    self.writeNegativeSeasonMatchCache(forKey: cacheKey)
                     return nil
                 }
 
-                let structured = await resolveAnimeStructure(
+                let structured = await self.resolveAnimeStructure(
                     media: media,
                     showIdOverride: showId,
                     showOverride: show
@@ -326,7 +326,7 @@ final class TMDBMatchingService {
                         confidence: 0.99,
                         reason: $0.reason
                     )
-                } ?? selectSeason(
+                } ?? self.selectSeason(
                     media: media,
                     show: show,
                     preferredSeasonNumber: preferredSeason,
@@ -336,7 +336,7 @@ final class TMDBMatchingService {
                 )
 
                 guard let selection else {
-                    writeNegativeSeasonMatchCache(forKey: cacheKey)
+                    self.writeNegativeSeasonMatchCache(forKey: cacheKey)
                     return nil
                 }
 
@@ -348,12 +348,12 @@ final class TMDBMatchingService {
                     reason: selection.reason
                 )
 
-                if let seasonDetails = await fetchSeasonDetails(
+                if let seasonDetails = await self.fetchSeasonDetails(
                     aniListId: media.id,
                     showId: resolved.showId,
                     seasonNumber: resolved.seasonNumber
                 ) {
-                    cacheManager.save(
+                    self.cacheManager.save(
                         TMDBCachedMetadata(
                             aniListId: media.id,
                             showId: resolved.showId,
@@ -366,7 +366,7 @@ final class TMDBMatchingService {
                 }
 
                 if let data = try? JSONEncoder().encode(resolved) {
-                    cacheStore.writeJSON(data, forKey: cacheKey)
+                    self.cacheStore.writeJSON(data, forKey: cacheKey)
                 }
 
                 AppLog.debug(
