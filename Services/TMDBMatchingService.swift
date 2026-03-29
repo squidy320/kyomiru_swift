@@ -402,7 +402,7 @@ final class TMDBMatchingService {
     }
 
     func resolveAnimeStructure(media: AniListMedia) async -> TMDBAnimeStructureMatch? {
-        let requestKey = "tmdb:structure:v4:\(media.id)"
+        let requestKey = "tmdb:structure:v5:\(media.id)"
         if let cached = cacheStore.readJSON(forKey: requestKey, maxAge: Self.structureCacheTTL),
            let decoded = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cached) {
             return decoded
@@ -463,9 +463,7 @@ final class TMDBMatchingService {
             showId = overrideMatch.showId
             mediaType = overrideMatch.mediaType ?? "tv"
         } else {
-            let titles = await candidateTitles(for: media)
-            let startYear = media.startDate?.year ?? media.seasonYear
-            guard let target = await findTarget(media: media, titles: titles, startYear: startYear) else {
+            guard let target = await resolveArtworkTarget(media: media) else {
                 return nil
             }
             showId = target.id
