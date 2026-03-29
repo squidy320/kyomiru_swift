@@ -1061,6 +1061,10 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("https://anilist.co", forHTTPHeaderField: "Origin")
+        request.setValue("https://anilist.co", forHTTPHeaderField: "Referer")
+        request.setValue(URLSession.randomUserAgent, forHTTPHeaderField: "User-Agent")
         if let token, !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -1083,10 +1087,24 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             AppLog.error(.network, "graphql invalid response")
             throw AniListError.invalidResponse
         }
-        if http.statusCode == 401 || http.statusCode == 403 {
+        if http.statusCode == 401 {
             AppLog.error(.network, "graphql invalid token http=\(http.statusCode)")
             NotificationCenter.default.post(name: .aniListInvalidToken, object: nil)
             throw AniListError.invalidToken
+        }
+        if http.statusCode == 403 {
+            let payload = String(data: data, encoding: .utf8) ?? ""
+            let normalizedPayload = payload.lowercased()
+            let looksLikeInvalidToken =
+                normalizedPayload.contains("invalid token") ||
+                normalizedPayload.contains("unauthorized") ||
+                normalizedPayload.contains("access denied")
+            AppLog.error(.network, "graphql forbidden http=403 tokened=\((token?.isEmpty == false))")
+            if token?.isEmpty == false && looksLikeInvalidToken {
+                NotificationCenter.default.post(name: .aniListInvalidToken, object: nil)
+                throw AniListError.invalidToken
+            }
+            throw AniListError.invalidResponse
         }
         guard http.statusCode < 500 else {
             AppLog.error(.network, "graphql invalid response")
