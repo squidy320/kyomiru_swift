@@ -180,7 +180,7 @@ struct DetailsView: View {
             }
         }
         .navigationBarBackButtonHidden(!isPad)
-        .navigationTitle(isPad ? media.title.best : "")
+        .navigationTitle(isPad ? "" : media.title.best)
         .navigationBarTitleDisplayMode(.inline)
         .task {
             AppLog.debug(.ui, "details view load mediaId=\(media.id)")
@@ -397,12 +397,12 @@ struct DetailsView: View {
                     Color.clear
                 }
                 .frame(maxWidth: 320)
+            } else {
+                Text(media.title.best)
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
             }
-
-            Text(media.title.best)
-                .font(.system(size: 34, weight: .bold))
-                .foregroundColor(.white)
-                .lineLimit(2)
 
             HStack(spacing: UIConstants.tinyPadding) {
                 if let eps = media.episodes, eps > 0 {

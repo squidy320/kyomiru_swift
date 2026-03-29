@@ -591,6 +591,9 @@ final class TMDBMatchingService {
                     let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
                     let rows = root?["results"] as? [[String: Any]] ?? []
                     for row in rows {
+                        if mediaType == "movie" && !isLikelyAnimeMovie(row) {
+                            continue
+                        }
                         guard let id = row["id"] as? Int else { continue }
                         let title = mediaType == "movie"
                             ? (row["title"] as? String ?? row["original_title"] as? String ?? "Unknown")
@@ -834,7 +837,7 @@ final class TMDBMatchingService {
                     firstAirYear: yearFrom(tv["first_air_date"] as? String)
                 )
             }
-            if let movie = (root?["movie_results"] as? [[String: Any]])?.first,
+            if let movie = (root?["movie_results"] as? [[String: Any]])?.first(where: { isLikelyAnimeMovie($0) }),
                let id = movie["id"] as? Int {
                 return TMDBSearchResult(
                     id: id,
@@ -865,8 +868,9 @@ final class TMDBMatchingService {
 
         var best: TMDBSearchResult?
         var bestScore = -1.0
+        let mediaTypes = preferMovie ? ["movie", "tv"] : ["tv"]
         for query in queries {
-            for mediaType in ["tv", "movie"] {
+            for mediaType in mediaTypes {
                 var components = URLComponents(string: "https://api.themoviedb.org/3/search/\(mediaType)")!
                 components.queryItems = [
                     URLQueryItem(name: "api_key", value: apiKey),
@@ -881,6 +885,9 @@ final class TMDBMatchingService {
                     let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
                     let results = root?["results"] as? [[String: Any]] ?? []
                     for row in results {
+                        if mediaType == "movie" && !isLikelyAnimeMovie(row) {
+                            continue
+                        }
                         guard let id = row["id"] as? Int else { continue }
                         let name = mediaType == "movie"
                             ? (row["title"] as? String ?? row["original_title"] as? String ?? "")
@@ -1323,6 +1330,21 @@ final class TMDBMatchingService {
         if format.contains("MOVIE") { return true }
         let title = media.title.best.lowercased()
         return title.contains("movie") || title.contains("film")
+    }
+
+    private func isLikelyAnimeMovie(_ row: [String: Any]) -> Bool {
+        let genreIDs = row["genre_ids"] as? [Int] ?? []
+        guard genreIDs.contains(16) else { return false }
+
+        let language = ((row["original_language"] as? String) ?? "").lowercased()
+        let allowedLanguages = Set(["ja", "ko", "zh", "zh-cn", "zh-tw"])
+        if allowedLanguages.contains(language) {
+            return true
+        }
+
+        let title = ((row["title"] as? String) ?? (row["original_title"] as? String) ?? "").lowercased()
+        let overview = ((row["overview"] as? String) ?? "").lowercased()
+        return title.contains("anime") || overview.contains("anime")
     }
 
     private func syntheticSeasonChoices(for media: AniListMedia, show: TMDBShowSummary) async -> [TMDBSeasonChoice]? {
