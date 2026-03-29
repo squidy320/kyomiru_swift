@@ -1,6 +1,6 @@
 import Foundation
 
-enum AniListScoreFormat: String, Equatable, Hashable {
+enum AniListScoreFormat: String, Equatable, Hashable, Codable {
     case point100 = "POINT_100"
     case point10Decimal = "POINT_10_DECIMAL"
     case point10 = "POINT_10"
@@ -38,7 +38,7 @@ struct AniListUser: Equatable {
     let scoreFormat: AniListScoreFormat
 }
 
-struct AniListTitle: Equatable, Hashable {
+struct AniListTitle: Equatable, Hashable, Codable {
     let romaji: String?
     let english: String?
     let native: String?
@@ -48,7 +48,7 @@ struct AniListTitle: Equatable, Hashable {
     }
 }
 
-struct AniListMedia: Identifiable, Equatable, Hashable {
+struct AniListMedia: Identifiable, Equatable, Hashable, Codable {
     let id: Int
     let idMal: Int?
     let title: AniListTitle
@@ -65,7 +65,7 @@ struct AniListMedia: Identifiable, Equatable, Hashable {
     let studios: [String]
 }
 
-struct AniListFuzzyDate: Equatable, Hashable {
+struct AniListFuzzyDate: Equatable, Hashable, Codable {
     let year: Int?
     let month: Int?
     let day: Int?
@@ -151,12 +151,12 @@ struct AniListRelatedSection: Identifiable, Equatable {
     let items: [AniListMedia]
 }
 
-struct AniListRelationEdge: Equatable {
+struct AniListRelationEdge: Equatable, Codable {
     let relationType: String
     let media: AniListMedia
 }
 
-struct AniListStreamingEpisode: Equatable, Hashable {
+struct AniListStreamingEpisode: Equatable, Hashable, Codable {
     let title: String
     let thumbnailURL: URL?
     let url: URL?

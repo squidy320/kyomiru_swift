@@ -1,5 +1,24 @@
 import Foundation
 
+private actor AniListRateLimiter {
+    private let minInterval: TimeInterval
+    private var nextAvailableTime: Date = .distantPast
+
+    init(minInterval: TimeInterval = 0.65) {
+        self.minInterval = minInterval
+    }
+
+    func waitForSlot() async {
+        let now = Date()
+        let slotTime = max(now, nextAvailableTime)
+        nextAvailableTime = slotTime.addingTimeInterval(minInterval)
+        let delay = slotTime.timeIntervalSince(now)
+        if delay > 0.001 {
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        }
+    }
+}
+
 enum AniListError: Error {
     case invalidResponse
     case graphQLError(String)
@@ -10,11 +29,14 @@ final class AniListClient {
     private let endpoint = URL(string: "https://graphql.anilist.co")!
     private let cacheStore: CacheStore
     private let session: URLSession
+    private let rateLimiter = AniListRateLimiter()
     private var cachedTrending: (items: [AniListMedia], expires: Date)?
     private var cachedDiscoverySections: (sort: String, items: [AniListDiscoverySection], expires: Date)?
     private var cachedLibrarySections: (items: [AniListLibrarySection], expires: Date)?
     private var cachedTrackingEntries: [Int: (entry: AniListTrackingEntry?, expires: Date)] = [:]
     private var cachedAvailability: [Int: (entry: AniListEpisodeAvailability?, expires: Date)] = [:]
+    private var cachedRelations: [Int: (edges: [AniListRelationEdge], expires: Date)] = [:]
+    private var cachedStreamingEpisodes: [Int: (episodes: [AniListStreamingEpisode], expires: Date)] = [:]
     private let requestGate = RequestGate(maxConcurrent: 4)
 
     init(cacheStore: CacheStore, session: URLSession = .custom) {
@@ -903,6 +925,17 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
     }
 
     func relationsGraph(mediaId: Int, token: String? = nil) async throws -> [AniListRelationEdge] {
+        if let cached = cachedRelations[mediaId], cached.expires > Date() {
+            AppLog.debug(.cache, "relations graph memory cache hit mediaId=\(mediaId)")
+            return cached.edges
+        }
+        let cacheKey = "anilist:relations:v1:\(mediaId)"
+        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 24),
+           let decoded = try? JSONDecoder().decode([AniListRelationEdge].self, from: data) {
+            cachedRelations[mediaId] = (decoded, Date().addingTimeInterval(60 * 60))
+            AppLog.debug(.cache, "relations graph disk cache hit mediaId=\(mediaId)")
+            return decoded
+        }
         let query = """
         query RelationGraph($id: Int) {
           Media(id: $id, type: ANIME) {
@@ -943,10 +976,25 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
                   let media = decodeMedia(node) else { continue }
             result.append(AniListRelationEdge(relationType: relation, media: media))
         }
+        cachedRelations[mediaId] = (result, Date().addingTimeInterval(60 * 60))
+        if let encoded = try? JSONEncoder().encode(result) {
+            cacheStore.writeJSON(encoded, forKey: cacheKey)
+        }
         return result
     }
 
     func streamingEpisodes(mediaId: Int) async throws -> [AniListStreamingEpisode] {
+        if let cached = cachedStreamingEpisodes[mediaId], cached.expires > Date() {
+            AppLog.debug(.cache, "streaming episodes memory cache hit mediaId=\(mediaId)")
+            return cached.episodes
+        }
+        let cacheKey = "anilist:streaming:v1:\(mediaId)"
+        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 6),
+           let decoded = try? JSONDecoder().decode([AniListStreamingEpisode].self, from: data) {
+            cachedStreamingEpisodes[mediaId] = (decoded, Date().addingTimeInterval(60 * 30))
+            AppLog.debug(.cache, "streaming episodes disk cache hit mediaId=\(mediaId)")
+            return decoded
+        }
         AppLog.debug(.network, "streaming episodes request start mediaId=\(mediaId)")
         let query = """
         query StreamingEpisodes($id: Int) {
@@ -978,6 +1026,10 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             )
         }
         let parsedCount = episodes.filter { ($0.episodeNumber ?? 0) > 0 }.count
+        cachedStreamingEpisodes[mediaId] = (episodes, Date().addingTimeInterval(60 * 30))
+        if let encoded = try? JSONEncoder().encode(episodes) {
+            cacheStore.writeJSON(encoded, forKey: cacheKey)
+        }
         AppLog.debug(.network, "streaming episodes request success mediaId=\(mediaId) count=\(episodes.count) parsed=\(parsedCount)")
         return episodes
     }
@@ -1005,6 +1057,7 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
     private func graphql(query: String, variables: [String: Any] = [:], token: String? = nil) async throws -> Data {
         await requestGate.acquire()
         defer { Task { await self.requestGate.release() } }
+        await rateLimiter.waitForSlot()
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

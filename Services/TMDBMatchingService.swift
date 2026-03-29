@@ -379,7 +379,7 @@ final class TMDBMatchingService {
     }
 
     func resolveAnimeStructure(media: AniListMedia) async -> TMDBAnimeStructureMatch? {
-        let requestKey = "tmdb:structure:v1:\(media.id)"
+        let requestKey = "tmdb:structure:v2:\(media.id)"
         if let cached = cacheStore.readJSON(forKey: requestKey, maxAge: Self.structureCacheTTL),
            let decoded = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cached) {
             return decoded
@@ -1187,7 +1187,7 @@ final class TMDBMatchingService {
         if let explicitSeason = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best),
            explicitSeason > 1,
            currentIndex == 0 {
-            return nil
+            return fallbackCurrentSegmentOnly(for: media, show: show, absoluteEpisodes: absoluteEpisodes)
         }
 
         let scopedSegments = Array(orderedSegments.prefix(through: currentIndex))
@@ -1222,6 +1222,42 @@ final class TMDBMatchingService {
         }
 
         return mapped
+    }
+
+    private func fallbackCurrentSegmentOnly(
+        for media: AniListMedia,
+        show: TMDBShowSummary,
+        absoluteEpisodes: [AbsoluteTMDBEpisode]
+    ) -> [AniListTMDBSegment]? {
+        guard let explicitSeason = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best),
+              explicitSeason > 1,
+              let episodeCount = media.episodes,
+              episodeCount > 0,
+              show.numberOfEpisodes >= episodeCount,
+              absoluteEpisodes.count >= episodeCount else {
+            return nil
+        }
+
+        let startIndex = absoluteEpisodes.count - episodeCount
+        guard startIndex > 0 else { return nil }
+        let startEpisode = absoluteEpisodes[startIndex]
+        let endEpisode = absoluteEpisodes[absoluteEpisodes.count - 1]
+
+        return [
+            AniListTMDBSegment(
+                mediaId: media.id,
+                displayLabel: syntheticDisplayLabel(for: media, relativeTo: media, fallbackIndex: explicitSeason),
+                episodeCount: episodeCount,
+                tmdbSeasonNumber: startEpisode.seasonNumber,
+                episodeOffset: max(0, startEpisode.episodeNumber - 1),
+                absoluteStart: startIndex + 1,
+                absoluteEnd: absoluteEpisodes.count,
+                posterSeasonNumber: startEpisode.seasonNumber,
+                reason: startEpisode.seasonNumber == endEpisode.seasonNumber
+                    ? "explicit-season-tail-fallback"
+                    : "explicit-season-tail-fallback-cross-season"
+            )
+        ]
     }
 
     private func flattenAbsoluteEpisodes(show: TMDBShowSummary) async -> [AbsoluteTMDBEpisode] {

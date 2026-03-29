@@ -390,6 +390,7 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v9:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "episode-meta:tmdb:v9:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v1:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:structure:v2:\(mediaId)")
     }
 }
 
