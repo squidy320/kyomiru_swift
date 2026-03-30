@@ -52,3 +52,42 @@ final class TMDBOverrideStore {
         defaults.set(data, forKey: key)
     }
 }
+
+final class EpisodeMetadataPreferenceStore {
+    static let shared = EpisodeMetadataPreferenceStore()
+
+    private let key = "kyomiru.episode.metadata.source.overrides"
+    private let defaults = UserDefaults.standard
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    private init() {}
+
+    func providerRawValue(for aniListId: Int) -> String? {
+        loadMap()[String(aniListId)]
+    }
+
+    func save(providerRawValue: String, for aniListId: Int) {
+        var map = loadMap()
+        map[String(aniListId)] = providerRawValue
+        saveMap(map)
+        AppLog.debug(.matching, "episode metadata provider saved mediaId=\(aniListId) provider=\(providerRawValue)")
+    }
+
+    func clear(aniListId: Int) {
+        var map = loadMap()
+        map.removeValue(forKey: String(aniListId))
+        saveMap(map)
+        AppLog.debug(.matching, "episode metadata provider cleared mediaId=\(aniListId)")
+    }
+
+    private func loadMap() -> [String: String] {
+        guard let data = defaults.data(forKey: key) else { return [:] }
+        return (try? decoder.decode([String: String].self, from: data)) ?? [:]
+    }
+
+    private func saveMap(_ map: [String: String]) {
+        guard let data = try? encoder.encode(map) else { return }
+        defaults.set(data, forKey: key)
+    }
+}

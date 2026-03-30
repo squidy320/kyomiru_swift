@@ -122,6 +122,7 @@ struct DetailsView: View {
     @State private var tmdbMatchError: String?
     @State private var tmdbMatchQuery: String = ""
     @State private var tmdbManualOverride: TMDBManualOverride?
+    @State private var episodeMetadataProvider: EpisodeMetadataService.Provider = .tmdb
     @State private var selectedEpisodeTab: EpisodeTab = .currentSeries
     @State private var isBookmarked = false
     @State private var relatedSections: [AniListRelatedSection] = []
@@ -185,6 +186,7 @@ struct DetailsView: View {
         .task {
             AppLog.debug(.ui, "details view load mediaId=\(media.id)")
             tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
+            episodeMetadataProvider = appState.services.episodeMetadataService.preferredProvider(for: media)
             await loadEpisodes()
             await loadRelated()
             isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
@@ -671,15 +673,9 @@ struct DetailsView: View {
             .buttonStyle(.plain)
 
             Button {
-                openTMDBMatchPicker()
+                toggleEpisodeMetadataProvider()
             } label: {
-                Image(systemName: "film.stack")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: UIConstants.circleButtonSize, height: UIConstants.circleButtonSize)
-                    .background(
-                        Circle().fill(Color.white.opacity(0.08))
-                    )
+                episodeMetadataToggleBadge
             }
             .buttonStyle(.plain)
 
@@ -907,6 +903,31 @@ struct DetailsView: View {
         performTMDBMatchSearch(query: tmdbMatchQuery)
     }
 
+    @ViewBuilder
+    private var episodeMetadataToggleBadge: some View {
+        let targetProvider: EpisodeMetadataService.Provider = episodeMetadataProvider == .tmdb ? .aniList : .tmdb
+        let label = targetProvider == .aniList ? "AniList" : "TMDB"
+        let background = targetProvider == .aniList ? Color(red: 0.13, green: 0.47, blue: 0.95) : Color(red: 0.05, green: 0.66, blue: 0.57)
+        Text(label)
+            .font(.system(size: 12, weight: .bold))
+            .foregroundColor(.white)
+            .frame(minWidth: UIConstants.circleButtonSize, minHeight: UIConstants.circleButtonSize)
+            .padding(.horizontal, label == "AniList" ? 8 : 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(background.opacity(0.95))
+            )
+    }
+
+    private func toggleEpisodeMetadataProvider() {
+        let nextProvider: EpisodeMetadataService.Provider = episodeMetadataProvider == .tmdb ? .aniList : .tmdb
+        appState.services.episodeMetadataService.setPreferredProvider(nextProvider, for: media)
+        episodeMetadataProvider = nextProvider
+        Task {
+            await reloadEpisodeMetadataProviderState()
+        }
+    }
+
     private func refreshTrackingEntryForSheet() async {
         guard appState.authState.isSignedIn,
               let token = appState.authState.token else {
@@ -965,6 +986,7 @@ struct DetailsView: View {
 
     private func reloadTMDBOverrideDependentState() async {
         tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
+        episodeMetadataProvider = appState.services.episodeMetadataService.preferredProvider(for: media)
         tmdbHeroBackdropURL = nil
         tmdbHeroLogoURL = nil
         tmdbHeroLookupComplete = false
@@ -974,6 +996,12 @@ struct DetailsView: View {
         tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
         tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
         tmdbHeroLookupComplete = true
+    }
+
+    private func reloadEpisodeMetadataProviderState() async {
+        episodeMetadataProvider = appState.services.episodeMetadataService.preferredProvider(for: media)
+        episodeMetadata = [:]
+        await loadEpisodes()
     }
 
     private func selectEpisode(_ episode: SoraEpisode) {

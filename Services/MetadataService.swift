@@ -860,6 +860,7 @@ final class EpisodeMetadataService {
     enum Provider: String {
         case kitsu
         case tmdb
+        case aniList
     }
 
     private let session: URLSession
@@ -869,13 +870,15 @@ final class EpisodeMetadataService {
     private let tmdbMatcher: TMDBMatchingService
     private let tmdbKey: String?
     private let cacheManager: MetadataCacheManager
+    private let preferenceStore: EpisodeMetadataPreferenceStore
 
     init(
         cacheStore: CacheStore,
         aniListClient: AniListClient,
         provider: Provider = .kitsu,
         session: URLSession = .custom,
-        tmdbMatcher: TMDBMatchingService? = nil
+        tmdbMatcher: TMDBMatchingService? = nil,
+        preferenceStore: EpisodeMetadataPreferenceStore = .shared
     ) {
         self.cacheStore = cacheStore
         self.session = session
@@ -886,12 +889,32 @@ final class EpisodeMetadataService {
         let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
         self.tmdbKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
         self.cacheManager = MetadataCacheManager()
+        self.preferenceStore = preferenceStore
+    }
+
+    func preferredProvider(for media: AniListMedia) -> Provider {
+        if let raw = preferenceStore.providerRawValue(for: media.id),
+           let stored = Provider(rawValue: raw) {
+            return stored
+        }
+        return provider
+    }
+
+    func setPreferredProvider(_ provider: Provider, for media: AniListMedia) {
+        preferenceStore.save(providerRawValue: provider.rawValue, for: media.id)
     }
 
     func cachedEpisodes(for media: AniListMedia, episodes: [SoraEpisode]) -> [Int: EpisodeMetadata]? {
-        switch provider {
+        switch preferredProvider(for: media) {
         case .kitsu:
             let cacheKey = "episode-meta:kitsu:\(media.id)"
+            if let cached = cacheStore.readJSON(forKey: cacheKey),
+                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
+                return decoded
+            }
+            return nil
+        case .aniList:
+            let cacheKey = "episode-meta:anilist:v2:\(media.id)"
             if let cached = cacheStore.readJSON(forKey: cacheKey),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
@@ -924,14 +947,24 @@ final class EpisodeMetadataService {
 
     func fetchEpisodes(for media: AniListMedia, episodes: [SoraEpisode]) async -> [Int: EpisodeMetadata] {
         let mapped: [Int: EpisodeMetadata]
-        switch provider {
+        switch preferredProvider(for: media) {
         case .kitsu:
             let cacheKey = "episode-meta:kitsu:\(media.id)"
             if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
-               let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
+                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
             }
             mapped = await fetchFromKitsu(media: media)
+            if let data = try? JSONEncoder().encode(mapped) {
+                cacheStore.writeJSON(data, forKey: cacheKey)
+            }
+        case .aniList:
+            let cacheKey = "episode-meta:anilist:v2:\(media.id)"
+            if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 6),
+               let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
+                return decoded
+            }
+            mapped = await fetchFromAniListStreaming(media: media)
             if let data = try? JSONEncoder().encode(mapped) {
                 cacheStore.writeJSON(data, forKey: cacheKey)
             }
@@ -982,9 +1015,9 @@ final class EpisodeMetadataService {
     }
 
     private func fetchFromAniListStreaming(media: AniListMedia) async -> [Int: EpisodeMetadata] {
-        let cacheKey = "episode-meta:anilist:\(media.id)"
+        let cacheKey = "episode-meta:anilist:v2:\(media.id)"
         if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 6),
-           let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
+            let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
             return decoded
         }
         guard let episodes = try? await aniListClient.streamingEpisodes(mediaId: media.id) else {
