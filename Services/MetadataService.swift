@@ -251,23 +251,15 @@ final class MetadataService {
             )
         }
 
-        if let structured = await tmdbMatcher.resolveAnimeStructure(media: media) {
-            return ResolvedArtworkContext(
-                showId: structured.showId,
-                mediaType: structured.mediaType,
-                posterSeasonNumber: structured.mediaType == "tv" ? structured.currentSegment.posterSeasonNumber : nil
-            )
-        }
-
-        if let matchedSeason = await tmdbMatcher.matchShowAndSeason(
+        if let resolved = await tmdbMatcher.resolveShowAndSeason(
             media: media,
             preferredSeasonNumber: TitleMatcher.extractSeasonNumber(from: media.title.best),
             expectedEpisodeCount: media.episodes
         ) {
             return ResolvedArtworkContext(
-                showId: matchedSeason.showId,
-                mediaType: matchedSeason.mediaType,
-                posterSeasonNumber: matchedSeason.mediaType == "tv" ? matchedSeason.seasonNumber : nil
+                showId: resolved.showId,
+                mediaType: resolved.mediaType,
+                posterSeasonNumber: resolved.mediaType == "tv" ? resolved.seasonNumber : nil
             )
         }
 
@@ -463,16 +455,16 @@ final class MetadataService {
 
     private func metadataCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:media:v10:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
+            return "tmdb:media:v11:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
         }
-        return "tmdb:media:v10:\(mediaId)"
+        return "tmdb:media:v11:\(mediaId)"
     }
 
     private func logoCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:logo:v2:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId)"
+            return "tmdb:logo:v3:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId)"
         }
-        return "tmdb:logo:v2:\(mediaId)"
+        return "tmdb:logo:v3:\(mediaId)"
     }
 
     private func cachedLogo(forKey key: String) -> URL?? {
@@ -510,10 +502,14 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:media:v9:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v10:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v10:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v11:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v11:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v2:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v2:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:logo:v3:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:logo:v3:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v6:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v7:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v8:\(mediaId):")
