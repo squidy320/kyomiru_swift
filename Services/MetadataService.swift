@@ -59,6 +59,7 @@ struct TMDBMetadata: Equatable, Codable {
     let title: String
     let posterURL: URL?
     let backdropURL: URL?
+    let heroBackdropURL: URL?
     let logoURL: URL?
 }
 
@@ -156,6 +157,11 @@ final class MetadataService {
         return meta?.backdropURL ?? meta?.posterURL
     }
 
+    func heroBackdropURL(for media: AniListMedia) async -> URL? {
+        let meta = await fetchTMDBMetadata(for: media)
+        return meta?.heroBackdropURL ?? meta?.backdropURL ?? meta?.posterURL
+    }
+
     func logoURL(for media: AniListMedia) async -> URL? {
         let cacheKey = logoCacheKey(for: media.id)
         if let cached = cachedLogo(forKey: cacheKey) {
@@ -230,6 +236,7 @@ final class MetadataService {
             title: details.title,
             posterURL: seasonPosterURL ?? details.posterURL,
             backdropURL: details.backdropURL,
+            heroBackdropURL: seasonPosterURL ?? details.heroBackdropURL,
             logoURL: details.logoURL
         )
     }
@@ -377,6 +384,7 @@ final class MetadataService {
             let backdropPath = root?["backdrop_path"] as? String
             let posterURL = posterPath.flatMap { tmdbImageURL(path: $0, size: "w342") }
             let backdropURL = backdropPath.flatMap { tmdbImageURL(path: $0, size: "w780") }
+            let heroBackdropURL = backdropPath.flatMap { tmdbImageURL(path: $0, size: "original") }
             let logoURL = includeLogo ? await fetchBestLogo(showId: showId, mediaType: mediaType, apiKey: apiKey) : nil
             return TMDBMetadata(
                 tmdbId: showId,
@@ -384,6 +392,7 @@ final class MetadataService {
                 title: title,
                 posterURL: posterURL,
                 backdropURL: backdropURL,
+                heroBackdropURL: heroBackdropURL,
                 logoURL: logoURL
             )
         } catch {

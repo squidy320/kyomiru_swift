@@ -516,7 +516,7 @@ struct DetailsView: View {
         .offset(y: -topInset)
         .task(id: media.id) {
             tmdbHeroLookupComplete = false
-            tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+            tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
             tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
             tmdbHeroLookupComplete = true
             let fallback = media.bannerURL ?? media.coverURL
@@ -614,7 +614,7 @@ struct DetailsView: View {
         .offset(y: -topInset)
         .task(id: media.id) {
             tmdbHeroLookupComplete = false
-            tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+            tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
             tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
             tmdbHeroLookupComplete = true
             let fallback = media.bannerURL ?? media.coverURL
@@ -971,7 +971,7 @@ struct DetailsView: View {
         episodeMetadata = [:]
         episodeRatings = [:]
         await loadEpisodes()
-        tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+        tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
         tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
         tmdbHeroLookupComplete = true
     }
