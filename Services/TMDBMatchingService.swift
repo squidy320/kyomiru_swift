@@ -1131,6 +1131,20 @@ final class TMDBMatchingService {
             ) {
                 return nil
             }
+            
+            // If we have a part marker > 1, don't assume offset 0 unless range match confirms it.
+            // This allows the franchise mapping to take over and find the correct offset.
+            if let explicitPartMarker, explicitPartMarker > 1, rangeMatch?.seasonNumber != explicitSeasonMarker {
+                return selectPartOrCourSeason(
+                    seasons: seasons,
+                    rangeMatch: rangeMatch,
+                    dateMatch: dateMatch,
+                    yearMatch: yearMatch,
+                    partMarker: explicitPartMarker,
+                    explicitSeasonNumber: explicitSeasonMarker
+                )
+            }
+            
             let offset = rangeMatch?.seasonNumber == explicitSeasonMarker ? (rangeMatch?.offset ?? 0) : 0
             return SelectedSeason(
                 seasonNumber: explicitSeasonMarker,
@@ -1221,6 +1235,12 @@ final class TMDBMatchingService {
                 )
             }
 
+            // If we have a part marker > 1, don't assume offset 0 from date/year.
+            // Returning nil allows franchise logic to find the correct offset.
+            if partMarker > 1 {
+                return nil
+            }
+
             if let dateMatch, dateMatch.seasonNumber == latestMainSeason.seasonNumber, dateMatch.score >= 0.78 {
                 return SelectedSeason(
                     seasonNumber: latestMainSeason.seasonNumber,
@@ -1255,9 +1275,45 @@ final class TMDBMatchingService {
         rangeMatch: SeasonRangeMatch?,
         dateMatch: (seasonNumber: Int, score: Double)?,
         yearMatch: (seasonNumber: Int, score: Double)?,
-        partMarker: Int
+        partMarker: Int,
+        explicitSeasonNumber: Int? = nil
     ) -> SelectedSeason? {
+        if let explicitSeasonNumber {
+            let season = seasons.first { $0.seasonNumber == explicitSeasonNumber }
+            if let rangeMatch, rangeMatch.seasonNumber == explicitSeasonNumber {
+                return SelectedSeason(
+                    seasonNumber: explicitSeasonNumber,
+                    episodeOffset: rangeMatch.offset,
+                    confidence: 0.96,
+                    reason: "part-cour-with-season-range"
+                )
+            }
+            if let dateMatch, dateMatch.seasonNumber == explicitSeasonNumber {
+                return SelectedSeason(
+                    seasonNumber: explicitSeasonNumber,
+                    episodeOffset: 0,
+                    confidence: dateMatch.score,
+                    reason: "part-cour-with-season-date"
+                )
+            }
+            if let yearMatch, yearMatch.seasonNumber == explicitSeasonNumber {
+                return SelectedSeason(
+                    seasonNumber: explicitSeasonNumber,
+                    episodeOffset: 0,
+                    confidence: yearMatch.score,
+                    reason: "part-cour-with-season-year"
+                )
+            }
+            // If we have an explicit season but no range/date match, we might be a part of it.
+            // Returning nil here allows the franchise logic to try fitting it.
+            return nil
+        }
+
         if seasons.count == 1, let onlySeason = seasons.first {
+            // For split-cour in a single season, if no range match, we need franchise logic.
+            if partMarker > 1 && rangeMatch == nil {
+                return nil
+            }
             return SelectedSeason(
                 seasonNumber: onlySeason.seasonNumber,
                 episodeOffset: rangeMatch?.offset ?? 0,
@@ -1273,6 +1329,11 @@ final class TMDBMatchingService {
                 confidence: 0.96,
                 reason: "part-cour-episode-range"
             )
+        }
+
+        // If part > 1 and no range match, avoid offset 0.
+        if partMarker > 1 {
+            return nil
         }
 
         if let dateMatch, dateMatch.score >= 0.78 {

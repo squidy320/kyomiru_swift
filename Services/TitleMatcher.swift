@@ -141,38 +141,18 @@ enum TitleMatcher {
     }
 
     static func extractSeasonMarkerNumber(from input: String) -> Int? {
-        let normalized = romanToArabic(input)
-        let patterns = [
+        extractMarkerNumber(from: input, patterns: [
             #"(?i)\bseason\s*(\d+)\b"#,
             #"(?i)\bs\s*(\d+)\b"#,
             #"(?i)\b(\d+)(st|nd|rd|th)\s*season\b"#
-        ]
-        for p in patterns {
-            if let match = normalized.range(of: p, options: .regularExpression) {
-                let chunk = String(normalized[match])
-                if let number = chunk.compactMap({ $0.wholeNumberValue }).first {
-                    return number
-                }
-            }
-        }
-        return nil
+        ])
     }
 
     static func extractPartMarkerNumber(from input: String) -> Int? {
-        let normalized = romanToArabic(input)
-        let patterns = [
+        extractMarkerNumber(from: input, patterns: [
             #"(?i)\bpart\s*(\d+)\b"#,
             #"(?i)\bcour\s*(\d+)\b"#
-        ]
-        for p in patterns {
-            if let match = normalized.range(of: p, options: .regularExpression) {
-                let chunk = String(normalized[match])
-                if let number = chunk.compactMap({ $0.wholeNumberValue }).first {
-                    return number
-                }
-            }
-        }
-        return nil
+        ])
     }
 
     static func extractPartOnlyMarkerNumber(from input: String) -> Int? {
@@ -270,11 +250,19 @@ enum TitleMatcher {
 
     private static func extractMarkerNumber(from input: String, patterns: [String]) -> Int? {
         let normalized = romanToArabic(input)
-        for p in patterns {
-            if let match = normalized.range(of: p, options: .regularExpression) {
-                let chunk = String(normalized[match])
-                if let number = chunk.compactMap({ $0.wholeNumberValue }).first {
-                    return number
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { continue }
+            let range = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
+            if let match = regex.firstMatch(in: normalized, options: [], range: range) {
+                if match.numberOfRanges > 1 {
+                    let numberRange = match.range(at: 1)
+                    if let r = Range(numberRange, in: normalized) {
+                        return Int(normalized[r])
+                    }
+                } else {
+                    let chunk = String(normalized[Range(match.range, in: normalized)!])
+                    let digits = chunk.filter { $0.isNumber }
+                    return Int(digits)
                 }
             }
         }
