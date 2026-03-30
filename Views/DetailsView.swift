@@ -1181,8 +1181,13 @@ struct DetailsView: View {
     }
 
     private func episodeThumbnailURL(for episode: SoraEpisode) -> URL? {
-        episodeMetadata[episode.number]?.thumbnailURL
-            ?? streamingThumbnail(for: episode)
+        let metadataThumb = episodeMetadata[episode.number]?.thumbnailURL
+        let streamingThumb = streamingThumbnail(for: episode)
+        if episodeMetadataProvider == .aniList {
+            return metadataThumb ?? streamingThumb
+        }
+        return metadataThumb
+            ?? streamingThumb
             ?? media.bannerURL
             ?? media.coverURL
     }

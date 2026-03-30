@@ -150,10 +150,6 @@ struct DiscoveryView: View {
             if heroIndex >= heroItems().count {
                 heroIndex = 0
             }
-            Task { await prefetchDiscoveryImages() }
-        }
-        .onChange(of: imdbTrending) { _, _ in
-            Task { await prefetchDiscoveryImages() }
         }
         .onChange(of: librarySortRaw) { _, _ in
             Task { await loadDiscovery(forceRefresh: true) }
@@ -434,7 +430,6 @@ private extension DiscoveryView {
         }
         isLoading = false
         AppLog.debug(.network, "discovery load complete sections=\(sections.count)")
-        await prefetchDiscoveryImages()
     }
 
     func hasAllCoreSections(_ items: [AniListDiscoverySection]) -> Bool {
@@ -530,7 +525,7 @@ private extension DiscoveryView {
         }
     }
 
-    func prefetchDiscoveryImages(limit: Int = 16) async {
+    func prefetchDiscoveryImages(limit: Int = 4) async {
         guard networkMonitor.isOnWiFi else { return }
         var urls: [URL] = []
         let trendingItems = imdbTrending.prefix(limit)

@@ -236,7 +236,7 @@ final class MetadataService {
             title: details.title,
             posterURL: seasonPosterURL ?? details.posterURL,
             backdropURL: details.backdropURL,
-            heroBackdropURL: seasonPosterURL ?? details.heroBackdropURL,
+            heroBackdropURL: details.heroBackdropURL ?? seasonPosterURL,
             logoURL: details.logoURL
         )
     }
@@ -914,7 +914,7 @@ final class EpisodeMetadataService {
             }
             return nil
         case .aniList:
-            let cacheKey = "episode-meta:anilist:v2:\(media.id)"
+            let cacheKey = "episode-meta:anilist:v3:\(media.id):count:\(episodes.count)"
             if let cached = cacheStore.readJSON(forKey: cacheKey),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
@@ -959,12 +959,12 @@ final class EpisodeMetadataService {
                 cacheStore.writeJSON(data, forKey: cacheKey)
             }
         case .aniList:
-            let cacheKey = "episode-meta:anilist:v2:\(media.id)"
+            let cacheKey = "episode-meta:anilist:v3:\(media.id):count:\(episodes.count)"
             if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 6),
                let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
                 return decoded
             }
-            mapped = await fetchFromAniListStreaming(media: media)
+            mapped = await fetchFromAniListStreaming(media: media, episodes: episodes)
             if let data = try? JSONEncoder().encode(mapped) {
                 cacheStore.writeJSON(data, forKey: cacheKey)
             }
@@ -997,7 +997,7 @@ final class EpisodeMetadataService {
                     cacheStore.writeJSON(data, forKey: genericCacheKey)
                 }
             } else {
-                let aniListFallback = await fetchFromAniListStreaming(media: media)
+                let aniListFallback = await fetchFromAniListStreaming(media: media, episodes: episodes)
                 if let reason = rejectReason {
                     AppLog.debug(.matching, "tmdb season rejected mediaId=\(media.id) reason=\(reason)")
                 }
@@ -1014,28 +1014,49 @@ final class EpisodeMetadataService {
         return await fetchKitsuEpisodes(animeId: animeId)
     }
 
-    private func fetchFromAniListStreaming(media: AniListMedia) async -> [Int: EpisodeMetadata] {
-        let cacheKey = "episode-meta:anilist:v2:\(media.id)"
+    private func fetchFromAniListStreaming(media: AniListMedia, episodes: [SoraEpisode]) async -> [Int: EpisodeMetadata] {
+        let cacheKey = "episode-meta:anilist:v3:\(media.id):count:\(episodes.count)"
         if let cached = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 6),
             let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
             return decoded
         }
-        guard let episodes = try? await aniListClient.streamingEpisodes(mediaId: media.id) else {
+        guard let streaming = try? await aniListClient.streamingEpisodes(mediaId: media.id) else {
             return [:]
         }
         var result: [Int: EpisodeMetadata] = [:]
-        for episode in episodes {
-            guard let number = episode.episodeNumber, number > 0 else { continue }
-            let meta = EpisodeMetadata(
+
+        let sortedLocalEpisodes = episodes.sorted { lhs, rhs in
+            if lhs.number == rhs.number {
+                return lhs.id < rhs.id
+            }
+            return lhs.number < rhs.number
+        }
+
+        for (index, streamEpisode) in streaming.enumerated() {
+            let resolvedNumber: Int?
+            if let explicit = streamEpisode.episodeNumber, explicit > 0 {
+                resolvedNumber = explicit
+            } else if index < sortedLocalEpisodes.count {
+                resolvedNumber = sortedLocalEpisodes[index].number
+            } else {
+                resolvedNumber = index + 1
+            }
+
+            guard let number = resolvedNumber, number > 0 else { continue }
+            guard result[number] == nil else { continue }
+
+            let title = streamEpisode.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedTitle = (title?.isEmpty == false) ? title! : "Episode \(number)"
+            result[number] = EpisodeMetadata(
                 number: number,
-                title: episode.title,
+                title: resolvedTitle,
                 summary: nil,
                 airDate: nil,
                 runtimeMinutes: nil,
-                thumbnailURL: episode.thumbnailURL
+                thumbnailURL: streamEpisode.thumbnailURL
             )
-            result[number] = meta
         }
+
         if let data = try? JSONEncoder().encode(result) {
             cacheStore.writeJSON(data, forKey: cacheKey)
         }
