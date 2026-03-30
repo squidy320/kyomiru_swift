@@ -78,32 +78,7 @@ final class EpisodeService {
         matchStore.clear(mediaId: media.id)
     }
 
-<<<<<<< HEAD
     private func applySeasonOffsetIfNeeded(episodes: [SoraEpisode], media: AniListMedia) async -> [SoraEpisode] {
-        guard !episodes.isEmpty else { return episodes }
-
-        // Attempt to get accurate offset from TMDB mapping
-        if let tmdbMatch = await tmdbMatcher.matchShowAndSeason(media: media) {
-            let offset = tmdbMatch.episodeOffset
-            if offset != 0 {
-                // If offset is -24, it means AniList Ep 1 is TMDB Ep 25.
-                // Sora/Provider usually follows TMDB absolute numbering if it's a single entry.
-                let absoluteStart = 1 - offset
-                let adjusted = episodes.filter { $0.number >= absoluteStart }
-                
-                if let expected = media.episodes, expected > 0 {
-                    let slice = Array(adjusted.prefix(expected))
-                    if !slice.isEmpty {
-                        AppLog.debug(.matching, "TMDB offset applied mediaId=\(media.id) offset=\(offset) start=\(absoluteStart) count=\(slice.count)")
-                        return slice
-                    }
-                }
-                
-                if !adjusted.isEmpty {
-                    AppLog.debug(.matching, "TMDB offset applied (no limit) mediaId=\(media.id) offset=\(offset) start=\(absoluteStart)")
-                    return adjusted
-=======
-    private func applySeasonOffsetIfNeeded(episodes: [SoraEpisode], media: AniListMedia) -> [SoraEpisode] {
         guard !episodes.isEmpty else { return episodes }
 
         let sorted = episodes.sorted { lhs, rhs in
@@ -113,6 +88,31 @@ final class EpisodeService {
             return lhs.sourceNumber < rhs.sourceNumber
         }
 
+        // Attempt to get accurate offset from TMDB mapping
+        if let tmdbMatch = await tmdbMatcher.matchShowAndSeason(media: media) {
+            let offset = tmdbMatch.episodeOffset
+            if offset != 0 {
+                // If offset is -24, it means AniList Ep 1 is TMDB Ep 25.
+                // Sora/Provider usually follows TMDB absolute numbering if it's a single entry.
+                let absoluteStart = 1 - offset
+                let adjusted = sorted.filter { $0.sourceNumber >= absoluteStart }
+                
+                if let expected = media.episodes, expected > 0 {
+                    let slice = Array(adjusted.prefix(expected))
+                    if !slice.isEmpty {
+                        AppLog.debug(.matching, "TMDB offset applied mediaId=\(media.id) offset=\(offset) start=\(absoluteStart) count=\(slice.count)")
+                        return enumerateDisplayNumbers(slice)
+                    }
+                }
+                
+                if !adjusted.isEmpty {
+                    AppLog.debug(.matching, "TMDB offset applied (no limit) mediaId=\(media.id) offset=\(offset) start=\(absoluteStart)")
+                    return enumerateDisplayNumbers(adjusted)
+                }
+            }
+        }
+
+        // Fallback to heuristic slicing if TMDB fails or offset is 0
         let expected = media.episodes ?? 0
         let seasonMarker = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best) ?? 1
         let hasPartMarker = TitleMatcher.extractPartMarkerNumber(from: media.title.best) != nil
@@ -124,30 +124,12 @@ final class EpisodeService {
             if sorted.count > offset {
                 let slice = Array(sorted.dropFirst(offset).prefix(expected))
                 if !slice.isEmpty {
-                    AppLog.debug(.matching, "season slice applied mediaId=\(media.id) season=\(seasonMarker) offset=\(offset)")
+                    AppLog.debug(.matching, "Heuristic season offset applied mediaId=\(media.id) season=\(seasonMarker) offset=\(offset)")
                     return enumerateDisplayNumbers(slice)
->>>>>>> 28f7512e47d3dda125e42043328990e635493ba9
                 }
             }
         }
 
-<<<<<<< HEAD
-        // Fallback to heuristic slicing if TMDB fails or offset is 0
-        guard let expected = media.episodes, expected > 0 else { return episodes }
-        let season = TitleMatcher.extractSeasonNumber(from: media.title.best) ?? 1
-        guard season > 1 else { return episodes }
-        
-        let offset = expected * (season - 1)
-        if episodes.count > offset {
-            let slice = Array(episodes.dropFirst(offset).prefix(expected))
-            if !slice.isEmpty {
-                AppLog.debug(.matching, "Heuristic season offset applied mediaId=\(media.id) season=\(season) offset=\(offset)")
-                return slice
-            }
-        }
-        
-        return episodes
-=======
         if expected > 0 {
             let needsRenumber = rawMin > 1 || rawMax > expected || hasPartMarker
             if needsRenumber {
@@ -172,6 +154,5 @@ final class EpisodeService {
                 playURL: episode.playURL
             )
         }
->>>>>>> 28f7512e47d3dda125e42043328990e635493ba9
     }
 }

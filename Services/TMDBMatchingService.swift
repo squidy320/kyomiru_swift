@@ -940,48 +940,6 @@ final class TMDBMatchingService {
         var bestScore = -1.0
         let mediaTypes = preferMovie ? ["movie", "tv"] : ["tv"]
         for query in queries {
-<<<<<<< HEAD
-            var components = URLComponents(string: "https://api.themoviedb.org/3/search/tv")!
-            components.queryItems = [
-                URLQueryItem(name: "api_key", value: apiKey),
-                URLQueryItem(name: "query", value: query)
-            ]
-            guard let url = components.url else { continue }
-            do {
-                let (data, response) = try await session.data(from: url)
-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                    continue
-                }
-                let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                let results = root?["results"] as? [[String: Any]] ?? []
-                for row in results {
-                    guard let id = row["id"] as? Int else { continue }
-                    let name = row["name"] as? String ?? row["original_name"] as? String ?? ""
-                    let titleScore = TitleMatcher.diceCoefficient(
-                        TitleMatcher.cleanTitle(name),
-                        normalizedTarget
-                    )
-                    
-                    let firstAirDate = row["first_air_date"] as? String
-                    let yearScore: Double
-                    if let startYear, let year = yearFrom(firstAirDate) {
-                        let diff = abs(year - startYear)
-                        if diff == 0 {
-                            yearScore = 1.0
-                        } else if diff == 1 {
-                            yearScore = 0.8
-                        } else if diff == 2 {
-                            yearScore = 0.4
-                        } else {
-                            yearScore = 0.0
-                        }
-                    } else {
-                        yearScore = 0.5
-                    }
-
-                    if let startYear, let year = yearFrom(firstAirDate),
-                       abs(year - startYear) > 2, titleScore < 0.9 {
-=======
             for mediaType in mediaTypes {
                 var components = URLComponents(string: "https://api.themoviedb.org/3/search/\(mediaType)")!
                 components.queryItems = [
@@ -992,7 +950,6 @@ final class TMDBMatchingService {
                 do {
                     let (data, response) = try await session.data(from: url)
                     guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
->>>>>>> 28f7512e47d3dda125e42043328990e635493ba9
                         continue
                     }
                     let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
