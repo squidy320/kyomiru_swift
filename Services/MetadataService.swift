@@ -1045,8 +1045,8 @@ final class EpisodeMetadataService {
             guard let number = resolvedNumber, number > 0 else { continue }
             guard result[number] == nil else { continue }
 
-            let title = streamEpisode.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let resolvedTitle = (title?.isEmpty == false) ? title! : "Episode \(number)"
+            let title = streamEpisode.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedTitle = title.isEmpty ? "Episode \(number)" : title
             result[number] = EpisodeMetadata(
                 number: number,
                 title: resolvedTitle,
