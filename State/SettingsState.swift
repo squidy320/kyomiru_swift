@@ -5,6 +5,7 @@ final class SettingsState: ObservableObject {
     @AppStorage("settings.defaultQuality") private var defaultQualityRaw: String = "Auto"
     @AppStorage("settings.playerBackend") private var playerBackendRaw: String = PlayerBackend.avPlayer.rawValue
     @AppStorage("settings.autoSyncAniList") private var autoSyncAniListRaw: Bool = true
+    @AppStorage("settings.autoSkipSegments") private var autoSkipSegmentsRaw: Bool = false
     @AppStorage("settings.showPlayerDebugOverlay") private var showPlayerDebugOverlayRaw: Bool = false
     @AppStorage("settings.playerSkipIntervalSeconds") private var playerSkipIntervalRaw: Double = 85
     @AppStorage("settings.playerHoldSpeed") private var playerHoldSpeedRaw: Double = PlayerHoldSpeed.twoX.rawValue
@@ -40,6 +41,14 @@ final class SettingsState: ObservableObject {
         get { autoSyncAniListRaw }
         set {
             autoSyncAniListRaw = newValue
+            objectWillChange.send()
+        }
+    }
+
+    var autoSkipSegments: Bool {
+        get { autoSkipSegmentsRaw }
+        set {
+            autoSkipSegmentsRaw = newValue
             objectWillChange.send()
         }
     }

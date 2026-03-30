@@ -256,6 +256,7 @@ private final class MPVPlaybackController: ObservableObject {
     func handleTimeChanged(_ time: Double) {
         guard abs(time - currentTime) >= 0.2 || pendingSeekTime != nil else { return }
         currentTime = time
+        
         if let pendingSeekTime, abs(time - pendingSeekTime) <= 1.0 {
             self.pendingSeekTime = nil
             pendingSeekIssuedAt = nil
@@ -270,9 +271,15 @@ private final class MPVPlaybackController: ObservableObject {
             self.pendingSeekTime = nil
             pendingSeekIssuedAt = nil
         }
+        
         displayedTime = time
         syncProgress(currentTime: time, duration: duration)
         updateActiveSkip(at: time)
+        
+        if let appState, appState.settings.autoSkipSegments, let active = activeSkip {
+            AppLog.debug(.player, "aniskip: mpv auto-skipping type=\(active.type)")
+            seek(to: active.end)
+        }
     }
 
     func handleDurationChanged(_ duration: Double) {

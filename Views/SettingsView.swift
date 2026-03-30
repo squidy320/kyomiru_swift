@@ -141,6 +141,12 @@ struct SettingsView: View {
                     ),
                     options: ["Auto", "1080p", "720p", "360p"]
                 )
+
+                Toggle("Auto-Skip Segments", isOn: Binding(
+                    get: { appState.settings.autoSkipSegments },
+                    set: { appState.settings.autoSkipSegments = $0 }
+                ))
+                .foregroundColor(.white)
             }
 
             SettingsSectionCard(title: "Gesture Hold Speed", subtitle: "Long-press in the player temporarily uses this playback speed.") {
