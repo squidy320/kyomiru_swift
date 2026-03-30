@@ -166,16 +166,26 @@ final class TMDBMatchingService {
                         TitleMatcher.cleanTitle(name),
                         normalizedTarget
                     )
+                    
                     let firstAirDate = row["first_air_date"] as? String
                     let yearScore: Double
                     if let startYear, let year = yearFrom(firstAirDate) {
-                        yearScore = year == startYear ? 1.0 : 0.0
+                        let diff = abs(year - startYear)
+                        if diff == 0 {
+                            yearScore = 1.0
+                        } else if diff == 1 {
+                            yearScore = 0.8
+                        } else if diff == 2 {
+                            yearScore = 0.4
+                        } else {
+                            yearScore = 0.0
+                        }
                     } else {
                         yearScore = 0.5
                     }
 
                     if let startYear, let year = yearFrom(firstAirDate),
-                       abs(year - startYear) > 1, titleScore < 0.9 {
+                       abs(year - startYear) > 2, titleScore < 0.9 {
                         continue
                     }
 

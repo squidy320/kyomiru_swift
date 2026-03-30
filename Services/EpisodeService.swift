@@ -3,6 +3,11 @@ import Foundation
 final class EpisodeService {
     private let runtime = SoraRuntime()
     private let matchStore = MatchStore.shared
+    private let tmdbMatcher: TMDBMatchingService
+
+    init(tmdbMatcher: TMDBMatchingService = TMDBMatchingService(cacheStore: CacheStore())) {
+        self.tmdbMatcher = tmdbMatcher
+    }
 
     struct MatchLoadResult {
         let match: SoraAnimeMatch
@@ -17,7 +22,7 @@ final class EpisodeService {
            let storedMatch = stored.asSoraMatch() {
             AppLog.debug(.matching, "using stored match mediaId=\(media.id) session=\(storedMatch.session) manual=\(stored.isManual)")
             let episodes = try await runtime.episodes(for: storedMatch)
-            let adjusted = applySeasonOffsetIfNeeded(episodes: episodes, media: media)
+            let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
             AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
             return MatchLoadResult(match: storedMatch, episodes: adjusted, isManual: stored.isManual)
         }
@@ -28,7 +33,7 @@ final class EpisodeService {
         }
         matchStore.set(match: match, mediaId: media.id, isManual: false)
         let episodes = try await runtime.episodes(for: match)
-        let adjusted = applySeasonOffsetIfNeeded(episodes: episodes, media: media)
+        let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
         AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
         return MatchLoadResult(match: match, episodes: adjusted, isManual: false)
     }
@@ -73,16 +78,47 @@ final class EpisodeService {
         matchStore.clear(mediaId: media.id)
     }
 
-    private func applySeasonOffsetIfNeeded(episodes: [SoraEpisode], media: AniListMedia) -> [SoraEpisode] {
+    private func applySeasonOffsetIfNeeded(episodes: [SoraEpisode], media: AniListMedia) async -> [SoraEpisode] {
+        guard !episodes.isEmpty else { return episodes }
+
+        // Attempt to get accurate offset from TMDB mapping
+        if let tmdbMatch = await tmdbMatcher.matchShowAndSeason(media: media) {
+            let offset = tmdbMatch.episodeOffset
+            if offset != 0 {
+                // If offset is -24, it means AniList Ep 1 is TMDB Ep 25.
+                // Sora/Provider usually follows TMDB absolute numbering if it's a single entry.
+                let absoluteStart = 1 - offset
+                let adjusted = episodes.filter { $0.number >= absoluteStart }
+                
+                if let expected = media.episodes, expected > 0 {
+                    let slice = Array(adjusted.prefix(expected))
+                    if !slice.isEmpty {
+                        AppLog.debug(.matching, "TMDB offset applied mediaId=\(media.id) offset=\(offset) start=\(absoluteStart) count=\(slice.count)")
+                        return slice
+                    }
+                }
+                
+                if !adjusted.isEmpty {
+                    AppLog.debug(.matching, "TMDB offset applied (no limit) mediaId=\(media.id) offset=\(offset) start=\(absoluteStart)")
+                    return adjusted
+                }
+            }
+        }
+
+        // Fallback to heuristic slicing if TMDB fails or offset is 0
         guard let expected = media.episodes, expected > 0 else { return episodes }
         let season = TitleMatcher.extractSeasonNumber(from: media.title.best) ?? 1
         guard season > 1 else { return episodes }
-        let minTotal = expected * season
-        guard episodes.count >= minTotal else { return episodes }
+        
         let offset = expected * (season - 1)
-        let slice = Array(episodes.dropFirst(offset).prefix(expected))
-        if slice.isEmpty { return episodes }
-        AppLog.debug(.matching, "season offset applied mediaId=\(media.id) season=\(season) offset=\(offset)")
-        return slice
+        if episodes.count > offset {
+            let slice = Array(episodes.dropFirst(offset).prefix(expected))
+            if !slice.isEmpty {
+                AppLog.debug(.matching, "Heuristic season offset applied mediaId=\(media.id) season=\(season) offset=\(offset)")
+                return slice
+            }
+        }
+        
+        return episodes
     }
 }

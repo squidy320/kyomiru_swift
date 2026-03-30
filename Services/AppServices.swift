@@ -38,6 +38,6 @@ final class AppServices {
         self.ratingService = RatingService(cacheStore: cacheStore, tmdbMatcher: tmdbMatchingService)
         self.downloadManager = DownloadManager.shared
         self.libraryStore = MediaTracker()
-        self.episodeService = EpisodeService()
+        self.episodeService = EpisodeService(tmdbMatcher: tmdbMatchingService)
     }
 }

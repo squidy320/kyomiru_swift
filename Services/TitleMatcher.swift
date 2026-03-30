@@ -30,30 +30,57 @@ enum TitleMatcher {
         targetFormat: String?
     ) -> Double {
         let titleScore = diceCoefficient(cleanTitle(candidate.title), normalizedTarget)
-        var yearScore = 0.0
+        var yearScore = 0.5
         if let targetYear, let candidateYear = candidate.year {
-            yearScore = targetYear == candidateYear ? 1.0 : 0.0
+            if targetYear == candidateYear {
+                yearScore = 1.0
+            } else if abs(targetYear - candidateYear) == 1 {
+                yearScore = 0.7
+            } else {
+                yearScore = 0.0
+            }
         }
+        
         var formatScore = 0.5
         if let targetFormat, let candidateFormat = candidate.format {
             let t = targetFormat.lowercased()
             let c = candidateFormat.lowercased()
-            formatScore = (t.contains("movie") == c.contains("movie")) ? 1.0 : 0.0
+            let tIsMovie = t.contains("movie")
+            let cIsMovie = c.contains("movie")
+            let tIsSpecial = t.contains("special") || t.contains("ova") || t.contains("ona")
+            let cIsSpecial = c.contains("special") || c.contains("ova") || c.contains("ona")
+            
+            if tIsMovie == cIsMovie && tIsSpecial == cIsSpecial {
+                formatScore = 1.0
+            } else if tIsMovie != cIsMovie || tIsSpecial != cIsSpecial {
+                formatScore = 0.0
+            }
         }
-        var score = 0.5 * titleScore + 0.3 * yearScore + 0.2 * formatScore
+        
+        var score = (0.5 * titleScore) + (0.3 * yearScore) + (0.2 * formatScore)
 
         let candidateSeason = extractSeasonNumber(from: candidate.title)
         if let wantedSeason {
             if candidateSeason == wantedSeason {
-                score += 0.12
-            } else if candidateSeason != nil {
-                score -= 0.22
+                score += 0.15 // Increased bonus for exact season match
+            } else if let cs = candidateSeason, cs != wantedSeason {
+                score -= 0.30 // Heavier penalty for wrong season
             } else if wantedSeason == 1 {
-                score += 0.06
+                score += 0.08
             } else {
-                score -= 0.08
+                score -= 0.10
             }
         }
+        
+        // Bonus for "Part" or "Cour" match if target title has it
+        if normalizedTarget.contains("part") || normalizedTarget.contains("cour") {
+            let cTitle = candidate.title.lowercased()
+            if (normalizedTarget.contains("part") && cTitle.contains("part")) ||
+               (normalizedTarget.contains("cour") && cTitle.contains("cour")) {
+                score += 0.05
+            }
+        }
+
         return min(max(score, 0.0), 1.0)
     }
 
