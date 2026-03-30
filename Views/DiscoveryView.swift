@@ -8,6 +8,7 @@ struct DiscoveryView: View {
     @AppStorage("library.sort") private var librarySortRaw: String = LibrarySortOption.lastUpdated.rawValue
     @State private var sections: [AniListDiscoverySection] = []
     @State private var isLoading = false
+    @State private var errorMessage: String?
     @State private var isSearching = false
     @State private var searchResults: [AniListMedia] = []
     @State private var searchTask: Task<Void, Never>?
@@ -55,6 +56,12 @@ struct DiscoveryView: View {
                             if isLoading {
                                 GlassCard {
                                     Text("Loading discovery...")
+                                        .foregroundColor(Theme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else if let errorMessage, coreSections.isEmpty {
+                                GlassCard {
+                                    Text(errorMessage)
                                         .foregroundColor(Theme.textSecondary)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
@@ -126,7 +133,7 @@ struct DiscoveryView: View {
         .task {
             AppLog.debug(.ui, "discovery view load")
             if sections.isEmpty,
-               let cached = appState.services.aniListClient.cachedDiscoverySectionsSnapshot(sort: discoverySort()) {
+               let cached = appState.services.aniListClient.cachedDiscoverySectionsSnapshot(sort: discoverySort(), allowStale: true) {
                 sections = cached
             }
             await loadImdbTrending()
@@ -143,13 +150,6 @@ struct DiscoveryView: View {
             if heroIndex >= heroItems().count {
                 heroIndex = 0
             }
-            Task { await prefetchDiscoveryImages() }
-        }
-        .onChange(of: imdbTrending) { _, _ in
-            Task { await prefetchDiscoveryImages() }
-        }
-        .onChange(of: appState.settings.cardImageSource) { _, _ in
-            Task { await prefetchDiscoveryImages() }
         }
         .onChange(of: librarySortRaw) { _, _ in
             Task { await loadDiscovery(forceRefresh: true) }
@@ -415,6 +415,7 @@ private extension DiscoveryView {
     func loadDiscovery(forceRefresh: Bool) async {
         AppLog.debug(.network, "discovery load start")
         isLoading = true
+        errorMessage = nil
         do {
             sections = try await appState.services.aniListClient.discoverySections(
                 sort: discoverySort(),
@@ -423,12 +424,12 @@ private extension DiscoveryView {
         } catch {
             if sections.isEmpty {
                 sections = []
+                errorMessage = "AniList is temporarily unavailable. Showing fallback content until it comes back."
             }
             AppLog.error(.network, "discovery load failed \(error.localizedDescription)")
         }
         isLoading = false
         AppLog.debug(.network, "discovery load complete sections=\(sections.count)")
-        await prefetchDiscoveryImages()
     }
 
     func hasAllCoreSections(_ items: [AniListDiscoverySection]) -> Bool {
@@ -524,22 +525,9 @@ private extension DiscoveryView {
         }
     }
 
-    func prefetchDiscoveryImages(limit: Int = 16) async {
+    func prefetchDiscoveryImages(limit: Int = 4) async {
         guard networkMonitor.isOnWiFi else { return }
         var urls: [URL] = []
-        let useTMDB = appState.settings.cardImageSource == .tmdb
-        let mediaItems = sections.flatMap(\.items).prefix(limit)
-        for media in mediaItems {
-            if useTMDB {
-                if let tmdb = await appState.services.metadataService.posterURL(for: media) {
-                    urls.append(tmdb)
-                } else if let cover = media.coverURL {
-                    urls.append(cover)
-                }
-            } else if let cover = media.coverURL {
-                urls.append(cover)
-            }
-        }
         let trendingItems = imdbTrending.prefix(limit)
         for item in trendingItems {
             if let backdrop = item.backdropURL { urls.append(backdrop) }

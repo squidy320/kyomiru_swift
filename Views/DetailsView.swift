@@ -108,21 +108,31 @@ struct DetailsView: View {
     @State private var isLoadingSources = false
     @State private var showSourceSheet = false
     @State private var showMatchSheet = false
+    @State private var showTMDBMatchSheet = false
     @State private var showListManager = false
     @State private var playerStartAt: Double?
     @State private var listManagerModel = ListManagerViewModel(item: MediaItem(title: "", status: .planning))
+    @State private var listTrackingEntry: AniListTrackingEntry?
     @State private var isLoadingMatch = false
     @State private var matchCandidates: [SoraAnimeMatch] = []
     @State private var matchError: String?
     @State private var matchQuery: String = ""
+    @State private var isLoadingTMDBMatch = false
+    @State private var tmdbMatchCandidates: [TMDBSearchResult] = []
+    @State private var tmdbMatchError: String?
+    @State private var tmdbMatchQuery: String = ""
+    @State private var tmdbManualOverride: TMDBManualOverride?
+    @State private var episodeMetadataProvider: EpisodeMetadataService.Provider = .tmdb
     @State private var selectedEpisodeTab: EpisodeTab = .currentSeries
     @State private var isBookmarked = false
     @State private var relatedSections: [AniListRelatedSection] = []
     @State private var episodeMetadata: [Int: EpisodeMetadata] = [:]
     @State private var episodeRatings: [Int: Double] = [:]
     @State private var streamingEpisodes: [AniListStreamingEpisode] = []
+    @State private var episodeLoadGeneration = 0
     @State private var tmdbHeroBackdropURL: URL?
     @State private var tmdbHeroLogoURL: URL?
+    @State private var tmdbHeroLookupComplete = false
     @State private var showImportPicker = false
     @State private var showImportReview = false
     @State private var importCandidates: [EpisodeImportCandidate] = []
@@ -171,10 +181,12 @@ struct DetailsView: View {
             }
         }
         .navigationBarBackButtonHidden(!isPad)
-        .navigationTitle(isPad ? media.title.best : "")
+        .navigationTitle(isPad ? "" : media.title.best)
         .navigationBarTitleDisplayMode(.inline)
         .task {
             AppLog.debug(.ui, "details view load mediaId=\(media.id)")
+            tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
+            episodeMetadataProvider = appState.services.episodeMetadataService.preferredProvider(for: media)
             await loadEpisodes()
             await loadRelated()
             isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
@@ -236,10 +248,46 @@ struct DetailsView: View {
                 },
                 onSelect: { match in
                     Task {
-                        _ = await appState.services.metadataService.manualMatch(local: detailItem, remoteId: match.session)
                         appState.services.episodeService.setManualMatch(media: media, match: match)
                         AppLog.debug(.matching, "manual match selected mediaId=\(media.id) session=\(match.session)")
                         await loadEpisodes()
+                    }
+                }
+            )
+        }
+        .sheet(isPresented: $showTMDBMatchSheet) {
+            TMDBMatchSheet(
+                media: media,
+                currentOverride: tmdbManualOverride,
+                query: $tmdbMatchQuery,
+                candidates: tmdbMatchCandidates,
+                isLoading: isLoadingTMDBMatch,
+                errorMessage: tmdbMatchError,
+                onSearch: { term in
+                    performTMDBMatchSearch(query: term)
+                },
+                loadSeasons: { candidate in
+                    await appState.services.tmdbMatchingService.fetchSeasonChoices(for: media, showId: candidate.id, mediaType: candidate.mediaType)
+                },
+                onSave: { choice, additionalOffset in
+                    Task {
+                        let resolvedOffset = choice.episodeOffset + additionalOffset
+                        await appState.services.metadataService.saveManualTMDBMatch(
+                            media: media,
+                            showId: choice.showId,
+                            mediaType: choice.mediaType,
+                            seasonNumber: choice.tmdbSeasonNumber,
+                            episodeOffset: resolvedOffset,
+                            showTitle: choice.showTitle,
+                            seasonLabel: choice.displayLabel
+                        )
+                        await reloadTMDBOverrideDependentState()
+                    }
+                },
+                onClear: {
+                    Task {
+                        appState.services.metadataService.clearManualTMDBMatch(for: media)
+                        await reloadTMDBOverrideDependentState()
                     }
                 }
             )
@@ -254,6 +302,9 @@ struct DetailsView: View {
             .presentationDetents([PresentationDetent.medium])
             .onAppear {
                 listManagerModel = makeListManagerModel()
+                Task {
+                    await refreshTrackingEntryForSheet()
+                }
             }
         }
         .alert("Import", isPresented: Binding(
@@ -348,12 +399,12 @@ struct DetailsView: View {
                     Color.clear
                 }
                 .frame(maxWidth: 320)
+            } else {
+                Text(media.title.best)
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
             }
-
-            Text(media.title.best)
-                .font(.system(size: 34, weight: .bold))
-                .foregroundColor(.white)
-                .lineLimit(2)
 
             HStack(spacing: UIConstants.tinyPadding) {
                 if let eps = media.episodes, eps > 0 {
@@ -376,8 +427,8 @@ struct DetailsView: View {
             LazyHStack(spacing: UIConstants.interCardSpacing) {
                 ForEach(episodes, id: \.id) { episode in
                     let meta = episodeMetadata[episode.number]
-                    let title = streamingTitle(for: episode) ?? meta?.title ?? "Episode \(episode.number)"
-                    let thumb = streamingThumbnail(for: episode) ?? meta?.thumbnailURL ?? episodeThumbnailURL(for: episode)
+                    let title = meta?.title ?? streamingTitle(for: episode) ?? "Episode \(episode.number)"
+                    let thumb = meta?.thumbnailURL ?? streamingThumbnail(for: episode) ?? episodeThumbnailURL(for: episode)
                     Button {
                         playerStartAt = nil
                         selectEpisode(episode)
@@ -399,7 +450,7 @@ struct DetailsView: View {
                             Task { await appState.markEpisodeUnwatched(mediaId: media.id, episodeNumber: episode.number) }
                         }
                         Button("Download") {
-                            openSourcePicker(for: episode)
+                            downloadEpisodeUsingPreferences(episode)
                         }
                         Button("Play from Start") {
                             playerStartAt = 0
@@ -423,7 +474,7 @@ struct DetailsView: View {
             let width = proxy.size.width
             let insetTop = proxy.safeAreaInsets.top
             let topFeatherHeight = max(24.0, insetTop * 0.6)
-            let fallbackBackdrop = media.bannerURL ?? media.coverURL
+            let fallbackBackdrop = tmdbHeroLookupComplete ? (media.bannerURL ?? media.coverURL) : nil
             ZStack {
                 Group {
                     if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
@@ -466,8 +517,10 @@ struct DetailsView: View {
         .frame(height: height)
         .offset(y: -topInset)
         .task(id: media.id) {
-            tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+            tmdbHeroLookupComplete = false
+            tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
             tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
+            tmdbHeroLookupComplete = true
             let fallback = media.bannerURL ?? media.coverURL
             let urls = [tmdbHeroBackdropURL, fallback].compactMap { $0 }
             await ImageCache.shared.prefetch(urls: urls)
@@ -483,7 +536,7 @@ struct DetailsView: View {
             let width = proxy.size.width
             let insetTop = proxy.safeAreaInsets.top
             let topFeatherHeight = max(24.0, insetTop * 0.6)
-            let fallbackBackdrop = media.bannerURL ?? media.coverURL
+            let fallbackBackdrop = tmdbHeroLookupComplete ? (media.bannerURL ?? media.coverURL) : nil
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
@@ -562,8 +615,10 @@ struct DetailsView: View {
         .frame(height: height)
         .offset(y: -topInset)
         .task(id: media.id) {
-            tmdbHeroBackdropURL = await appState.services.metadataService.backdropURL(for: media)
+            tmdbHeroLookupComplete = false
+            tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
             tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
+            tmdbHeroLookupComplete = true
             let fallback = media.bannerURL ?? media.coverURL
             let urls = [tmdbHeroBackdropURL, fallback].compactMap { $0 }
             await ImageCache.shared.prefetch(urls: urls)
@@ -614,6 +669,13 @@ struct DetailsView: View {
                     .background(
                         Circle().fill(Color.white.opacity(0.08))
                     )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                toggleEpisodeMetadataProvider()
+            } label: {
+                episodeMetadataToggleBadge
             }
             .buttonStyle(.plain)
 
@@ -712,10 +774,10 @@ struct DetailsView: View {
                 let meta = episodeMetadata[episode.number]
                 EpisodeRowView(
                     episodeNumber: episode.number,
-                    title: streamingTitle(for: episode) ?? meta?.title ?? "Episode \(episode.number)",
+                    title: meta?.title ?? streamingTitle(for: episode) ?? "Episode \(episode.number)",
                     ratingText: ratingText(for: episode.number),
                     description: meta?.summary,
-                    thumbnailURL: streamingThumbnail(for: episode) ?? meta?.thumbnailURL ?? episodeThumbnailURL(for: episode),
+                    thumbnailURL: meta?.thumbnailURL ?? streamingThumbnail(for: episode) ?? episodeThumbnailURL(for: episode),
                     isPlayable: true,
                     isWatched: isEpisodeWatched(episode.number),
                     isDownloaded: isEpisodeDownloaded(episode.number),
@@ -733,7 +795,7 @@ struct DetailsView: View {
                         Task { await appState.markEpisodeUnwatched(mediaId: media.id, episodeNumber: episode.number) }
                     }
                     Button("Download") {
-                        openSourcePicker(for: episode)
+                        downloadEpisodeUsingPreferences(episode)
                     }
                     Button("Play from Start") {
                         playerStartAt = 0
@@ -764,17 +826,29 @@ struct DetailsView: View {
     }
 
     private func makeListManagerModel() -> ListManagerViewModel {
+        let scoreFormat = appState.authState.user?.scoreFormat ?? .point100
         if let existing = appState.services.libraryStore.item(forExternalId: media.id) {
-            return ListManagerViewModel(item: existing)
+            return ListManagerViewModel(
+                item: existing,
+                trackingEntry: listTrackingEntry,
+                scoreFormat: scoreFormat
+            )
         }
-        return ListManagerViewModel(item: detailItem)
+        return ListManagerViewModel(
+            item: detailItem,
+            trackingEntry: listTrackingEntry,
+            scoreFormat: scoreFormat
+        )
     }
 
     private func loadEpisodes() async {
+        episodeLoadGeneration += 1
+        let loadGeneration = episodeLoadGeneration
         isLoading = true
         errorMessage = nil
         do {
             let result = try await appState.services.episodeService.loadEpisodes(media: media)
+            guard loadGeneration == episodeLoadGeneration else { return }
             episodes = result.episodes
             isLoading = false
 
@@ -784,6 +858,7 @@ struct DetailsView: View {
 
             Task { @MainActor in
                 let meta = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: result.episodes)
+                guard loadGeneration == episodeLoadGeneration else { return }
                 episodeMetadata = meta
             }
             Task { @MainActor in
@@ -793,17 +868,22 @@ struct DetailsView: View {
                     seasonNumber: 1,
                     firstEpisodeNumber: firstEpisodeNumber
                 )
+                guard loadGeneration == episodeLoadGeneration else { return }
                 episodeRatings = ratings
             }
             Task { @MainActor in
                 do {
-                    streamingEpisodes = try await appState.services.aniListClient.streamingEpisodes(mediaId: media.id)
+                    let loadedEpisodes = try await appState.services.aniListClient.streamingEpisodes(mediaId: media.id)
+                    guard loadGeneration == episodeLoadGeneration else { return }
+                    streamingEpisodes = loadedEpisodes
                 } catch {
+                    guard loadGeneration == episodeLoadGeneration else { return }
                     AppLog.error(.network, "streaming episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
                     streamingEpisodes = []
                 }
             }
         } catch {
+            guard loadGeneration == episodeLoadGeneration else { return }
             errorMessage = "Failed to load episodes."
             AppLog.error(.network, "details episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
             isLoading = false
@@ -814,6 +894,54 @@ struct DetailsView: View {
         matchQuery = media.title.best
         showMatchSheet = true
         performMatchSearch(query: matchQuery)
+    }
+
+    private func openTMDBMatchPicker() {
+        tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
+        tmdbMatchQuery = media.title.best
+        showTMDBMatchSheet = true
+        performTMDBMatchSearch(query: tmdbMatchQuery)
+    }
+
+    @ViewBuilder
+    private var episodeMetadataToggleBadge: some View {
+        let targetProvider: EpisodeMetadataService.Provider = episodeMetadataProvider == .tmdb ? .aniList : .tmdb
+        let label = targetProvider == .aniList ? "AniList" : "TMDB"
+        let background = targetProvider == .aniList ? Color(red: 0.13, green: 0.47, blue: 0.95) : Color(red: 0.05, green: 0.66, blue: 0.57)
+        Text(label)
+            .font(.system(size: 12, weight: .bold))
+            .foregroundColor(.white)
+            .frame(minWidth: UIConstants.circleButtonSize, minHeight: UIConstants.circleButtonSize)
+            .padding(.horizontal, label == "AniList" ? 8 : 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(background.opacity(0.95))
+            )
+    }
+
+    private func toggleEpisodeMetadataProvider() {
+        let nextProvider: EpisodeMetadataService.Provider = episodeMetadataProvider == .tmdb ? .aniList : .tmdb
+        appState.services.episodeMetadataService.setPreferredProvider(nextProvider, for: media)
+        episodeMetadataProvider = nextProvider
+        Task {
+            await reloadEpisodeMetadataProviderState()
+        }
+    }
+
+    private func refreshTrackingEntryForSheet() async {
+        guard appState.authState.isSignedIn,
+              let token = appState.authState.token else {
+            listTrackingEntry = nil
+            listManagerModel = makeListManagerModel()
+            return
+        }
+        do {
+            let entry = try await appState.services.aniListClient.trackingEntry(token: token, mediaId: media.id)
+            listTrackingEntry = entry
+            listManagerModel = makeListManagerModel()
+        } catch {
+            AppLog.error(.network, "tracking entry load failed mediaId=\(media.id) \(error.localizedDescription)")
+        }
     }
 
     private func performMatchSearch(query: String) {
@@ -839,6 +967,41 @@ struct DetailsView: View {
             }
             isLoadingMatch = false
         }
+    }
+
+    private func performTMDBMatchSearch(query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        isLoadingTMDBMatch = true
+        tmdbMatchError = nil
+        tmdbMatchCandidates = []
+        Task {
+            let results = await appState.services.tmdbMatchingService.searchShows(query: trimmed)
+            tmdbMatchCandidates = results
+            if results.isEmpty {
+                tmdbMatchError = "No TMDB shows found."
+            }
+            isLoadingTMDBMatch = false
+        }
+    }
+
+    private func reloadTMDBOverrideDependentState() async {
+        tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
+        episodeMetadataProvider = appState.services.episodeMetadataService.preferredProvider(for: media)
+        tmdbHeroBackdropURL = nil
+        tmdbHeroLogoURL = nil
+        tmdbHeroLookupComplete = false
+        episodeMetadata = [:]
+        episodeRatings = [:]
+        await loadEpisodes()
+        tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
+        tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
+        tmdbHeroLookupComplete = true
+    }
+
+    private func reloadEpisodeMetadataProviderState() async {
+        episodeMetadataProvider = appState.services.episodeMetadataService.preferredProvider(for: media)
+        episodeMetadata = [:]
+        await loadEpisodes()
     }
 
     private func selectEpisode(_ episode: SoraEpisode) {
@@ -904,6 +1067,31 @@ struct DetailsView: View {
                 AppLog.error(.network, "sources load failed ep=\(episode.number) \(error.localizedDescription)")
             }
             isLoadingSources = false
+        }
+    }
+
+    private func downloadEpisodeUsingPreferences(_ episode: SoraEpisode) {
+        selectedEpisode = episode
+        Task {
+            isLoadingSources = true
+            defer { isLoadingSources = false }
+            do {
+                let loadedSources = try await appState.services.episodeService.loadSources(for: episode)
+                guard !loadedSources.isEmpty else {
+                    errorMessage = "No streams available."
+                    return
+                }
+                if let preferred = preferredSource(in: loadedSources) {
+                    enqueueDownload(preferred, episodeNumber: episode.number)
+                    downloadMessage = "Queued episode \(episode.number) using your saved stream preference."
+                } else {
+                    sources = loadedSources
+                    showSourceSheet = true
+                }
+            } catch {
+                errorMessage = "Failed to load streams."
+                AppLog.error(.network, "download source load failed ep=\(episode.number) \(error.localizedDescription)")
+            }
         }
     }
 
@@ -993,7 +1181,15 @@ struct DetailsView: View {
     }
 
     private func episodeThumbnailURL(for episode: SoraEpisode) -> URL? {
-        media.coverURL ?? media.bannerURL
+        let metadataThumb = episodeMetadata[episode.number]?.thumbnailURL
+        let streamingThumb = streamingThumbnail(for: episode)
+        if episodeMetadataProvider == .aniList {
+            return metadataThumb ?? streamingThumb
+        }
+        return metadataThumb
+            ?? streamingThumb
+            ?? media.bannerURL
+            ?? media.coverURL
     }
 
     private func episodeSubtitle() -> String {
@@ -1214,24 +1410,14 @@ private struct EpisodeCardModel: Identifiable {
 
 private struct EpisodeRow: View {
     let card: EpisodeCardModel
-    @EnvironmentObject private var appState: AppState
-    @State private var imdbImageURL: URL?
-    @State private var tmdbLookupComplete = false
 
     var body: some View {
-        let useTMDB = appState.settings.cardImageSource == .tmdb
-        let resolvedURL: URL? = {
-            if useTMDB {
-                return tmdbLookupComplete ? (imdbImageURL ?? card.imageURL) : imdbImageURL
-            }
-            return card.imageURL
-        }()
         HStack(alignment: .top, spacing: UIConstants.interCardSpacing) {
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous)
                     .fill(Color.white.opacity(0.06))
                     .frame(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
-                if let resolved = resolvedURL {
+                if let resolved = card.imageURL {
                     CachedImage(
                         url: resolved,
                         targetSize: CGSize(width: UIConstants.episodeThumbWidth, height: UIConstants.episodeThumbHeight)
@@ -1276,16 +1462,6 @@ private struct EpisodeRow: View {
             RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
                 .fill(Color.white.opacity(0.06))
         )
-        .task(id: "\(card.relatedMedia?.id ?? 0)-\(appState.settings.cardImageSource.rawValue)") {
-            guard let media = card.relatedMedia else { return }
-            if useTMDB {
-                imdbImageURL = await appState.services.metadataService.backdropURL(for: media)
-                tmdbLookupComplete = true
-            } else {
-                imdbImageURL = nil
-                tmdbLookupComplete = false
-            }
-        }
     }
 }
 
@@ -1345,24 +1521,65 @@ private struct EpisodeThumbCard: View {
 final class ListManagerViewModel {
     var status: MediaStatus
     var currentEpisode: Int
-    var rating: Int
+    var rating: Double
     let totalEpisodes: Int?
     let title: String
+    let scoreFormat: AniListScoreFormat
+    let startedAt: AniListFuzzyDate?
+    let completedAt: AniListFuzzyDate?
 
-    init(item: MediaItem) {
-        self.status = item.status
-        self.currentEpisode = item.currentEpisode
-        self.rating = item.userRating
+    init(item: MediaItem, trackingEntry: AniListTrackingEntry? = nil, scoreFormat: AniListScoreFormat = .point100) {
+        self.status = trackingEntry?.status.flatMap(ListManagerViewModel.mediaStatus(from:)) ?? item.status
+        self.currentEpisode = trackingEntry?.progress ?? item.currentEpisode
+        self.rating = trackingEntry?.score ?? item.userRating
         self.totalEpisodes = item.totalEpisodes
         self.title = item.title
+        self.scoreFormat = scoreFormat
+        self.startedAt = trackingEntry?.startedAt
+        self.completedAt = trackingEntry?.completedAt
     }
 
     func apply(to item: MediaItem) -> MediaItem {
         var updated = item
         updated.status = status
         updated.currentEpisode = max(currentEpisode, 0)
-        updated.userRating = min(max(rating, 0), 100)
+        updated.userRating = normalizedRating
         return updated
+    }
+
+    var normalizedRating: Double {
+        let clamped = min(max(rating, scoreFormat.range.lowerBound), scoreFormat.range.upperBound)
+        if scoreFormat == .point10Decimal {
+            return (clamped * 10).rounded() / 10
+        }
+        return clamped.rounded()
+    }
+
+    var ratingText: String {
+        let value = normalizedRating
+        switch scoreFormat {
+        case .point10Decimal:
+            return String(format: "%.1f", value)
+        default:
+            return String(Int(value.rounded()))
+        }
+    }
+
+    private static func mediaStatus(from value: String) -> MediaStatus? {
+        switch value.uppercased() {
+        case "CURRENT":
+            return .watching
+        case "PLANNING":
+            return .planning
+        case "COMPLETED":
+            return .completed
+        case "PAUSED":
+            return .paused
+        case "DROPPED":
+            return .dropped
+        default:
+            return nil
+        }
     }
 }
 
@@ -1374,53 +1591,64 @@ private struct ListManagerView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: UIConstants.standardPadding) {
-                Text(viewModel.title)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white)
+            ScrollView {
+                VStack(alignment: .leading, spacing: UIConstants.standardPadding) {
+                    Text(viewModel.title)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
 
-                VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
-                    Text("Status")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textSecondary)
-                    Picker("Status", selection: $viewModel.status) {
-                        ForEach(MediaStatus.allCases, id: \.self) { status in
-                            Text(status.rawValue.capitalized).tag(status)
+                    VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
+                        Text("Status")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                        Picker("Status", selection: $viewModel.status) {
+                            ForEach(MediaStatus.allCases, id: \.self) { status in
+                                Text(status.rawValue.capitalized).tag(status)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
+                        Text("Episodes Watched")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                        Stepper(
+                            value: $viewModel.currentEpisode,
+                            in: 0...(viewModel.totalEpisodes ?? 999),
+                            step: 1
+                        ) {
+                            Text("Episode \(viewModel.currentEpisode)")
+                                .foregroundColor(.white)
                         }
                     }
-                    .pickerStyle(.segmented)
-                }
 
-                VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
-                    Text("Episodes Watched")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textSecondary)
-                    Stepper(
-                        value: $viewModel.currentEpisode,
-                        in: 0...(viewModel.totalEpisodes ?? 999),
-                        step: 1
-                    ) {
-                        Text("Episode \(viewModel.currentEpisode)")
+                    VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
+                        Text("Your Rating")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                        ratingControl
+                        Text(viewModel.ratingText)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
+                        Text("Started")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                        Text(viewModel.startedAt?.displayText ?? "Not set")
+                            .foregroundColor(.white)
+                        Text("Finished")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                        Text(viewModel.completedAt?.displayText ?? "Not set")
                             .foregroundColor(.white)
                     }
                 }
-
-                VStack(alignment: .leading, spacing: UIConstants.mediumPadding) {
-                    Text("Your Rating")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textSecondary)
-                    Slider(value: Binding(
-                        get: { Double(viewModel.rating) },
-                        set: { viewModel.rating = Int($0) }
-                    ), in: 0...100, step: 1)
-                    Text("\(viewModel.rating)")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(UIConstants.standardPadding)
             }
-            .padding(UIConstants.standardPadding)
             .background(Theme.baseBackground.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -1434,6 +1662,26 @@ private struct ListManagerView: View {
                     .font(.system(size: 14, weight: .semibold))
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var ratingControl: some View {
+        switch viewModel.scoreFormat {
+        case .point3:
+            Picker("Your Rating", selection: $viewModel.rating) {
+                Text("0").tag(0.0)
+                Text("1").tag(1.0)
+                Text("2").tag(2.0)
+                Text("3").tag(3.0)
+            }
+            .pickerStyle(.segmented)
+        default:
+            Slider(
+                value: $viewModel.rating,
+                in: viewModel.scoreFormat.range,
+                step: viewModel.scoreFormat.step
+            )
         }
     }
 }
@@ -1511,6 +1759,200 @@ private struct MatchPickerSheet: View {
                     Button("Close") { dismiss() }
                 }
             }
+        }
+    }
+}
+
+private struct TMDBMatchSheet: View {
+    let media: AniListMedia
+    let currentOverride: TMDBManualOverride?
+    @Binding var query: String
+    let candidates: [TMDBSearchResult]
+    let isLoading: Bool
+    let errorMessage: String?
+    let onSearch: (String) -> Void
+    let loadSeasons: (TMDBSearchResult) async -> [TMDBSeasonChoice]
+    let onSave: (TMDBSeasonChoice, Int) -> Void
+    let onClear: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedShow: TMDBSearchResult?
+    @State private var seasons: [TMDBSeasonChoice] = []
+    @State private var isLoadingSeasons = false
+    @State private var seasonError: String?
+    @State private var episodeOffsetText = "0"
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Current Match") {
+                    if let currentOverride {
+                        VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
+                            Text(currentOverride.showTitle ?? "Manual TMDB Override")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text(currentOverride.seasonLabel ?? "\((currentOverride.mediaType ?? "tv") == "movie" ? "Movie" : "Season \(currentOverride.seasonNumber)")")
+                                .font(.system(size: 13))
+                                .foregroundColor(.secondary)
+                            if currentOverride.episodeOffset != 0 {
+                                Text("Offset \(currentOverride.episodeOffset)")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Button("Clear Manual Match", role: .destructive) {
+                            onClear()
+                            dismiss()
+                        }
+                    } else {
+                        Text("Using automatic TMDB matching.")
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                if selectedShow == nil {
+                    Section("Search") {
+                        HStack(spacing: UIConstants.mediumPadding) {
+                            TextField("Search TMDB shows...", text: $query)
+                                .textInputAutocapitalization(.words)
+                                .disableAutocorrection(true)
+                                .submitLabel(.search)
+                                .onSubmit { onSearch(query) }
+                            Button("Search") {
+                                onSearch(query)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+
+                    if isLoading {
+                        Text("Searching TMDB…")
+                            .foregroundColor(.secondary)
+                    } else if let errorMessage {
+                        Text(errorMessage)
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(candidates) { candidate in
+                            Button {
+                                selectedShow = candidate
+                                episodeOffsetText = "0"
+                                loadSeasonChoices(for: candidate)
+                            } label: {
+                                HStack(spacing: UIConstants.interCardSpacing) {
+                                    if let posterURL = candidate.posterURL {
+                                        CachedImage(
+                                            url: posterURL,
+                                            targetSize: CGSize(width: UIConstants.sourceRowImageWidth, height: UIConstants.sourceRowImageHeight)
+                                        ) { img in
+                                            img.resizable().scaledToFill()
+                                        } placeholder: {
+                                            Color.white.opacity(0.1)
+                                        }
+                                        .frame(width: UIConstants.sourceRowImageWidth, height: UIConstants.sourceRowImageHeight)
+                                        .clipShape(RoundedRectangle(cornerRadius: UIConstants.smallCornerRadius, style: .continuous))
+                                    }
+                                    VStack(alignment: .leading, spacing: UIConstants.microPadding) {
+                                        Text(candidate.title)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(.primary)
+                                        if let firstAirYear = candidate.firstAirYear {
+                                            Text("\(firstAirYear)")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.vertical, UIConstants.tinyPadding)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                } else {
+                    Section {
+                        Button("Back to Results") {
+                            selectedShow = nil
+                            seasons = []
+                            seasonError = nil
+                        }
+                        .foregroundColor(.secondary)
+                    }
+
+                    Section("Additional Episode Offset") {
+                        TextField("0", text: $episodeOffsetText)
+                            .keyboardType(.numberPad)
+                        Text("Adds to the choice's built-in TMDB offset for split-cour or globally numbered cases.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+
+                    if isLoadingSeasons {
+                        Text("Loading seasons…")
+                            .foregroundColor(.secondary)
+                    } else if let seasonError {
+                        Text(seasonError)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Section(selectedShow?.title ?? "Seasons") {
+                            ForEach(seasons) { season in
+                                HStack(spacing: UIConstants.interCardSpacing) {
+                                    VStack(alignment: .leading, spacing: UIConstants.microPadding) {
+                                        Text(season.displayLabel)
+                                            .font(.system(size: 15, weight: .semibold))
+                                        Text("\(season.mediaType == "movie" ? "Movie" : "Season \(season.seasonNumber)") • \(season.episodeCount) episodes")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.secondary)
+                                        if season.isSynthetic || season.episodeOffset > 0 {
+                                            Text("\(season.mediaType == "movie" ? "TMDB Movie" : "TMDB Season \(season.tmdbSeasonNumber)")\(season.episodeOffset > 0 ? " • Offset \(season.episodeOffset)" : "")")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        if let airYear = season.airYear {
+                                            Text("\(airYear)")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        if season.isSynthetic {
+                                            Text("AniList-aligned split")
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    Spacer()
+                                    Button("Use") {
+                                        let offset = Int(episodeOffsetText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+                                        onSave(season, offset)
+                                        dismiss()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                }
+                                .padding(.vertical, UIConstants.tinyPadding)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("TMDB Match")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func loadSeasonChoices(for candidate: TMDBSearchResult) {
+        isLoadingSeasons = true
+        seasonError = nil
+        seasons = []
+        Task {
+            let loaded = await loadSeasons(candidate)
+            seasons = loaded
+            if loaded.isEmpty {
+                seasonError = "No TMDB seasons found."
+            }
+            isLoadingSeasons = false
         }
     }
 }

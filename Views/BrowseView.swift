@@ -50,7 +50,7 @@ struct BrowseView: View {
                                                 cornerBadge: nil,
                                                 size: cardSize,
                                                 overlayOpacity: 0.45,
-                                                allowFallbackWhileLoading: true
+                                                allowFallbackWhileLoading: false
                                             )
                                         }
                                         .buttonStyle(.plain)

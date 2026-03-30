@@ -13,7 +13,7 @@ struct MediaItem: Identifiable, Hashable {
     var genres: [String]
     var totalEpisodes: Int?
     var currentEpisode: Int
-    var userRating: Int
+    var userRating: Double
     var studio: String?
     var status: MediaStatus
 
@@ -30,7 +30,7 @@ struct MediaItem: Identifiable, Hashable {
         genres: [String] = [],
         totalEpisodes: Int? = nil,
         currentEpisode: Int = 0,
-        userRating: Int = 0,
+        userRating: Double = 0,
         studio: String? = nil,
         status: MediaStatus = .planning
     ) {

@@ -99,18 +99,24 @@ enum TitleMatcher {
         let raw = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if raw.isEmpty { return [] }
         let cleanedSeason = stripSeasonMarkers(raw)
+        let finalSeasonRemoved = stripFinalSeasonMarkers(raw)
         let noTrailing = raw.replacingOccurrences(
             of: #"(?i)\b(cour|part|season)\s*\d+\b"#,
             with: "",
             options: .regularExpression
         ).trimmingCharacters(in: .whitespacesAndNewlines)
         let romanNormalized = romanToArabic(raw)
+        let romanFinalRemoved = stripFinalSeasonMarkers(romanNormalized)
         return Array(Set([
             raw,
             noTrailing,
             cleanedSeason,
+            finalSeasonRemoved,
+            stripSeasonMarkers(finalSeasonRemoved),
             romanNormalized,
-            stripSeasonMarkers(romanNormalized)
+            stripSeasonMarkers(romanNormalized),
+            romanFinalRemoved,
+            stripSeasonMarkers(romanFinalRemoved)
         ]))
     }
 
@@ -131,11 +137,30 @@ enum TitleMatcher {
     }
 
     static func extractSeasonNumber(from input: String) -> Int? {
+        extractSeasonMarkerNumber(from: input) ?? extractPartMarkerNumber(from: input)
+    }
+
+    static func extractSeasonMarkerNumber(from input: String) -> Int? {
         let normalized = romanToArabic(input)
         let patterns = [
             #"(?i)\bseason\s*(\d+)\b"#,
             #"(?i)\bs\s*(\d+)\b"#,
-            #"(?i)\b(\d+)(st|nd|rd|th)\s*season\b"#,
+            #"(?i)\b(\d+)(st|nd|rd|th)\s*season\b"#
+        ]
+        for p in patterns {
+            if let match = normalized.range(of: p, options: .regularExpression) {
+                let chunk = String(normalized[match])
+                if let number = chunk.compactMap({ $0.wholeNumberValue }).first {
+                    return number
+                }
+            }
+        }
+        return nil
+    }
+
+    static func extractPartMarkerNumber(from input: String) -> Int? {
+        let normalized = romanToArabic(input)
+        let patterns = [
             #"(?i)\bpart\s*(\d+)\b"#,
             #"(?i)\bcour\s*(\d+)\b"#
         ]
@@ -148,6 +173,36 @@ enum TitleMatcher {
             }
         }
         return nil
+    }
+
+    static func extractPartOnlyMarkerNumber(from input: String) -> Int? {
+        extractMarkerNumber(from: input, patterns: [
+            #"(?i)\bpart\s*(\d+)\b"#
+        ])
+    }
+
+    static func extractCourMarkerNumber(from input: String) -> Int? {
+        extractMarkerNumber(from: input, patterns: [
+            #"(?i)\bcour\s*(\d+)\b"#
+        ])
+    }
+
+    static func hasFinalSeasonMarker(_ input: String) -> Bool {
+        let normalized = romanToArabic(input)
+        return normalized.range(
+            of: #"(?i)\b(?:the\s+)?final\s+season\b"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    static func stripFinalSeasonMarkers(_ input: String) -> String {
+        input.replacingOccurrences(
+            of: #"(?i)\b(?:the\s+)?final\s+season\b"#,
+            with: "",
+            options: .regularExpression
+        )
+        .replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func cleanTitle(_ input: String) -> String {
@@ -211,6 +266,19 @@ enum TitleMatcher {
             )
         }
         return out
+    }
+
+    private static func extractMarkerNumber(from input: String, patterns: [String]) -> Int? {
+        let normalized = romanToArabic(input)
+        for p in patterns {
+            if let match = normalized.range(of: p, options: .regularExpression) {
+                let chunk = String(normalized[match])
+                if let number = chunk.compactMap({ $0.wholeNumberValue }).first {
+                    return number
+                }
+            }
+        }
+        return nil
     }
 }
 

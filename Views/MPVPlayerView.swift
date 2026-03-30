@@ -2,7 +2,6 @@ import SwiftUI
 #if os(iOS)
 import AVFoundation
 import AVKit
-import MediaPlayer
 import QuartzCore
 import UIKit
 #if canImport(Libmpv)
@@ -14,6 +13,11 @@ private enum MPVPlaybackCommand {
     case setRate(Double)
     case commandString(String)
     case setSpeedProperty(String)
+}
+
+private struct MPVQueuedPlaybackCommand: Identifiable {
+    let id: Int
+    let command: MPVPlaybackCommand
 }
 
 private struct MPVResolvedSource: Equatable {
@@ -55,6 +59,8 @@ private func mpvTimeString(_ value: Double) -> String {
 
 @MainActor
 private final class MPVPlaybackController: ObservableObject {
+    private static let controlsAutoHideDelayNanoseconds: UInt64 = 5_000_000_000
+
     struct Context {
         let episode: SoraEpisode
         let mediaId: Int
@@ -76,7 +82,7 @@ private final class MPVPlaybackController: ObservableObject {
     @Published var isPictureInPicturePossible = AVPictureInPictureController.isPictureInPictureSupported()
     @Published var playbackSpeed: Double = 1.0
     @Published private(set) var commandToken = 0
-    @Published private(set) var pendingCommand: MPVPlaybackCommand?
+    @Published private(set) var pendingCommands: [MPVQueuedPlaybackCommand] = []
 
     let context: Context
 
@@ -87,12 +93,14 @@ private final class MPVPlaybackController: ObservableObject {
     private var pendingResumeTime: Double?
     private var didMarkWatched = false
     private var autoHideTask: Task<Void, Never>?
+    private var autoHideGeneration = 0
     private var isLongPressSpeedActive = false
     private var onRestoreAfterPictureInPicture: (() -> Void)?
     private var onDismissForPictureInPicture: (() -> Void)?
     private var currentSource: MPVResolvedSource?
     private var pendingSeekTime: Double?
-    private let volumeView = MPVolumeView(frame: .zero)
+    private var pendingSeekIssuedAt: Date?
+    private var previousIdleTimerDisabled = false
 
     init(context: Context) {
         self.context = context
@@ -109,20 +117,28 @@ private final class MPVPlaybackController: ObservableObject {
         self.onRestoreAfterPictureInPicture = onRestoreAfterPictureInPicture
         self.onDismissForPictureInPicture = onDismissForPictureInPicture
         preparePlayback()
+        setIdleTimerDisabled(true)
         Task { await loadSkipSegments() }
         scheduleAutoHide()
     }
 
     func cleanup() {
         autoHideTask?.cancel()
+        setIdleTimerDisabled(false)
     }
 
     func toggleControlsVisibility() {
-        showControls.toggle()
-        scheduleAutoHide()
+        if showControls {
+            autoHideTask?.cancel()
+            autoHideGeneration += 1
+            showControls = false
+        } else {
+            noteInteraction()
+        }
     }
 
     func noteInteraction() {
+        autoHideGeneration += 1
         showControls = true
         scheduleAutoHide()
     }
@@ -140,6 +156,7 @@ private final class MPVPlaybackController: ObservableObject {
     func seek(to seconds: Double) {
         let clampedTime = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, seconds))
         pendingSeekTime = clampedTime
+        pendingSeekIssuedAt = Date()
         displayedTime = clampedTime
         updateActiveSkip(at: clampedTime)
         sendCommand(.seek(clampedTime))
@@ -157,6 +174,7 @@ private final class MPVPlaybackController: ObservableObject {
         let baseTime = pendingSeekTime ?? currentTime
         let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime - 10))
         pendingSeekTime = target
+        pendingSeekIssuedAt = Date()
         displayedTime = target
         updateActiveSkip(at: target)
         noteInteraction()
@@ -167,6 +185,7 @@ private final class MPVPlaybackController: ObservableObject {
         let baseTime = pendingSeekTime ?? currentTime
         let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime + 10))
         pendingSeekTime = target
+        pendingSeekIssuedAt = Date()
         displayedTime = target
         updateActiveSkip(at: target)
         noteInteraction()
@@ -186,6 +205,7 @@ private final class MPVPlaybackController: ObservableObject {
         let baseTime = pendingSeekTime ?? currentTime
         let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime + 85))
         pendingSeekTime = target
+        pendingSeekIssuedAt = Date()
         displayedTime = target
         updateActiveSkip(at: target)
         noteInteraction()
@@ -198,15 +218,6 @@ private final class MPVPlaybackController: ObservableObject {
         let end = min(max(intro.end / duration, 0), 1)
         guard end > start else { return nil }
         return start...end
-    }
-
-    func adjustSystemVolume(by normalizedDelta: Double) {
-        guard let slider = volumeView.subviews.compactMap({ $0 as? UISlider }).first else { return }
-        let current = Double(slider.value)
-        let next = max(0, min(1, current + normalizedDelta))
-        slider.setValue(Float(next), animated: false)
-        slider.sendActions(for: .valueChanged)
-        noteInteraction()
     }
 
     func beginHoldSpeed() {
@@ -243,14 +254,21 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func handleTimeChanged(_ time: Double) {
+        guard abs(time - currentTime) >= 0.2 || pendingSeekTime != nil else { return }
         currentTime = time
         if let pendingSeekTime, abs(time - pendingSeekTime) <= 1.0 {
             self.pendingSeekTime = nil
+            pendingSeekIssuedAt = nil
         } else if let pendingSeekTime, abs(time - pendingSeekTime) > 1.0 {
-            displayedTime = pendingSeekTime
-            updateActiveSkip(at: pendingSeekTime)
-            syncProgress(currentTime: pendingSeekTime, duration: duration)
-            return
+            let age = Date().timeIntervalSince(pendingSeekIssuedAt ?? .distantPast)
+            if age < 1.5 {
+                displayedTime = pendingSeekTime
+                updateActiveSkip(at: pendingSeekTime)
+                syncProgress(currentTime: pendingSeekTime, duration: duration)
+                return
+            }
+            self.pendingSeekTime = nil
+            pendingSeekIssuedAt = nil
         }
         displayedTime = time
         syncProgress(currentTime: time, duration: duration)
@@ -258,6 +276,7 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func handleDurationChanged(_ duration: Double) {
+        guard abs(self.duration - duration) >= 0.5 || (self.duration == 0) != (duration == 0) else { return }
         self.duration = duration
         if displayedTime > duration, duration > 0 {
             displayedTime = duration
@@ -265,6 +284,7 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func handlePauseChanged(_ paused: Bool) {
+        guard isPaused != paused else { return }
         isPaused = paused
         if paused {
             autoHideTask?.cancel()
@@ -275,13 +295,21 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func handleBufferingChanged(_ buffering: Bool) {
+        guard isBuffering != buffering else { return }
         isBuffering = buffering
+        if buffering {
+            autoHideTask?.cancel()
+            showControls = true
+        } else {
+            scheduleAutoHide()
+        }
     }
 
     func handleEnded() {
         currentTime = duration
         displayedTime = duration
         pendingSeekTime = nil
+        pendingSeekIssuedAt = nil
         isPaused = true
         markWatchedIfNeeded()
     }
@@ -385,8 +413,11 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     private func sendCommand(_ command: MPVPlaybackCommand) {
-        pendingCommand = command
         commandToken += 1
+        pendingCommands.append(MPVQueuedPlaybackCommand(id: commandToken, command: command))
+        if pendingCommands.count > 32 {
+            pendingCommands.removeFirst(pendingCommands.count - 32)
+        }
     }
 
     private func loadSkipSegments() async {
@@ -413,11 +444,22 @@ private final class MPVPlaybackController: ObservableObject {
 
     private func scheduleAutoHide() {
         autoHideTask?.cancel()
-        guard !isPaused else { return }
+        guard showControls, !isPaused, !isBuffering else { return }
+        let generation = autoHideGeneration
         autoHideTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            try? await Task.sleep(nanoseconds: Self.controlsAutoHideDelayNanoseconds)
             guard !Task.isCancelled else { return }
+            guard generation == self.autoHideGeneration else { return }
             self.showControls = false
+        }
+    }
+
+    private func setIdleTimerDisabled(_ disabled: Bool) {
+        if disabled {
+            previousIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
+            UIApplication.shared.isIdleTimerDisabled = true
+        } else {
+            UIApplication.shared.isIdleTimerDisabled = previousIdleTimerDisabled
         }
     }
 }
@@ -621,8 +663,7 @@ struct MPVPlayerScreen: View {
     @StateObject private var playbackController: MPVPlaybackController
     @State private var isScrubbing = false
     @State private var wasPausedBeforeScrubbing = false
-    @State private var panStartLocation: CGPoint?
-    @State private var isPanOnLeft = true
+    @State private var holdSpeedActivationTask: Task<Void, Never>?
 
     init(
         episode: SoraEpisode,
@@ -698,6 +739,9 @@ struct MPVPlayerScreen: View {
             )
         }
         .onDisappear {
+            holdSpeedActivationTask?.cancel()
+            holdSpeedActivationTask = nil
+            playbackController.endHoldSpeed()
             playbackController.cleanup()
         }
         .alert("Playback Error", isPresented: Binding(
@@ -713,6 +757,7 @@ struct MPVPlayerScreen: View {
         } message: {
             Text(playbackController.errorMessage ?? "")
         }
+        .statusBar(hidden: true)
     }
 
     private var overlayChrome: some View {
@@ -776,7 +821,18 @@ struct MPVPlayerScreen: View {
             .frame(maxWidth: 220)
 
             Spacer()
-            Color.clear.frame(width: 44, height: 44)
+            if playbackController.isPictureInPicturePossible {
+                Button {
+                    playbackController.startPictureInPicture()
+                } label: {
+                    Image(systemName: "pip.enter")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                }
+            } else {
+                Color.clear.frame(width: 44, height: 44)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)
@@ -859,7 +915,7 @@ struct MPVPlayerScreen: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             playbackController.skip85Relative()
         } label: {
-            Text("Skip Intro >")
+            Text("Skip 85s")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12)
@@ -921,33 +977,31 @@ struct MPVPlayerScreen: View {
                     .onEnded { playbackController.toggleControlsVisibility() }
             )
             .simultaneousGesture(
-                DragGesture(minimumDistance: 8)
-                    .onChanged { value in
-                        if panStartLocation == nil {
-                            panStartLocation = value.startLocation
-                            isPanOnLeft = value.startLocation.x < geometry.size.width / 2
-                        }
-                        guard let panStartLocation else { return }
-                        let deltaY = value.location.y - panStartLocation.y
-                        let normalized = Double((-deltaY / max(geometry.size.height, 1)) * 0.08)
-                        if !isPanOnLeft {
-                            playbackController.adjustSystemVolume(by: normalized)
-                        }
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        scheduleHoldSpeedActivation()
                     }
                     .onEnded { _ in
-                        panStartLocation = nil
-                        playbackController.noteInteraction()
+                        cancelHoldSpeedActivation()
+                        playbackController.endHoldSpeed()
                     }
             )
-            .onLongPressGesture(minimumDuration: 0.5, maximumDistance: 8, pressing: { pressing in
-                if pressing {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    playbackController.beginHoldSpeed()
-                } else {
-                    playbackController.endHoldSpeed()
-                }
-            }, perform: {})
         }
+    }
+
+    private func scheduleHoldSpeedActivation() {
+        guard holdSpeedActivationTask == nil else { return }
+        holdSpeedActivationTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            playbackController.beginHoldSpeed()
+        }
+    }
+
+    private func cancelHoldSpeedActivation() {
+        holdSpeedActivationTask?.cancel()
+        holdSpeedActivationTask = nil
     }
 }
 
@@ -1007,8 +1061,8 @@ private struct MPVPlayerRepresentable: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: MPVViewController, context: Context) {
         uiViewController.delegate = controller
         uiViewController.updateSourceIfNeeded(source)
-        if let command = controller.pendingCommand {
-            uiViewController.handle(command: command, token: controller.commandToken)
+        if !controller.pendingCommands.isEmpty {
+            uiViewController.handle(commands: controller.pendingCommands)
         }
     }
 }
@@ -1093,11 +1147,16 @@ private final class MPVViewController: UIViewController {
     private var currentSource: MPVResolvedSource?
     private var lastCommandToken = -1
     private var isReady = false
+    private var lastReportedTime: Double?
+    private var lastReportedDuration: Double?
+    private var lastReportedPause: Bool?
+    private var lastReportedBuffering: Bool?
+    private var didReportEOF = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        renderLayer.frame = view.bounds
+        updateRenderLayerLayout()
         view.layer.addSublayer(renderLayer)
         pipBridge.configure(in: view)
         pipBridge.isPaused = { [weak self] in self?.getPauseState() ?? true }
@@ -1114,7 +1173,16 @@ private final class MPVViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        renderLayer.frame = view.bounds
+        updateRenderLayerLayout()
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            self?.updateRenderLayerLayout()
+        }, completion: { [weak self] _ in
+            self?.updateRenderLayerLayout()
+        })
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -1137,25 +1205,29 @@ private final class MPVViewController: UIViewController {
         load(source: source)
     }
 
-    func handle(command: MPVPlaybackCommand, token: Int) {
-        guard token != lastCommandToken else { return }
-        lastCommandToken = token
+    func handle(commands: [MPVQueuedPlaybackCommand]) {
+        let newCommands = commands.filter { $0.id > lastCommandToken }.sorted { $0.id < $1.id }
+        guard !newCommands.isEmpty else { return }
 
-        switch command {
-        case .seek(let seconds):
-            sendCommand(["seek", "\(seconds)", "absolute+exact"])
-        case .setPaused(let paused):
-            setFlagProperty(name: "pause", value: paused)
-        case .setRate(let rate):
-            setDoubleProperty(name: "speed", value: rate)
-        case .commandString(let command):
-            command.withCString { cCommand in
-                _ = mpv_command_string(mpvHandle, cCommand)
-            }
-        case .setSpeedProperty(let speed):
-            guard let handle = mpvHandle else { return }
-            speed.withCString { cSpeed in
-                _ = mpv_set_property_string(handle, "speed", cSpeed)
+        for entry in newCommands {
+            lastCommandToken = entry.id
+
+            switch entry.command {
+            case .seek(let seconds):
+                sendCommand(["seek", "\(seconds)", "absolute+exact"])
+            case .setPaused(let paused):
+                setFlagProperty(name: "pause", value: paused)
+            case .setRate(let rate):
+                setDoubleProperty(name: "speed", value: rate)
+            case .commandString(let command):
+                command.withCString { cCommand in
+                    _ = mpv_command_string(mpvHandle, cCommand)
+                }
+            case .setSpeedProperty(let speed):
+                guard let handle = mpvHandle else { continue }
+                speed.withCString { cSpeed in
+                    _ = mpv_set_property_string(handle, "speed", cSpeed)
+                }
             }
         }
     }
@@ -1168,16 +1240,15 @@ private final class MPVViewController: UIViewController {
         }
 
         mpvHandle = handle
-        mpv_set_option_string(handle, "vo", "gpu-next")
-        mpv_set_option_string(handle, "gpu-api", "vulkan")
-        mpv_set_option_string(handle, "gpu-context", "moltenvk")
-        mpv_set_option_string(handle, "hwdec", "videotoolbox")
+        mpv_set_option_string(handle, "vo", "gpu")
+        mpv_set_option_string(handle, "hwdec", "auto-safe")
         mpv_set_option_string(handle, "keep-open", "yes")
         mpv_set_option_string(handle, "osc", "no")
         mpv_set_option_string(handle, "osd-level", "0")
         mpv_set_option_string(handle, "input-default-bindings", "yes")
         mpv_set_option_string(handle, "input-vo-keyboard", "no")
         mpv_set_option_string(handle, "sub-auto", "fuzzy")
+        mpv_set_option_string(handle, "video-sync", "audio")
 
         var wid = Int64(bitPattern: UInt64(UInt(bitPattern: Unmanaged.passUnretained(renderLayer).toOpaque())))
         withUnsafeMutablePointer(to: &wid) { ptr in
@@ -1209,6 +1280,11 @@ private final class MPVViewController: UIViewController {
     private func loadCurrentSource() {
         guard let handle = mpvHandle, let source = currentSource else { return }
         isReady = false
+        didReportEOF = false
+        lastReportedTime = nil
+        lastReportedDuration = nil
+        lastReportedPause = nil
+        lastReportedBuffering = nil
         delegate?.mpvViewController(self, didChangeBufferingState: true)
 
         if !source.headers.isEmpty {
@@ -1227,9 +1303,10 @@ private final class MPVViewController: UIViewController {
 
     private func startObserving() {
         observationTimer?.invalidate()
-        observationTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        observationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.pollState()
         }
+        observationTimer?.tolerance = 0.2
         RunLoop.main.add(observationTimer!, forMode: .common)
     }
 
@@ -1246,12 +1323,29 @@ private final class MPVViewController: UIViewController {
             delegate?.mpvViewControllerDidBecomeReady(self)
         }
 
-        delegate?.mpvViewController(self, didUpdateDuration: duration)
-        delegate?.mpvViewController(self, didUpdateTime: timePos)
-        delegate?.mpvViewController(self, didChangePauseState: pause)
-        delegate?.mpvViewController(self, didChangeBufferingState: cache || !isReady)
+        if lastReportedDuration == nil || abs((lastReportedDuration ?? 0) - duration) >= 0.5 {
+            lastReportedDuration = duration
+            delegate?.mpvViewController(self, didUpdateDuration: duration)
+        }
 
-        if eof {
+        if lastReportedTime == nil || abs((lastReportedTime ?? 0) - timePos) >= 0.2 || abs(timePos - duration) <= 0.2 {
+            lastReportedTime = timePos
+            delegate?.mpvViewController(self, didUpdateTime: timePos)
+        }
+
+        if lastReportedPause != pause {
+            lastReportedPause = pause
+            delegate?.mpvViewController(self, didChangePauseState: pause)
+        }
+
+        let buffering = cache || !isReady
+        if lastReportedBuffering != buffering {
+            lastReportedBuffering = buffering
+            delegate?.mpvViewController(self, didChangeBufferingState: buffering)
+        }
+
+        if eof && !didReportEOF {
+            didReportEOF = true
             delegate?.mpvViewControllerDidFinishPlayback(self)
         }
 
@@ -1335,6 +1429,11 @@ private final class MPVViewController: UIViewController {
     private func teardownMPV() {
         observationTimer?.invalidate()
         observationTimer = nil
+        lastReportedTime = nil
+        lastReportedDuration = nil
+        lastReportedPause = nil
+        lastReportedBuffering = nil
+        didReportEOF = false
         if let handle = mpvHandle {
             mpv_terminate_destroy(handle)
             mpvHandle = nil
@@ -1343,6 +1442,16 @@ private final class MPVViewController: UIViewController {
 
     deinit {
         teardownMPV()
+    }
+
+    private func updateRenderLayerLayout() {
+        renderLayer.frame = view.bounds
+        let scale = view.window?.screen.scale ?? view.contentScaleFactor
+        renderLayer.contentsScale = scale
+        renderLayer.drawableSize = CGSize(
+            width: max(view.bounds.width * scale, 1),
+            height: max(view.bounds.height * scale, 1)
+        )
     }
 }
 

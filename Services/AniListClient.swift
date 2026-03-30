@@ -1,20 +1,43 @@
 import Foundation
 
+private actor AniListRateLimiter {
+    private let minInterval: TimeInterval
+    private var nextAvailableTime: Date = .distantPast
+
+    init(minInterval: TimeInterval = 0.65) {
+        self.minInterval = minInterval
+    }
+
+    func waitForSlot() async {
+        let now = Date()
+        let slotTime = max(now, nextAvailableTime)
+        nextAvailableTime = slotTime.addingTimeInterval(minInterval)
+        let delay = slotTime.timeIntervalSince(now)
+        if delay > 0.001 {
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        }
+    }
+}
+
 enum AniListError: Error {
     case invalidResponse
     case graphQLError(String)
     case invalidToken
+    case temporarilyUnavailable
 }
 
 final class AniListClient {
-    private let endpoint = URL(string: "https://graphql.anilist.co")!
+    private let endpoint = URL(string: "https://graphql.anilist.co/")!
     private let cacheStore: CacheStore
     private let session: URLSession
+    private let rateLimiter = AniListRateLimiter()
     private var cachedTrending: (items: [AniListMedia], expires: Date)?
     private var cachedDiscoverySections: (sort: String, items: [AniListDiscoverySection], expires: Date)?
     private var cachedLibrarySections: (items: [AniListLibrarySection], expires: Date)?
     private var cachedTrackingEntries: [Int: (entry: AniListTrackingEntry?, expires: Date)] = [:]
     private var cachedAvailability: [Int: (entry: AniListEpisodeAvailability?, expires: Date)] = [:]
+    private var cachedRelations: [Int: (edges: [AniListRelationEdge], expires: Date)] = [:]
+    private var cachedStreamingEpisodes: [Int: (episodes: [AniListStreamingEpisode], expires: Date)] = [:]
     private let requestGate = RequestGate(maxConcurrent: 4)
 
     init(cacheStore: CacheStore, session: URLSession = .custom) {
@@ -37,6 +60,9 @@ final class AniListClient {
             name
             avatar { large }
             bannerImage
+            mediaListOptions {
+              scoreFormat
+            }
           }
         }
         """
@@ -141,13 +167,22 @@ func discoverySections(sort: String, forceRefresh: Bool = false) async throws ->
     ]
 
     var sections: [AniListDiscoverySection] = []
-    sections += try await loadDiscoveryBatch(
-        sort: sort,
-        batch: "base",
-        query: baseQuery,
-        variables: [:],
-        sectionDefs: baseSections
-    )
+    do {
+        sections += try await loadDiscoveryBatch(
+            sort: sort,
+            batch: "base",
+            query: baseQuery,
+            variables: [:],
+            sectionDefs: baseSections
+        )
+    } catch {
+        if let stale = cachedDiscoverySectionsFromDisk(sort: sort, allowStale: true) {
+            AppLog.debug(.cache, "discovery sections stale cache fallback")
+            cachedDiscoverySections = (sort, stale, Date().addingTimeInterval(60))
+            return stale
+        }
+        throw error
+    }
 
     cachedDiscoverySections = (sort, sections, Date().addingTimeInterval(60 * 10))
     AppLog.debug(.network, "discovery sections request success count=\(sections.count)")
@@ -169,42 +204,54 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
             AppLog.debug(.cache, "library cache bypass")
         }
         AppLog.debug(.network, "library request start")
-        let viewer = try await viewer(token: token)
-        let query = """
-        query Library($userId: Int) {
-              MediaListCollection(userId: $userId, type: ANIME) {
-            lists {
-              name
-              entries {
-                id
-                progress
-                media {
-                  id
-              idMal
-              title { romaji english native }
-                  coverImage { extraLarge large }
-                  bannerImage
-                  averageScore
-                  episodes
-                  seasonYear
-                  startDate { year month day }
-                  format
-                  status
-                  isAdult
-                  genres
-                  studios(isMain: true) { nodes { name } }
+        do {
+            let viewer = try await viewer(token: token)
+            let query = """
+            query Library($userId: Int) {
+                  MediaListCollection(userId: $userId, type: ANIME) {
+                lists {
+                  name
+                  entries {
+                    id
+                    progress
+                    score
+                    startedAt { year month day }
+                    completedAt { year month day }
+                    media {
+                      id
+                  idMal
+                  title { romaji english native }
+                      coverImage { extraLarge large }
+                      bannerImage
+                      averageScore
+                      episodes
+                      seasonYear
+                      startDate { year month day }
+                      format
+                      status
+                      isAdult
+                      genres
+                      studios(isMain: true) { nodes { name } }
+                    }
+                  }
                 }
               }
             }
-          }
+            """
+            let data = try await graphql(query: query, variables: ["userId": viewer.id], token: token)
+            let sections = decodeLibrarySections(data: data)
+            cacheStore.writeJSON(data, forKey: "library:\(token.prefix(8))")
+            cachedLibrarySections = (sections, Date().addingTimeInterval(60 * 5))
+            AppLog.debug(.network, "library request success count=\(sections.count)")
+            return sections
+        } catch {
+            if let stale = cachedLibrarySectionsFromDisk(token: token, allowStale: true) {
+                AppLog.debug(.cache, "library stale cache fallback")
+                cachedLibrarySections = (stale, Date().addingTimeInterval(60))
+                return stale
+            }
+            throw error
         }
-        """
-        let data = try await graphql(query: query, variables: ["userId": viewer.id], token: token)
-        let sections = decodeLibrarySections(data: data)
-        cacheStore.writeJSON(data, forKey: "library:\(token.prefix(8))")
-        cachedLibrarySections = (sections, Date().addingTimeInterval(60 * 5))
-        AppLog.debug(.network, "library request success count=\(sections.count)")
-        return sections
     }
 
     func searchAnime(query: String) async throws -> [AniListMedia] {
@@ -212,19 +259,20 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         let q = """
         query Search($search: String) {
           Page(page: 1, perPage: 10) {
-            media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
-              id
-              idMal
-              title { romaji english native }
-              coverImage { extraLarge large }
-              bannerImage
-              averageScore
-              episodes
-              seasonYear
-              format
-              status
-              isAdult
-              genres
+              media(type: ANIME, search: $search, sort: SEARCH_MATCH) {
+                id
+                idMal
+                title { romaji english native }
+                coverImage { extraLarge large }
+                bannerImage
+                averageScore
+                episodes
+                seasonYear
+                startDate { year month day }
+                format
+                status
+                isAdult
+                genres
               studios(isMain: true) { nodes { name } }
             }
           }
@@ -349,12 +397,12 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
     }
 
-    func cachedDiscoverySectionsSnapshot(sort: String) -> [AniListDiscoverySection]? {
-        cachedDiscoverySectionsFromDisk(sort: sort)
+    func cachedDiscoverySectionsSnapshot(sort: String, allowStale: Bool = false) -> [AniListDiscoverySection]? {
+        cachedDiscoverySectionsFromDisk(sort: sort, allowStale: allowStale)
     }
 
-    func cachedLibrarySections(token: String) -> [AniListLibrarySection]? {
-        cachedLibrarySectionsFromDisk(token: token)
+    func cachedLibrarySections(token: String, allowStale: Bool = false) -> [AniListLibrarySection]? {
+        cachedLibrarySectionsFromDisk(token: token, allowStale: allowStale)
     }
 
     func clearLibraryCache(token: String) {
@@ -362,6 +410,18 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         let key = "library:\(token.prefix(8))"
         cacheStore.remove(key: key)
         AppLog.debug(.cache, "library cache cleared key=\(key)")
+    }
+
+    func clearTrackingCaches(for mediaId: Int? = nil) {
+        if let mediaId {
+            cachedTrackingEntries.removeValue(forKey: mediaId)
+            cachedAvailability.removeValue(forKey: mediaId)
+            AppLog.debug(.cache, "tracking caches cleared mediaId=\(mediaId)")
+        } else {
+            cachedTrackingEntries.removeAll()
+            cachedAvailability.removeAll()
+            AppLog.debug(.cache, "tracking caches cleared all")
+        }
     }
 
     private func cachedTrendingFromDisk() -> [AniListMedia]? {
@@ -482,12 +542,15 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         return (season, year)
     }
 
-private func cachedDiscoverySectionsFromDisk(sort: String) -> [AniListDiscoverySection]? {
+private func cachedDiscoverySectionsFromDisk(sort: String, allowStale: Bool = false) -> [AniListDiscoverySection]? {
     let batches = ["base"]
     var sections: [AniListDiscoverySection] = []
     for batch in batches {
         let cacheKey = discoverySectionsCacheKey(batch: batch, sort: sort)
-        guard let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 10) else { continue }
+        let data = allowStale
+            ? cacheStore.readJSON(forKey: cacheKey)
+            : cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 10)
+        guard let data else { continue }
         sections += decodeDiscoveryBatch(data: data, batch: batch)
     }
     return sections.isEmpty ? nil : sections
@@ -584,9 +647,12 @@ private func decodeDiscoveryBatch(data: Data, batch: String) -> [AniListDiscover
     }
 }
 
-private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySection]? {
+private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = false) -> [AniListLibrarySection]? {
         let key = "library:\(token.prefix(8))"
-        guard let data = cacheStore.readJSON(forKey: key) else { return nil }
+        let data = allowStale
+            ? cacheStore.readJSON(forKey: key)
+            : cacheStore.readJSON(forKey: key)
+        guard let data else { return nil }
         return decodeLibrarySections(data: data)
     }
 
@@ -606,6 +672,7 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             AppLog.error(.network, "save tracking failed mediaId=\(mediaId)")
             return false
         }
+        clearTrackingCaches(for: mediaId)
         AppLog.debug(.network, "save tracking success mediaId=\(mediaId)")
         return true
     }
@@ -614,15 +681,19 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         token: String,
         mediaId: Int,
         status: String?,
-        progress: Int?
+        progress: Int?,
+        score: Double? = nil,
+        startedAt: AniListFuzzyDate? = nil,
+        completedAt: AniListFuzzyDate? = nil
     ) async throws -> Bool {
         AppLog.debug(.network, "save list start mediaId=\(mediaId) status=\(status ?? "nil") progress=\(progress.map(String.init) ?? "nil")")
         let q = """
-        mutation SaveEntry($mediaId: Int, $status: MediaListStatus, $progress: Int) {
-          SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress) {
+        mutation SaveEntry($mediaId: Int, $status: MediaListStatus, $progress: Int, $score: Float, $startedAt: FuzzyDateInput, $completedAt: FuzzyDateInput) {
+          SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress, score: $score, startedAt: $startedAt, completedAt: $completedAt) {
             id
             status
             progress
+            score
           }
         }
         """
@@ -637,6 +708,13 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         } else {
             vars["progress"] = NSNull()
         }
+        if let score {
+            vars["score"] = score
+        } else {
+            vars["score"] = NSNull()
+        }
+        vars["startedAt"] = fuzzyDateVariable(startedAt)
+        vars["completedAt"] = fuzzyDateVariable(completedAt)
         let data = try await graphql(query: q, variables: vars, token: token)
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dataMap = root["data"] as? [String: Any],
@@ -644,6 +722,7 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             AppLog.error(.network, "save list failed mediaId=\(mediaId)")
             return false
         }
+        clearTrackingCaches(for: mediaId)
         AppLog.debug(.network, "save list success mediaId=\(mediaId)")
         return true
     }
@@ -711,6 +790,8 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             status
             progress
             score
+            startedAt { year month day }
+            completedAt { year month day }
           }
         }
         """
@@ -731,7 +812,16 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         let status = row["status"] as? String
         let progress = row["progress"] as? Int
         let score = row["score"] as? Double ?? (row["score"] as? Int).map(Double.init)
-        let entry = AniListTrackingEntry(id: id, status: status, progress: progress, score: score)
+        let startedAt = decodeFuzzyDate(row["startedAt"] as? [String: Any])
+        let completedAt = decodeFuzzyDate(row["completedAt"] as? [String: Any])
+        let entry = AniListTrackingEntry(
+            id: id,
+            status: status,
+            progress: progress,
+            score: score,
+            startedAt: startedAt,
+            completedAt: completedAt
+        )
         cachedTrackingEntries[mediaId] = (entry, Date().addingTimeInterval(60 * 5))
         AppLog.debug(.network, "tracking entry success mediaId=\(mediaId)")
         return entry
@@ -860,6 +950,17 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
     }
 
     func relationsGraph(mediaId: Int, token: String? = nil) async throws -> [AniListRelationEdge] {
+        if let cached = cachedRelations[mediaId], cached.expires > Date() {
+            AppLog.debug(.cache, "relations graph memory cache hit mediaId=\(mediaId)")
+            return cached.edges
+        }
+        let cacheKey = "anilist:relations:v1:\(mediaId)"
+        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 24),
+           let decoded = try? JSONDecoder().decode([AniListRelationEdge].self, from: data) {
+            cachedRelations[mediaId] = (decoded, Date().addingTimeInterval(60 * 60))
+            AppLog.debug(.cache, "relations graph disk cache hit mediaId=\(mediaId)")
+            return decoded
+        }
         let query = """
         query RelationGraph($id: Int) {
           Media(id: $id, type: ANIME) {
@@ -900,10 +1001,25 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
                   let media = decodeMedia(node) else { continue }
             result.append(AniListRelationEdge(relationType: relation, media: media))
         }
+        cachedRelations[mediaId] = (result, Date().addingTimeInterval(60 * 60))
+        if let encoded = try? JSONEncoder().encode(result) {
+            cacheStore.writeJSON(encoded, forKey: cacheKey)
+        }
         return result
     }
 
     func streamingEpisodes(mediaId: Int) async throws -> [AniListStreamingEpisode] {
+        if let cached = cachedStreamingEpisodes[mediaId], cached.expires > Date() {
+            AppLog.debug(.cache, "streaming episodes memory cache hit mediaId=\(mediaId)")
+            return cached.episodes
+        }
+        let cacheKey = "anilist:streaming:v1:\(mediaId)"
+        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 6),
+           let decoded = try? JSONDecoder().decode([AniListStreamingEpisode].self, from: data) {
+            cachedStreamingEpisodes[mediaId] = (decoded, Date().addingTimeInterval(60 * 30))
+            AppLog.debug(.cache, "streaming episodes disk cache hit mediaId=\(mediaId)")
+            return decoded
+        }
         AppLog.debug(.network, "streaming episodes request start mediaId=\(mediaId)")
         let query = """
         query StreamingEpisodes($id: Int) {
@@ -926,7 +1042,7 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             let title = row["title"] as? String ?? "Episode"
             let thumb = row["thumbnail"] as? String
             let url = row["url"] as? String
-            let number = extractEpisodeNumber(from: title) ?? extractEpisodeNumber(from: url)
+            let number = extractEpisodeNumber(fromTitle: title) ?? extractEpisodeNumber(fromURL: url)
             return AniListStreamingEpisode(
                 title: title,
                 thumbnailURL: thumb.flatMap(URL.init(string:)),
@@ -934,7 +1050,12 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
                 episodeNumber: number
             )
         }
-        AppLog.debug(.network, "streaming episodes request success mediaId=\(mediaId) count=\(episodes.count)")
+        let parsedCount = episodes.filter { ($0.episodeNumber ?? 0) > 0 }.count
+        cachedStreamingEpisodes[mediaId] = (episodes, Date().addingTimeInterval(60 * 30))
+        if let encoded = try? JSONEncoder().encode(episodes) {
+            cacheStore.writeJSON(encoded, forKey: cacheKey)
+        }
+        AppLog.debug(.network, "streaming episodes request success mediaId=\(mediaId) count=\(episodes.count) parsed=\(parsedCount)")
         return episodes
     }
 
@@ -948,26 +1069,22 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         let name = viewer["name"] as? String ?? "User"
         let avatar = (viewer["avatar"] as? [String: Any])?["large"] as? String
         let banner = viewer["bannerImage"] as? String
+        let scoreFormatRaw = ((viewer["mediaListOptions"] as? [String: Any])?["scoreFormat"] as? String) ?? AniListScoreFormat.point100.rawValue
         return AniListUser(
             id: id,
             name: name,
             avatarURL: avatar.flatMap(URL.init(string:)),
-            bannerURL: banner.flatMap(URL.init(string:))
+            bannerURL: banner.flatMap(URL.init(string:)),
+            scoreFormat: AniListScoreFormat(rawValue: scoreFormatRaw) ?? .point100
         )
     }
 
     private func graphql(query: String, variables: [String: Any] = [:], token: String? = nil) async throws -> Data {
         await requestGate.acquire()
         defer { Task { await self.requestGate.release() } }
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let token, !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        await rateLimiter.waitForSlot()
+        let request = makeGraphQLRequest(query: query, variables: variables, token: token)
         AppLog.debug(.network, "graphql request start")
-        let body: [String: Any] = ["query": query, "variables": variables]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response): (Data, URLResponse) = try await NetworkRetry.withRetries(
             label: "anilist-graphql",
@@ -984,10 +1101,59 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             AppLog.error(.network, "graphql invalid response")
             throw AniListError.invalidResponse
         }
-        if http.statusCode == 401 || http.statusCode == 403 {
+        if http.statusCode == 403 {
+            let fallbackRequest = makeGraphQLRequest(query: query, variables: variables, token: token, minimalHeaders: true)
+            let (fallbackData, fallbackResponse) = try await session.data(for: fallbackRequest)
+            if let fallbackHTTP = fallbackResponse as? HTTPURLResponse, fallbackHTTP.statusCode != 403 {
+                return try handleGraphQLResponse(data: fallbackData, response: fallbackResponse, token: token)
+            }
+        }
+        return try handleGraphQLResponse(data: data, response: response, token: token)
+    }
+
+    private func makeGraphQLRequest(
+        query: String,
+        variables: [String: Any],
+        token: String?,
+        minimalHeaders: Bool = false
+    ) -> URLRequest {
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        request.setValue(minimalHeaders ? "Kyomiru/1.0" : "Kyomiru/1.0 CFNetwork", forHTTPHeaderField: "User-Agent")
+        if let token, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let body: [String: Any] = ["query": query, "variables": variables]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+
+    private func handleGraphQLResponse(data: Data, response: URLResponse, token: String?) throws -> Data {
+        guard let http = response as? HTTPURLResponse else {
+            AppLog.error(.network, "graphql invalid response")
+            throw AniListError.invalidResponse
+        }
+        if http.statusCode == 401 {
             AppLog.error(.network, "graphql invalid token http=\(http.statusCode)")
             NotificationCenter.default.post(name: .aniListInvalidToken, object: nil)
             throw AniListError.invalidToken
+        }
+        if http.statusCode == 403 {
+            let payload = String(data: data, encoding: .utf8) ?? ""
+            let normalizedPayload = payload.lowercased()
+            let looksLikeInvalidToken =
+                normalizedPayload.contains("invalid token") ||
+                normalizedPayload.contains("unauthorized") ||
+                normalizedPayload.contains("access denied")
+            AppLog.error(.network, "graphql forbidden http=403 tokened=\((token?.isEmpty == false))")
+            if token?.isEmpty == false && looksLikeInvalidToken {
+                NotificationCenter.default.post(name: .aniListInvalidToken, object: nil)
+                throw AniListError.invalidToken
+            }
+            throw AniListError.temporarilyUnavailable
         }
         guard http.statusCode < 500 else {
             AppLog.error(.network, "graphql invalid response")
@@ -1025,9 +1191,19 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
             let entries = (list["entries"] as? [[String: Any]] ?? []).compactMap { entry -> AniListLibraryEntry? in
                 let id = entry["id"] as? Int ?? 0
                 let progress = entry["progress"] as? Int ?? 0
+                let score = entry["score"] as? Double ?? (entry["score"] as? Int).map(Double.init)
+                let startedAt = decodeFuzzyDate(entry["startedAt"] as? [String: Any])
+                let completedAt = decodeFuzzyDate(entry["completedAt"] as? [String: Any])
                 guard let mediaMap = entry["media"] as? [String: Any],
                       let media = decodeMedia(mediaMap) else { return nil }
-                return AniListLibraryEntry(id: id, progress: progress, media: media)
+                return AniListLibraryEntry(
+                    id: id,
+                    progress: progress,
+                    score: score,
+                    startedAt: startedAt,
+                    completedAt: completedAt,
+                    media: media
+                )
             }
             return AniListLibrarySection(id: name.lowercased().replacingOccurrences(of: " ", with: "-"), title: name, items: entries)
         }
@@ -1049,11 +1225,7 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         let episodes = media["episodes"] as? Int
         let seasonYear = media["seasonYear"] as? Int
         let startDateMap = media["startDate"] as? [String: Any]
-        let startDate = AniListFuzzyDate(
-            year: startDateMap?["year"] as? Int,
-            month: startDateMap?["month"] as? Int,
-            day: startDateMap?["day"] as? Int
-        )
+        let startDate = decodeFuzzyDate(startDateMap)
         let format = media["format"] as? String
         let status = media["status"] as? String
         let isAdult = media["isAdult"] as? Bool ?? false
@@ -1078,6 +1250,23 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         )
     }
 
+    private func decodeFuzzyDate(_ map: [String: Any]?) -> AniListFuzzyDate? {
+        AniListFuzzyDate.sanitized(
+            year: map?["year"] as? Int,
+            month: map?["month"] as? Int,
+            day: map?["day"] as? Int
+        )
+    }
+
+    private func fuzzyDateVariable(_ date: AniListFuzzyDate?) -> Any {
+        guard let date, !date.isEmpty else { return NSNull() }
+        return [
+            "year": date.year.map { $0 as Any } ?? NSNull(),
+            "month": date.month.map { $0 as Any } ?? NSNull(),
+            "day": date.day.map { $0 as Any } ?? NSNull()
+        ]
+    }
+
     private func traverse(_ root: [String: Any], keyPath: [String]) -> Any? {
         var current: Any? = root
         for key in keyPath {
@@ -1090,10 +1279,43 @@ private func cachedLibrarySectionsFromDisk(token: String) -> [AniListLibrarySect
         return current
     }
 
-    private func extractEpisodeNumber(from text: String?) -> Int? {
+    private func extractEpisodeNumber(fromTitle text: String?) -> Int? {
         guard let text else { return nil }
-        let digits = text.split { !$0.isNumber }.compactMap { Int($0) }
-        return digits.first
+        return firstCapturedInteger(
+            in: text,
+            patterns: [
+                #"(?i)\bepisode\s*(\d{1,4})\b"#,
+                #"(?i)\bep\.?\s*(\d{1,4})\b"#,
+                #"^\s*(\d{1,4})\s*[-:.]"#
+            ]
+        )
+    }
+
+    private func extractEpisodeNumber(fromURL text: String?) -> Int? {
+        guard let text else { return nil }
+        return firstCapturedInteger(
+            in: text,
+            patterns: [
+                #"(?i)[?&](?:episode|ep)=(\d{1,4})\b"#,
+                #"(?i)\bepisodes?[-/_=: ]+(\d{1,4})\b"#,
+                #"(?i)\bep[-/_=: ]+(\d{1,4})\b"#,
+                #"(?i)/watch/[^/?#]*-(\d{1,4})(?:[/?#]|$)"#
+            ]
+        )
+    }
+
+    private func firstCapturedInteger(in text: String, patterns: [String]) -> Int? {
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            guard let match = regex.firstMatch(in: text, range: range), match.numberOfRanges > 1 else { continue }
+            let capture = match.range(at: 1)
+            guard let swiftRange = Range(capture, in: text) else { continue }
+            if let number = Int(text[swiftRange]), number > 0 {
+                return number
+            }
+        }
+        return nil
     }
 }
 

@@ -61,10 +61,13 @@ enum Theme {
 actor ImageCache {
     static let shared = ImageCache()
 
-    private let memory = NSCache<NSURL, NSData>()
+    private static let diskSizeLimitBytes: Int64 = 250 * 1024 * 1024
+    private let memory = NSCache<NSString, NSData>()
+    private let renderedImages = NSCache<NSString, UIImage>()
     private let folder: URL
     private let session: URLSession
-    private var inFlight: Set<URL> = []
+    private var dataTasks: [String: Task<Data?, Never>] = [:]
+    private var imageTasks: [String: Task<UIImage?, Never>] = [:]
 
     init() {
         let fm = FileManager.default
@@ -73,22 +76,26 @@ actor ImageCache {
         try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
 
         let config = URLSessionConfiguration.default
-        config.requestCachePolicy = .returnCacheDataElseLoad
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 90
+        config.requestCachePolicy = .useProtocolCachePolicy
+        config.timeoutIntervalForRequest = 20
+        config.timeoutIntervalForResource = 45
         config.waitsForConnectivity = true
+        config.httpMaximumConnectionsPerHost = 8
         config.urlCache = URLCache(
-            memoryCapacity: 50 * 1024 * 1024,
-            diskCapacity: 200 * 1024 * 1024,
+            memoryCapacity: 20 * 1024 * 1024,
+            diskCapacity: 120 * 1024 * 1024,
             diskPath: "KyomiruURLCache"
         )
         session = URLSession(configuration: config)
         memory.totalCostLimit = 40 * 1024 * 1024
         memory.countLimit = 200
+        renderedImages.totalCostLimit = 60 * 1024 * 1024
+        renderedImages.countLimit = 250
     }
 
     func data(for url: URL) async -> Data? {
-        let key = url as NSURL
+        let keyString = cacheKey(for: url)
+        let key = keyString as NSString
         if let cached = memory.object(forKey: key) {
             return cached as Data
         }
@@ -99,42 +106,53 @@ actor ImageCache {
             return data
         }
 
-        do {
-            let (data, response) = try await session.data(from: url)
-            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
-                memory.setObject(data as NSData, forKey: key, cost: data.count)
-                try? data.write(to: fileURL, options: .atomic)
-                return data
-            }
-        } catch {
-            return nil
+        if let existing = dataTasks[keyString] {
+            return await existing.value
         }
-        return nil
+
+        let task = Task<Data?, Never> { [session] in
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    return nil
+                }
+                return data
+            } catch {
+                return nil
+            }
+        }
+        dataTasks[keyString] = task
+        let data = await task.value
+        dataTasks[keyString] = nil
+
+        guard let data else { return nil }
+        memory.setObject(data as NSData, forKey: key, cost: data.count)
+        try? data.write(to: fileURL, options: .atomic)
+        pruneDiskCacheIfNeeded()
+        return data
     }
 
     func prefetch(urls: [URL]) async {
         let unique = Array(Set(urls))
         if unique.isEmpty { return }
         for url in unique {
-            let key = url as NSURL
-            if memory.object(forKey: key) != nil { continue }
+            let key = cacheKey(for: url)
+            let memoryKey = key as NSString
+            if memory.object(forKey: memoryKey) != nil { continue }
             let fileURL = fileURLFor(url: url)
             if FileManager.default.fileExists(atPath: fileURL.path) { continue }
-            if inFlight.contains(url) { continue }
-            inFlight.insert(url)
+            if dataTasks[key] != nil { continue }
             Task {
                 _ = await data(for: url)
-                await removeInFlight(url)
             }
         }
     }
 
-    private func removeInFlight(_ url: URL) async {
-        inFlight.remove(url)
-    }
-
     func clearAll() async {
         memory.removeAllObjects()
+        renderedImages.removeAllObjects()
+        dataTasks.removeAll()
+        imageTasks.removeAll()
         session.configuration.urlCache?.removeAllCachedResponses()
         let fm = FileManager.default
         try? fm.removeItem(at: folder)
@@ -142,8 +160,30 @@ actor ImageCache {
     }
 
     private func fileURLFor(url: URL) -> URL {
-        let name = sha256(url.absoluteString)
+        let name = sha256(cacheKey(for: url))
         return folder.appendingPathComponent(name).appendingPathExtension("img")
+    }
+
+    private func cacheKey(for url: URL) -> String {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url.absoluteString
+        }
+
+        components.fragment = nil
+        components.host = components.host?.lowercased()
+        components.scheme = components.scheme?.lowercased()
+
+        let queryHostsToStrip: Set<String> = [
+            "image.tmdb.org",
+            "s4.anilist.co",
+            "img.anili.st",
+            "cdn.myanimelist.net"
+        ]
+        if let host = components.host, queryHostsToStrip.contains(host) {
+            components.query = nil
+        }
+
+        return components.string ?? url.absoluteString
     }
 
     private func sha256(_ string: String) -> String {
@@ -152,12 +192,64 @@ actor ImageCache {
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
 
-    func image(for url: URL, targetSize: CGSize, scale: CGFloat) async -> UIImage? {
-        guard let data = await data(for: url) else { return nil }
-        return downsample(data: data, targetSize: targetSize, scale: scale)
+    private func pruneDiskCacheIfNeeded() {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: folder,
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        var files: [(url: URL, modified: Date, size: Int64)] = []
+        var totalSize: Int64 = 0
+
+        for case let fileURL as URL in enumerator {
+            guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]),
+                  values.isRegularFile == true else { continue }
+            let fileSize = Int64(values.fileSize ?? 0)
+            totalSize += fileSize
+            files.append((fileURL, values.contentModificationDate ?? .distantPast, fileSize))
+        }
+
+        guard totalSize > Self.diskSizeLimitBytes else { return }
+
+        for file in files.sorted(by: { $0.modified < $1.modified }) {
+            try? fm.removeItem(at: file.url)
+            totalSize -= file.size
+            if totalSize <= Self.diskSizeLimitBytes {
+                break
+            }
+        }
     }
 
-    private func downsample(data: Data, targetSize: CGSize, scale: CGFloat) -> UIImage? {
+    func image(for url: URL, targetSize: CGSize, scale: CGFloat) async -> UIImage? {
+        let renderedKey = "\(cacheKey(for: url))::\(Int(targetSize.width.rounded()))x\(Int(targetSize.height.rounded()))@\(Int(scale.rounded()))" as NSString
+        if let cached = renderedImages.object(forKey: renderedKey) {
+            return cached
+        }
+
+        if let existing = imageTasks[renderedKey as String] {
+            return await existing.value
+        }
+
+        let task = Task<UIImage?, Never> {
+            guard let data = await self.data(for: url) else { return nil }
+            return await Task.detached(priority: .utility) {
+                ImageCache.downsample(data: data, targetSize: targetSize, scale: scale)
+            }.value
+        }
+        imageTasks[renderedKey as String] = task
+        let image = await task.value
+        imageTasks[renderedKey as String] = nil
+
+        if let image, let cgImage = image.cgImage {
+            let cost = cgImage.bytesPerRow * cgImage.height
+            renderedImages.setObject(image, forKey: renderedKey, cost: cost)
+        }
+        return image
+    }
+
+    private nonisolated static func downsample(data: Data, targetSize: CGSize, scale: CGFloat) -> UIImage? {
         let maxDimension = max(targetSize.width, targetSize.height) * scale
         guard maxDimension > 0 else { return nil }
         let options: CFDictionary = [
@@ -213,6 +305,7 @@ struct CachedImage<Content: View, Placeholder: View>: View {
             await MainActor.run { uiImage = nil }
             return
         }
+        await MainActor.run { uiImage = nil }
         if let targetSize {
             let scale = await MainActor.run { UIScreen.main.scale }
             if let image = await ImageCache.shared.image(for: url, targetSize: targetSize, scale: scale) {

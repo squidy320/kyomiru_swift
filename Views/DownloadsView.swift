@@ -734,6 +734,11 @@ private struct DownloadsDetailView: View {
                     Button("Delete") {
                         DownloadManager.shared.delete(itemId: item.id)
                     }
+                    if DownloadManager.shared.shouldOfferRemux(for: item) {
+                        Button("Remux to MP4") {
+                            DownloadManager.shared.retryRemux(itemId: item.id)
+                        }
+                    }
                 }
             }
         }
@@ -763,6 +768,11 @@ private struct DownloadsDetailView: View {
                     .contextMenu {
                         Button("Delete") {
                             DownloadManager.shared.delete(itemId: item.id)
+                        }
+                        if DownloadManager.shared.shouldOfferRemux(for: item) {
+                            Button("Remux to MP4") {
+                                DownloadManager.shared.retryRemux(itemId: item.id)
+                            }
                         }
                     }
                 }

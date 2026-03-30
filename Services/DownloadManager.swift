@@ -491,6 +491,7 @@ struct DownloadItem: Identifiable, Equatable {
     var posterURL: URL?
     var bannerURL: URL?
     var totalEpisodes: Int?
+    var isRemuxedToMp4: Bool
 }
 
 @MainActor
@@ -548,6 +549,7 @@ final class DownloadManager: NSObject, ObservableObject {
             let ext: String
             let tempURL: URL
             let outputURL: URL
+            let hlsFolderURL: URL?
         }
 
         var bgTaskId = UIBackgroundTaskIdentifier.invalid
@@ -573,7 +575,9 @@ final class DownloadManager: NSObject, ObservableObject {
 
         for candidate in sorted {
             guard let episodeNumber = candidate.episodeNumber else { continue }
-            let outputURL = localFileURL(for: media.title, episode: episodeNumber)
+            let ext = candidate.url.pathExtension.lowercased()
+            let outputURL = importOutputURL(for: media.title, episode: episodeNumber, ext: ext)
+            let hlsFolderURL = ext == "m3u8" ? localHLSFolder(title: media.title, episode: episodeNumber) : nil
             if let _ = downloadedItem(title: media.title, episode: episodeNumber) {
                 skipped += 1
                 continue
@@ -584,7 +588,6 @@ final class DownloadManager: NSObject, ObservableObject {
                 continue
             }
 
-            let ext = candidate.url.pathExtension.lowercased()
             let supported = ["mp4", "m4v", "mov", "ts", "m3u8"]
             if !supported.contains(ext) {
                 failed.append("\(candidate.fileName) (unsupported)")
@@ -633,7 +636,8 @@ final class DownloadManager: NSObject, ObservableObject {
                 episodeNumber: episodeNumber,
                 ext: ext,
                 tempURL: tempURL,
-                outputURL: outputURL
+                outputURL: outputURL,
+                hlsFolderURL: hlsFolderURL
             ))
         }
 
@@ -644,28 +648,31 @@ final class DownloadManager: NSObject, ObservableObject {
                     let hasVideo = !asset.tracks(withMediaType: .video).isEmpty
                     let canDirectCopy = await MediaConversionManager.shared.canUseImportedFileDirectly(inputURL: item.tempURL)
                     if asset.isPlayable && hasVideo && canDirectCopy {
-                        if fm.fileExists(atPath: item.outputURL.path) {
-                            try fm.removeItem(at: item.outputURL)
-                        }
-                        try fm.copyItem(at: item.tempURL, to: item.outputURL)
-                        try? fm.removeItem(at: item.tempURL)
+                        try replaceItem(at: item.outputURL, with: item.tempURL, move: false)
                     } else {
-                        _ = try await MediaConversionManager.shared.remuxImportedToMp4(
-                            inputURL: item.tempURL,
-                            outputURL: item.outputURL
-                        )
+                        failed.append("\(item.candidate.fileName) (unsupported codec)")
+                        try? fm.removeItem(at: item.tempURL)
+                        continue
                     }
+                } else if item.ext == "ts" {
+                    try replaceItem(at: item.outputURL, with: item.tempURL, move: false)
+                } else if item.ext == "m3u8" {
+                    guard let folder = item.hlsFolderURL else {
+                        failed.append("\(item.candidate.fileName) (missing hls folder)")
+                        try? fm.removeItem(at: item.tempURL)
+                        continue
+                    }
+                    try importPlaylistBundle(from: item.tempURL, originalURL: item.candidate.url, toFolder: folder, outputURL: item.outputURL)
                 } else {
-                    _ = try await MediaConversionManager.shared.remuxToMp4(
-                        inputURL: item.tempURL,
-                        outputURL: item.outputURL
-                    )
+                    failed.append("\(item.candidate.fileName) (unsupported)")
+                    try? fm.removeItem(at: item.tempURL)
+                    continue
                 }
                 try? fm.removeItem(at: item.tempURL)
                 registerImportedEpisode(media: media, episode: item.episodeNumber, fileURL: item.outputURL)
                 imported += 1
             } catch {
-                failed.append("\(item.candidate.fileName) (convert failed)")
+                failed.append("\(item.candidate.fileName) (import failed)")
                 try? fm.removeItem(at: item.tempURL)
             }
         }
@@ -694,6 +701,60 @@ final class DownloadManager: NSObject, ObservableObject {
         throw MediaConversionManager.ConversionError.exportFailed("file download timeout")
     }
 
+    private func importOutputURL(for title: String, episode: Int, ext: String) -> URL {
+        switch ext {
+        case "ts":
+            return localMergedHLSFileURL(for: title, episode: episode)
+        case "m3u8":
+            return localHLSFolder(title: title, episode: episode).appendingPathComponent("playlist.m3u8")
+        case "mov", "m4v":
+            let base = localFileURL(for: title, episode: episode)
+            return base.deletingPathExtension().appendingPathExtension(ext)
+        default:
+            return localFileURL(for: title, episode: episode)
+        }
+    }
+
+    private func replaceItem(at destination: URL, with source: URL, move: Bool) throws {
+        if fm.fileExists(atPath: destination.path) {
+            try fm.removeItem(at: destination)
+        }
+        if move {
+            try fm.moveItem(at: source, to: destination)
+        } else {
+            try fm.copyItem(at: source, to: destination)
+        }
+    }
+
+    private func importPlaylistBundle(from tempPlaylist: URL, originalURL: URL, toFolder folder: URL, outputURL: URL) throws {
+        if fm.fileExists(atPath: folder.path) {
+            try? fm.removeItem(at: folder)
+        }
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        let text = try String(contentsOf: tempPlaylist)
+        let baseFolder = originalURL.deletingLastPathComponent()
+        let lines = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+
+        for rawLine in lines {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty, !line.hasPrefix("#"), !line.contains("://") else { continue }
+            let sourceURL = baseFolder.appendingPathComponent(line)
+            guard fm.fileExists(atPath: sourceURL.path) else { continue }
+            let destinationURL = folder.appendingPathComponent(line)
+            let destinationFolder = destinationURL.deletingLastPathComponent()
+            try fm.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
+            if fm.fileExists(atPath: destinationURL.path) {
+                try fm.removeItem(at: destinationURL)
+            }
+            try fm.copyItem(at: sourceURL, to: destinationURL)
+        }
+
+        try replaceItem(at: outputURL, with: tempPlaylist, move: false)
+    }
+
     func enqueue(title: String, episode: Int, url: URL, media: MediaItem? = nil) {
         let id = "\(title)|\(episode)|\(url.absoluteString)"
         if items.contains(where: { $0.id == id }) {
@@ -717,7 +778,8 @@ final class DownloadManager: NSObject, ObservableObject {
             malId: nil,
             posterURL: media?.posterImageURL,
             bannerURL: media?.heroImageURL,
-            totalEpisodes: media?.totalEpisodes
+            totalEpisodes: media?.totalEpisodes,
+            isRemuxedToMp4: false
         )
         items.append(item)
         saveIndex()
@@ -751,7 +813,8 @@ final class DownloadManager: NSObject, ObservableObject {
             malId: nil,
             posterURL: media?.posterImageURL,
             bannerURL: media?.heroImageURL,
-            totalEpisodes: media?.totalEpisodes
+            totalEpisodes: media?.totalEpisodes,
+            isRemuxedToMp4: false
         )
         items.append(item)
         saveIndex()
@@ -772,6 +835,10 @@ final class DownloadManager: NSObject, ObservableObject {
         let folder = base.appendingPathComponent("KyomiruDownloads/\(safe(title))", isDirectory: true)
         try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder.appendingPathComponent("Episode(\(episode)).ts")
+    }
+
+    private func localRemuxedFileURL(for title: String, episode: Int) -> URL {
+        localFileURL(for: title, episode: episode)
     }
 
     private func localHLSFolder(title: String, episode: Int) -> URL {
@@ -817,7 +884,10 @@ final class DownloadManager: NSObject, ObservableObject {
         if let idx = items.firstIndex(where: { $0.id == id }) {
             objectWillChange.send()
             items[idx].status = status
-            if let localFile { items[idx].localFile = localFile }
+            if let localFile {
+                items[idx].localFile = localFile
+                items[idx].isRemuxedToMp4 = localFile.pathExtension.lowercased() == "mp4"
+            }
             saveIndex()
             AppLog.debug(.downloads, "download status id=\(id) status=\(status)")
         }
@@ -829,27 +899,43 @@ final class DownloadManager: NSObject, ObservableObject {
             AppLog.debug(.downloads, "hls download start id=\(id)")
             updateProgress(id: id, progress: 0)
             let headerPayload = item.headers ?? headers
-            let directMp4 = localFileURL(for: item.title, episode: item.episode)
-            if fm.fileExists(atPath: directMp4.path) {
-                AppLog.debug(.downloads, "hls direct mp4 exists id=\(id) path=\(directMp4.path)")
-                updateStatus(id: id, status: "Completed", localFile: directMp4)
+            let remuxedMp4 = localRemuxedFileURL(for: item.title, episode: item.episode)
+            if fm.fileExists(atPath: remuxedMp4.path) {
+                AppLog.debug(.downloads, "hls remuxed mp4 exists id=\(id) path=\(remuxedMp4.path)")
+                updateStatus(id: id, status: "Completed", localFile: remuxedMp4)
+                return
+            }
+            let mergedTs = localMergedHLSFileURL(for: item.title, episode: item.episode)
+            if fm.fileExists(atPath: mergedTs.path) {
+                AppLog.debug(.downloads, "hls merged ts exists id=\(id) path=\(mergedTs.path)")
+                updateStatus(id: id, status: "Completed", localFile: mergedTs)
+                return
+            }
+            let hlsFolder = localHLSFolder(title: item.title, episode: item.episode)
+            if let playlist = ensurePlaylist(forFolder: hlsFolder, prefix: nil),
+               fm.fileExists(atPath: playlist.path) {
+                AppLog.debug(.downloads, "hls local playlist exists id=\(id) path=\(playlist.path)")
+                updateStatus(id: id, status: "Completed", localFile: playlist)
                 return
             }
 
-            AppLog.debug(.downloads, "hls direct remux start id=\(id)")
-            updateStatus(id: id, status: "Remuxing", localFile: nil)
-            let output = try await MediaConversionManager.shared.convertHlsToMp4(
+            AppLog.debug(.downloads, "hls offline compile start id=\(id)")
+            updateStatus(id: id, status: "Downloading HLS", localFile: nil)
+            let output = try await offlineManager.downloadAndMerge(
                 playlistURL: url,
                 headers: headerPayload,
-                outputURL: directMp4
-            ) { [weak self] value in
-                Task { @MainActor in
-                    self?.updateProgress(id: id, progress: value)
-                }
-            }
+                outputURL: mergedTs,
+                outputFolder: hlsFolder,
+                progress: { [weak self] value in
+                    Task { @MainActor in
+                        self?.updateProgress(id: id, progress: value)
+                    }
+                },
+                preferLocalHLS: false
+            )
             updateProgress(id: id, progress: 1)
             updateStatus(id: id, status: "Completed", localFile: output)
-            AppLog.debug(.downloads, "hls direct remux complete id=\(id) output=\(output.path)")
+            AppLog.debug(.downloads, "hls offline compile complete id=\(id) output=\(output.path)")
         } catch {
             updateStatus(id: id, status: "Failed")
             AppLog.error(.downloads, "hls download failed id=\(id) error=\(error.localizedDescription)")
@@ -857,12 +943,14 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func remuxIfNeeded(id: String, localFile: URL) async {
-        guard localFile.pathExtension.lowercased() == "ts" else {
-            AppLog.debug(.downloads, "remux skipped id=\(id) reason=not-ts ext=\(localFile.pathExtension)")
+        guard let item = items.first(where: { $0.id == id }) else { return }
+        let ext = localFile.pathExtension.lowercased()
+        guard ext == "ts" || ext == "m3u8" else {
+            AppLog.debug(.downloads, "remux skipped id=\(id) reason=unsupported ext=\(localFile.pathExtension)")
             updateStatus(id: id, status: "Completed", localFile: localFile)
             return
         }
-        let mp4URL = localFile.deletingPathExtension().appendingPathExtension("mp4")
+        let mp4URL = localRemuxedFileURL(for: item.title, episode: item.episode)
         if fm.fileExists(atPath: mp4URL.path) {
             AppLog.debug(.downloads, "remux skipped id=\(id) reason=mp4-exists path=\(mp4URL.path)")
             updateStatus(id: id, status: "Completed", localFile: mp4URL)
@@ -870,9 +958,22 @@ final class DownloadManager: NSObject, ObservableObject {
         }
         do {
             updateProgress(id: id, progress: 0)
-            let output = try await MediaConversionManager.shared.convertToMp4(inputURL: localFile) { [weak self] value in
-                Task { @MainActor in
-                    self?.updateProgress(id: id, progress: value)
+            let output: URL
+            if ext == "m3u8" {
+                output = try await MediaConversionManager.shared.convertHlsToMp4(
+                    playlistURL: localFile,
+                    headers: item.headers,
+                    outputURL: mp4URL
+                ) { [weak self] value in
+                    Task { @MainActor in
+                        self?.updateProgress(id: id, progress: value)
+                    }
+                }
+            } else {
+                output = try await MediaConversionManager.shared.convertToMp4(inputURL: localFile) { [weak self] value in
+                    Task { @MainActor in
+                        self?.updateProgress(id: id, progress: value)
+                    }
                 }
             }
             updateProgress(id: id, progress: 1)
@@ -885,24 +986,11 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func resumePendingRemuxes() {
-        let pending = items.filter { item in
-            guard let local = item.localFile else { return false }
-            if !fm.fileExists(atPath: local.path) { return false }
-            return local.pathExtension.lowercased() == "ts"
-        }
-        for item in pending {
-            updateStatus(id: item.id, status: "Remuxing", localFile: item.localFile)
-            Task { @MainActor in
-                if let local = item.localFile {
-                    await remuxIfNeeded(id: item.id, localFile: local)
-                }
-            }
-        }
     }
 
     func retryRemux(itemId: String) {
         guard let item = items.first(where: { $0.id == itemId }),
-              let local = item.localFile else { return }
+              let local = playableURL(for: item) ?? item.localFile else { return }
         updateStatus(id: itemId, status: "Remuxing", localFile: local)
         Task { @MainActor in
             await remuxIfNeeded(id: itemId, localFile: local)
@@ -946,8 +1034,18 @@ final class DownloadManager: NSObject, ObservableObject {
         if let idx = items.firstIndex(where: { $0.id == itemId }) {
             if let localFile = items[idx].localFile {
                 try? fm.removeItem(at: localFile)
-                let folder = localFile.deletingLastPathComponent()
-                try? fm.removeItem(at: folder)
+            }
+            let mergedTs = localMergedHLSFileURL(for: items[idx].title, episode: items[idx].episode)
+            if fm.fileExists(atPath: mergedTs.path) {
+                try? fm.removeItem(at: mergedTs)
+            }
+            let hlsFolder = localHLSFolder(title: items[idx].title, episode: items[idx].episode)
+            if fm.fileExists(atPath: hlsFolder.path) {
+                try? fm.removeItem(at: hlsFolder)
+            }
+            let remuxed = localRemuxedFileURL(for: items[idx].title, episode: items[idx].episode)
+            if fm.fileExists(atPath: remuxed.path) {
+                try? fm.removeItem(at: remuxed)
             }
             items.remove(at: idx)
             saveIndex()
@@ -978,6 +1076,14 @@ final class DownloadManager: NSObject, ObservableObject {
             $0.episode == episode &&
             normalizeTitle($0.title) == key
         })
+    }
+
+    func shouldOfferRemux(for item: DownloadItem) -> Bool {
+        guard item.status == "Completed" else { return false }
+        if item.isRemuxedToMp4 { return false }
+        guard let resolved = playableURL(for: item) ?? item.localFile else { return false }
+        let ext = resolved.pathExtension.lowercased()
+        return ext == "ts" || ext == "m3u8"
     }
 
     func updateMediaInfo(title: String, media: MediaItem) {
@@ -1312,7 +1418,8 @@ final class DownloadManager: NSObject, ObservableObject {
             malId: nil,
             posterURL: media.posterImageURL,
             bannerURL: media.heroImageURL,
-            totalEpisodes: media.totalEpisodes
+            totalEpisodes: media.totalEpisodes,
+            isRemuxedToMp4: fileURL.pathExtension.lowercased() == "mp4"
         )
         if !items.contains(where: { $0.id == item.id }) {
             items.append(item)
@@ -1385,6 +1492,7 @@ private struct PersistedDownload: Codable {
     let posterURL: String?
     let bannerURL: String?
     let totalEpisodes: Int?
+    let isRemuxedToMp4: Bool?
 
     init(from item: DownloadItem) {
         id = item.id
@@ -1401,6 +1509,7 @@ private struct PersistedDownload: Codable {
         posterURL = item.posterURL?.absoluteString
         bannerURL = item.bannerURL?.absoluteString
         totalEpisodes = item.totalEpisodes
+        isRemuxedToMp4 = item.isRemuxedToMp4
     }
 
     func asItem() -> DownloadItem {
@@ -1421,7 +1530,8 @@ private struct PersistedDownload: Codable {
             malId: malId,
             posterURL: posterURL.flatMap(URL.init(string:)),
             bannerURL: bannerURL.flatMap(URL.init(string:)),
-            totalEpisodes: totalEpisodes
+            totalEpisodes: totalEpisodes,
+            isRemuxedToMp4: isRemuxedToMp4 ?? (localFile.flatMap(URL.init(string:))?.pathExtension.lowercased() == "mp4")
         )
     }
 }
