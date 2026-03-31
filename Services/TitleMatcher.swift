@@ -137,21 +137,28 @@ enum TitleMatcher {
     }
 
     static func extractSeasonNumber(from input: String) -> Int? {
-        extractSeasonMarkerNumber(from: input) ?? extractPartMarkerNumber(from: input)
+        if let season = extractSeasonMarkerNumber(from: input) {
+            return season
+        }
+        // Fallback to part marker ONLY if no season marker is found
+        return extractPartMarkerNumber(from: input)
     }
 
     static func extractSeasonMarkerNumber(from input: String) -> Int? {
         extractMarkerNumber(from: input, patterns: [
             #"(?i)\bseason\s*(\d+)\b"#,
             #"(?i)\bs\s*(\d+)\b"#,
-            #"(?i)\b(\d+)(st|nd|rd|th)\s*season\b"#
+            #"(?i)\b(\d+)(st|nd|rd|th)\s*season\b"#,
+            #"(?i)season\s*([ivx]+)\b"#
         ])
     }
 
     static func extractPartMarkerNumber(from input: String) -> Int? {
         extractMarkerNumber(from: input, patterns: [
             #"(?i)\bpart\s*(\d+)\b"#,
-            #"(?i)\bcour\s*(\d+)\b"#
+            #"(?i)\bcour\s*(\d+)\b"#,
+            #"(?i)part\s*([ivx]+)\b"#,
+            #"(?i)cour\s*([ivx]+)\b"#
         ])
     }
 

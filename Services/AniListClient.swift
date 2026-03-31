@@ -1260,10 +1260,15 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
 
     private func fuzzyDateVariable(_ date: AniListFuzzyDate?) -> Any {
         guard let date, !date.isEmpty else { return NSNull() }
+        
+        let y = (date.year ?? 0) > 0 ? date.year : nil
+        let m = (date.month ?? 0) > 0 ? date.month : nil
+        let d = (date.day ?? 0) > 0 ? date.day : nil
+
         return [
-            "year": date.year.map { $0 as Any } ?? NSNull(),
-            "month": date.month.map { $0 as Any } ?? NSNull(),
-            "day": date.day.map { $0 as Any } ?? NSNull()
+            "year": y.map { $0 as Any } ?? NSNull(),
+            "month": m.map { $0 as Any } ?? NSNull(),
+            "day": d.map { $0 as Any } ?? NSNull()
         ]
     }
 

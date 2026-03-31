@@ -1117,6 +1117,7 @@ final class TMDBMatchingService {
         )
         let dateMatch = nearestSeasonByAirDate(seasons: seasons, targetDate: targetDate)
         let yearMatch = nearestSeasonByYear(seasons: seasons, targetYear: targetYear)
+        let nameMatch = nearestSeasonByName(seasons: seasons, targetTitle: media.title.best)
 
         if let explicitSeasonMarker, explicitSeasonMarker > 0 {
             guard seasons.contains(where: { $0.seasonNumber == explicitSeasonMarker }) else {
@@ -1161,6 +1162,15 @@ final class TMDBMatchingService {
                 dateMatch: dateMatch,
                 yearMatch: yearMatch,
                 partMarker: explicitPartMarker
+            )
+        }
+
+        if let nameMatch {
+            return SelectedSeason(
+                seasonNumber: nameMatch.seasonNumber,
+                episodeOffset: 0,
+                confidence: nameMatch.score,
+                reason: "season-name-match"
             )
         }
 
@@ -1224,20 +1234,28 @@ final class TMDBMatchingService {
 
         if let partMarker, partMarker > 0 {
             if let rangeMatch {
-                if rangeMatch.seasonNumber != latestMainSeason.seasonNumber {
-                    return nil
+                if rangeMatch.seasonNumber == latestMainSeason.seasonNumber {
+                    return SelectedSeason(
+                        seasonNumber: latestMainSeason.seasonNumber,
+                        episodeOffset: rangeMatch.offset,
+                        confidence: 0.97,
+                        reason: "final-season-part"
+                    )
                 }
-                return SelectedSeason(
-                    seasonNumber: latestMainSeason.seasonNumber,
-                    episodeOffset: rangeMatch.offset,
-                    confidence: 0.97,
-                    reason: "final-season-part"
-                )
             }
 
-            // If we have a part marker > 1, don't assume offset 0 from date/year.
-            // Returning nil allows franchise logic to find the correct offset.
+            // For higher parts, if no range match, we might be a later season or needing offset
             if partMarker > 1 {
+                // Check if there is a season that specifically mentions this part in its name
+                let partSearch = "Part \(partMarker)"
+                if let namedMatch = seasons.first(where: { ($0.name ?? "").contains(partSearch) }) {
+                     return SelectedSeason(
+                        seasonNumber: namedMatch.seasonNumber,
+                        episodeOffset: 0,
+                        confidence: 0.92,
+                        reason: "final-season-named-part"
+                    )
+                }
                 return nil
             }
 
@@ -1432,6 +1450,22 @@ final class TMDBMatchingService {
         let matches = seasons.compactMap { season -> (Int, Double)? in
             guard let seasonYear = yearFrom(season.airDateString) else { return nil }
             let score = 1.0 - min(Double(abs(targetYear - seasonYear)) / 4.0, 0.45)
+            return (season.seasonNumber, score)
+        }
+        return matches.max(by: { $0.1 < $1.1 }).map { ($0.0, $0.1) }
+    }
+
+    private func nearestSeasonByName(seasons: [TMDBSeasonInfo], targetTitle: String) -> (seasonNumber: Int, score: Double)? {
+        let cleanedTarget = TitleMatcher.cleanTitle(targetTitle)
+        guard !cleanedTarget.isEmpty else { return nil }
+        
+        let matches = seasons.compactMap { season -> (Int, Double)? in
+            guard let name = season.name, !name.isEmpty else { return nil }
+            let cleanedName = TitleMatcher.cleanTitle(name)
+            guard !cleanedName.isEmpty else { return nil }
+            
+            let score = TitleMatcher.diceCoefficient(cleanedTarget, cleanedName)
+            guard score >= 0.7 else { return nil }
             return (season.seasonNumber, score)
         }
         return matches.max(by: { $0.1 < $1.1 }).map { ($0.0, $0.1) }

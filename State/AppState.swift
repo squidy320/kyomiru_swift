@@ -302,6 +302,14 @@ final class AppState: ObservableObject {
         var startedAt = existing?.startedAt
         var completedAt = existing?.completedAt
 
+        // Reset if missing year or year is 1970 (common epoch bug value)
+        if let s = startedAt, (s.year ?? 0) <= 1970 {
+            startedAt = nil
+        }
+        if let c = completedAt, (c.year ?? 0) <= 1970 {
+            completedAt = nil
+        }
+
         if startedAt == nil,
            progress > 0 || status == .watching || status == .completed {
             startedAt = today

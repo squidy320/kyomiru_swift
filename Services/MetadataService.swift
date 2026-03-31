@@ -1155,7 +1155,16 @@ final class EpisodeMetadataService {
         }
 
         if let explicitSeason = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best),
-           explicitSeason > 1 {
+           explicitSeason > 0 {
+            // Fallback: try to find the show ID and fetch the explicit season directly
+            if let target = await tmdbMatcher.resolveArtworkTarget(media: media) {
+                let seasonMeta = await fetchTMDBSeason(showId: target.id, seasonNumber: explicitSeason)
+                if !seasonMeta.isEmpty {
+                    // If we have a part marker > 1, we might need an offset, but without structure we can only guess.
+                    // But usually Part 1 = Season N, and structure would have handled Part 2.
+                    return (seasonMeta, target.id, explicitSeason, 0, 0, 0, true, "explicit-season-direct-fetch")
+                }
+            }
             return ([:], 0, preferredSeason ?? explicitSeason, 0, 0, 0, false, "explicit-season-unmapped")
         }
         return ([:], 0, preferredSeason ?? 1, 0, 0, 0, false, "no-structure-match")

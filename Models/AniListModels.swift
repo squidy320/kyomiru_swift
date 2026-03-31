@@ -94,7 +94,8 @@ struct AniListFuzzyDate: Equatable, Hashable, Codable {
         return normalized.isEmpty ? nil : normalized
     }
 
-    static func today(calendar: Calendar = .current) -> AniListFuzzyDate {
+    static func today() -> AniListFuzzyDate {
+        let calendar = Calendar(identifier: .gregorian)
         let components = calendar.dateComponents([.year, .month, .day], from: Date())
         return AniListFuzzyDate(
             year: components.year,
