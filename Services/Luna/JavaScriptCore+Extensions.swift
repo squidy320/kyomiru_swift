@@ -238,7 +238,7 @@ extension JSContext {
                 }
             }
             
-            let maxAttempts = 2
+            let maxAttempts = 3
             let baseDelay: TimeInterval = 0.8
 
             func performDownload(attempt: Int) {

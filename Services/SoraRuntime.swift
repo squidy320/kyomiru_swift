@@ -20,27 +20,33 @@ final class AnimePaheModuleService {
     func search(query: String) async throws -> [SearchItem] {
         let service = try await loadServiceIfNeeded()
         AppLog.debug(.network, "animepahe module search using manifest=\(manifestURL.absoluteString)")
-        return await withCheckedContinuation { cont in
-            js.fetchJsSearchResults(keyword: query, module: service) { results in
-                cont.resume(returning: results)
+        return try await withOperationTimeout(seconds: 12, label: "animepahe module search") {
+            await withCheckedContinuation { cont in
+                js.fetchJsSearchResults(keyword: query, module: service) { results in
+                    cont.resume(returning: results)
+                }
             }
         }
     }
 
     func episodes(animeURL: URL) async throws -> [EpisodeLink] {
         _ = try await loadServiceIfNeeded()
-        return await withCheckedContinuation { cont in
-            js.fetchEpisodesJS(url: animeURL.absoluteString) { results in
-                cont.resume(returning: results)
+        return try await withOperationTimeout(seconds: 35, label: "animepahe module episodes") {
+            await withCheckedContinuation { cont in
+                js.fetchEpisodesJS(url: animeURL.absoluteString) { results in
+                    cont.resume(returning: results)
+                }
             }
         }
     }
 
     func sources(episodeURL: URL) async throws -> AnimePaheModuleStreamResult {
         let service = try await loadServiceIfNeeded()
-        let result = await withCheckedContinuation { cont in
-            js.fetchStreamUrlJS(episodeUrl: episodeURL.absoluteString, module: service) { result in
-                cont.resume(returning: result)
+        let result = try await withOperationTimeout(seconds: 35, label: "animepahe module sources") {
+            await withCheckedContinuation { cont in
+                js.fetchStreamUrlJS(episodeUrl: episodeURL.absoluteString, module: service) { result in
+                    cont.resume(returning: result)
+                }
             }
         }
         return AnimePaheModuleStreamResult(
@@ -48,6 +54,27 @@ final class AnimePaheModuleService {
             subtitles: result.subtitles,
             sources: result.sources
         )
+    }
+
+    private func withOperationTimeout<T>(
+        seconds: Double,
+        label: String,
+        operation: @escaping () async -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                await operation()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw URLError(.timedOut)
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            AppLog.debug(.network, "\(label) success")
+            return result
+        }
     }
 
     private func loadServiceIfNeeded() async throws -> Service {

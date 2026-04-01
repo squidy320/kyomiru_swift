@@ -212,14 +212,14 @@ extension URLSession {
     static func fetchData(allowRedirects: Bool) -> URLSession {
         if allowRedirects {
             let config = URLSessionConfiguration.default
-            config.timeoutIntervalForRequest = 25
-            config.timeoutIntervalForResource = 60
+            config.timeoutIntervalForRequest = 45
+            config.timeoutIntervalForResource = 120
             config.waitsForConnectivity = true
             return URLSession(configuration: config)
         }
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 25
-        config.timeoutIntervalForResource = 60
+        config.timeoutIntervalForRequest = 45
+        config.timeoutIntervalForResource = 120
         config.waitsForConnectivity = true
         return URLSession(configuration: config, delegate: RedirectBlocker(), delegateQueue: nil)
     }

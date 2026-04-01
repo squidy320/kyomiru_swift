@@ -101,7 +101,7 @@ struct DiscoveryView: View {
                                                             score: media.averageScore,
                                                             statusBadge: statusBadge(for: media),
                                                             cornerBadge: nil,
-                                                            enablesTMDBArtworkLookup: false
+                                                            enablesTMDBArtworkLookup: true
                                                         )
                                                         .frame(width: UIConstants.posterCardWidth)
                                                     }
@@ -356,7 +356,7 @@ struct DiscoveryView: View {
                             score: media.averageScore,
                             statusBadge: statusBadge(for: media),
                             cornerBadge: nil,
-                            enablesTMDBArtworkLookup: false
+                            enablesTMDBArtworkLookup: true
                         )
                         .frame(width: UIConstants.posterCardWidth)
                     }
@@ -620,7 +620,7 @@ struct GenreDetailGridView: View {
                             score: media.averageScore,
                             statusBadge: nil,
                             cornerBadge: nil,
-                            enablesTMDBArtworkLookup: false
+                            enablesTMDBArtworkLookup: true
                         )
                         .frame(width: UIConstants.posterCardWidth)
                     }
@@ -789,7 +789,7 @@ private struct DiscoverySectionView: View {
                                 score: media.averageScore,
                                 statusBadge: statusBadge(for: media),
                                 cornerBadge: nil,
-                                enablesTMDBArtworkLookup: false
+                                enablesTMDBArtworkLookup: true
                             )
                             .frame(width: UIConstants.posterCardWidth)
                         }

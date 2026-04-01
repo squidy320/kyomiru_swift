@@ -130,6 +130,8 @@ struct DetailsView: View {
     @State private var episodeRatings: [Int: Double] = [:]
     @State private var streamingEpisodes: [AniListStreamingEpisode] = []
     @State private var episodeLoadGeneration = 0
+    @State private var matchSearchGeneration = 0
+    @State private var tmdbMatchSearchGeneration = 0
     @State private var tmdbHeroBackdropURL: URL?
     @State private var tmdbHeroLogoURL: URL?
     @State private var tmdbHeroLookupComplete = false
@@ -946,6 +948,8 @@ struct DetailsView: View {
 
     private func performMatchSearch(query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        matchSearchGeneration += 1
+        let searchGeneration = matchSearchGeneration
         isLoadingMatch = true
         matchError = nil
         matchCandidates = []
@@ -957,30 +961,42 @@ struct DetailsView: View {
                 } else {
                     candidates = try await appState.services.episodeService.searchCandidates(query: trimmed)
                 }
-                matchCandidates = candidates
-                if candidates.isEmpty {
-                    matchError = "No matches found."
+                await MainActor.run {
+                    guard searchGeneration == matchSearchGeneration else { return }
+                    matchCandidates = candidates
+                    if candidates.isEmpty {
+                        matchError = "No matches found."
+                    }
+                    isLoadingMatch = false
                 }
             } catch {
-                matchError = "Failed to search matches."
+                await MainActor.run {
+                    guard searchGeneration == matchSearchGeneration else { return }
+                    matchError = "Failed to search matches."
+                    isLoadingMatch = false
+                }
                 AppLog.error(.matching, "manual match search failed mediaId=\(media.id) \(error.localizedDescription)")
             }
-            isLoadingMatch = false
         }
     }
 
     private func performTMDBMatchSearch(query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        tmdbMatchSearchGeneration += 1
+        let searchGeneration = tmdbMatchSearchGeneration
         isLoadingTMDBMatch = true
         tmdbMatchError = nil
         tmdbMatchCandidates = []
         Task {
             let results = await appState.services.tmdbMatchingService.searchShows(query: trimmed)
-            tmdbMatchCandidates = results
-            if results.isEmpty {
-                tmdbMatchError = "No TMDB shows found."
+            await MainActor.run {
+                guard searchGeneration == tmdbMatchSearchGeneration else { return }
+                tmdbMatchCandidates = results
+                if results.isEmpty {
+                    tmdbMatchError = "No TMDB shows found."
+                }
+                isLoadingTMDBMatch = false
             }
-            isLoadingTMDBMatch = false
         }
     }
 

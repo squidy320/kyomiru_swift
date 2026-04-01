@@ -51,7 +51,7 @@ struct BrowseView: View {
                                                 size: cardSize,
                                                 overlayOpacity: 0.45,
                                                 allowFallbackWhileLoading: false,
-                                                enablesTMDBArtworkLookup: false
+                                                enablesTMDBArtworkLookup: true
                                             )
                                         }
                                         .buttonStyle(.plain)

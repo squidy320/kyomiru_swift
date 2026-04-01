@@ -21,10 +21,26 @@ final class EpisodeService {
         if let stored = matchStore.match(for: media.id),
            let storedMatch = stored.asSoraMatch() {
             AppLog.debug(.matching, "using stored match mediaId=\(media.id) session=\(storedMatch.session) manual=\(stored.isManual)")
-            let episodes = try await runtime.episodes(for: storedMatch)
-            let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
-            AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
-            return MatchLoadResult(match: storedMatch, episodes: adjusted, isManual: stored.isManual)
+            do {
+                let episodes = try await runtime.episodes(for: storedMatch)
+                let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
+                if !adjusted.isEmpty {
+                    AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
+                    return MatchLoadResult(match: storedMatch, episodes: adjusted, isManual: stored.isManual)
+                }
+
+                AppLog.debug(.matching, "stored match yielded no episodes mediaId=\(media.id) session=\(storedMatch.session) manual=\(stored.isManual)")
+                if stored.isManual {
+                    throw AniListError.invalidResponse
+                }
+                matchStore.clear(mediaId: media.id)
+            } catch {
+                AppLog.error(.network, "stored match episodes failed mediaId=\(media.id) session=\(storedMatch.session) \(error.localizedDescription)")
+                if stored.isManual {
+                    throw error
+                }
+                matchStore.clear(mediaId: media.id)
+            }
         }
 
         guard let match = try await runtime.autoMatch(media: media) else {

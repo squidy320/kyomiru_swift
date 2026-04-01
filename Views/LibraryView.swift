@@ -66,7 +66,7 @@ struct LibraryView: View {
                                                     imageURL: item.imageURL,
                                                     episodeBadge: item.episodeBadge,
                                                     media: item.media,
-                                                    enablesTMDBArtworkLookup: false
+                                                    enablesTMDBArtworkLookup: true
                                                 )
                                                 .frame(height: UIConstants.continueCardHeight)
                                             }
@@ -643,7 +643,7 @@ private struct LibrarySection: View {
                                     score: entry.media.averageScore,
                                     statusBadge: nil,
                                     cornerBadge: showNew ? "NEW" : nil,
-                                    enablesTMDBArtworkLookup: false
+                                    enablesTMDBArtworkLookup: true
                                 )
                                 .frame(width: UIConstants.posterCardWidth)
                             }
