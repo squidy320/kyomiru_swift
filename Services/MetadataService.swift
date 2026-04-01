@@ -191,7 +191,6 @@ final class MetadataService {
         mediaType: String = "tv",
         seasonNumber: Int,
         episodeOffset: Int = 0,
-        absoluteOffset: Int = 0, // Added absoluteOffset
         showTitle: String? = nil,
         seasonLabel: String? = nil
     ) async {
@@ -201,7 +200,6 @@ final class MetadataService {
             mediaType: mediaType,
             seasonNumber: seasonNumber,
             episodeOffset: episodeOffset,
-            absoluteOffset: absoluteOffset, // Pass absoluteOffset
             showTitle: showTitle,
             seasonLabel: seasonLabel
         )

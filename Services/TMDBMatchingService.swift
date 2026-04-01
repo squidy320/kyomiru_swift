@@ -242,7 +242,8 @@ final class TMDBMatchingService {
             showId: resolved.showId,
             mediaType: resolved.mediaType,
             seasonNumber: resolved.seasonNumber,
-            episodeOffset: resolved.episodeOffset
+            episodeOffset: resolved.episodeOffset,
+            absoluteOffset: resolved.absoluteOffset
         )
     }
 
@@ -262,6 +263,7 @@ final class TMDBMatchingService {
                 mediaType: overrideMatch.mediaType ?? "tv",
                 seasonNumber: overrideMatch.seasonNumber,
                 episodeOffset: overrideMatch.episodeOffset,
+                absoluteOffset: overrideMatch.absoluteOffset,
                 confidence: 1.0,
                 reason: "manual-override"
             )
@@ -289,6 +291,7 @@ final class TMDBMatchingService {
                 mediaType: "tv",
                 seasonNumber: cached.seasonNumber,
                 episodeOffset: cached.episodeOffset,
+                absoluteOffset: cached.absoluteOffset,
                 confidence: 0.95,
                 reason: "disk-cache"
             )
@@ -318,6 +321,7 @@ final class TMDBMatchingService {
                         mediaType: "tv",
                         seasonNumber: cached.seasonNumber,
                         episodeOffset: cached.episodeOffset,
+                        absoluteOffset: cached.absoluteOffset,
                         confidence: 0.95,
                         reason: "disk-cache"
                     )
@@ -394,6 +398,7 @@ final class TMDBMatchingService {
                             showId: resolved.showId,
                             seasonNumber: resolved.seasonNumber,
                             episodeOffset: resolved.episodeOffset,
+                            absoluteOffset: resolved.absoluteOffset,
                             cachedAt: Date(),
                             seasonDetails: seasonDetails
                         )
@@ -660,6 +665,7 @@ final class TMDBMatchingService {
                     showId: showId,
                     seasonNumber: seasonNumber,
                     episodeOffset: episodeOffset,
+                    absoluteOffset: absoluteOffset,
                     cachedAt: Date(),
                     seasonDetails: details
                 )
