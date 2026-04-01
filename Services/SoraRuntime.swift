@@ -163,78 +163,34 @@ final class SoraRuntime {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         AppLog.debug(.network, "animepahe search start query=\(trimmed)")
-
         do {
-            let matches = try await directSearchAnime(query: trimmed)
+            let items = try await moduleService.search(query: trimmed)
+            let matches = items.compactMap { item -> SoraAnimeMatch? in
+                let sessionId = URL(string: item.href)?.lastPathComponent ?? ""
+                guard !sessionId.isEmpty else { return nil }
+                return SoraAnimeMatch(
+                    id: sessionId,
+                    title: item.title,
+                    imageURL: URL(string: item.imageUrl),
+                    session: sessionId,
+                    year: nil,
+                    format: nil,
+                    episodeCount: nil
+                )
+            }
+            AppLog.debug(.network, "animepahe luna search results count=\(matches.count)")
             if !matches.isEmpty {
-                AppLog.debug(.network, "animepahe direct search success count=\(matches.count)")
+                AppLog.debug(.network, "animepahe search success count=\(matches.count)")
                 return matches
             }
         } catch {
-            AppLog.error(.network, "animepahe direct search failed query=\(trimmed) \(error.localizedDescription)")
+            AppLog.error(.network, "animepahe luna search failed query=\(trimmed) \(error.localizedDescription)")
         }
 
-        AppLog.debug(.network, "animepahe search fallback to module query=\(trimmed)")
-        let items = try await moduleService.search(query: trimmed)
-        let matches = items.compactMap { item -> SoraAnimeMatch? in
-            let sessionId = URL(string: item.href)?.lastPathComponent ?? ""
-            guard !sessionId.isEmpty else { return nil }
-            return SoraAnimeMatch(
-                id: sessionId,
-                title: item.title,
-                imageURL: URL(string: item.imageUrl),
-                session: sessionId,
-                year: nil,
-                format: nil,
-                episodeCount: nil
-            )
-        }
-        AppLog.debug(.network, "animepahe module search results count=\(matches.count)")
+        AppLog.debug(.network, "animepahe search fallback to direct api")
+        let matches = try await directSearchAnime(query: trimmed)
+        AppLog.debug(.network, "animepahe direct search results count=\(matches.count)")
         return matches
-    }
-
-    func autoMatch(media: AniListMedia) async throws -> SoraAnimeMatch? {
-        AppLog.debug(.matching, "auto match start mediaId=\(media.id)")
-        let queries = TitleMatcher.buildQueries(for: media)
-        var all: [SoraAnimeMatch] = []
-        for q in queries {
-            let matches = try await searchAnime(query: q)
-            all.append(contentsOf: matches)
-        }
-        if all.isEmpty { return nil }
-        let deduped = Dictionary(grouping: all, by: { $0.session })
-            .compactMap { $0.value.first }
-        let best = TitleMatcher.bestMatch(target: media, candidates: deduped)
-        AppLog.debug(.matching, "auto match result mediaId=\(media.id) matched=\(best != nil)")
-        return best
-    }
-
-    func episodes(for match: SoraAnimeMatch) async throws -> [SoraEpisode] {
-        AppLog.debug(.network, "episodes list start session=\(match.session)")
-        do {
-            let episodes = try await directEpisodes(session: match.session)
-            if !episodes.isEmpty {
-                let sorted = episodes.sorted { $0.number < $1.number }
-                AppLog.debug(.network, "episodes direct load success count=\(sorted.count) session=\(match.session)")
-                return sorted
-            }
-            AppLog.debug(.network, "episodes direct api returned no rows session=\(match.session)")
-        } catch {
-            AppLog.error(.network, "episodes direct load failed session=\(match.session) \(error.localizedDescription)")
-        }
-
-        let animeURL = baseURL.appendingPathComponent("anime/\(match.session)")
-        let links = try await moduleService.episodes(animeURL: animeURL)
-        AppLog.debug(.network, "episodes luna links count=\(links.count) session=\(match.session)")
-        let sorted = links.compactMap { link -> SoraEpisode? in
-            guard link.number > 0 else { return nil }
-            let href = link.href.isEmpty ? animeURL.absoluteString : link.href
-            guard let playURL = URL(string: href) else { return nil }
-            let id = URL(string: href)?.lastPathComponent ?? UUID().uuidString
-            return SoraEpisode(id: id, number: link.number, playURL: playURL)
-        }.sorted { $0.number < $1.number }
-        AppLog.debug(.network, "episodes list success count=\(sorted.count)")
-        return sorted
     }
 
     private func directSearchAnime(query: String) async throws -> [SoraAnimeMatch] {
@@ -267,6 +223,49 @@ final class SoraRuntime {
                 episodeCount: eps
             )
         }
+    }
+
+    func autoMatch(media: AniListMedia) async throws -> SoraAnimeMatch? {
+        AppLog.debug(.matching, "auto match start mediaId=\(media.id)")
+        let queries = TitleMatcher.buildQueries(for: media)
+        var all: [SoraAnimeMatch] = []
+        for q in queries {
+            let matches = try await searchAnime(query: q)
+            all.append(contentsOf: matches)
+        }
+        if all.isEmpty { return nil }
+        let deduped = Dictionary(grouping: all, by: { $0.session })
+            .compactMap { $0.value.first }
+        let best = TitleMatcher.bestMatch(target: media, candidates: deduped)
+        AppLog.debug(.matching, "auto match result mediaId=\(media.id) matched=\(best != nil)")
+        return best
+    }
+
+    func episodes(for match: SoraAnimeMatch) async throws -> [SoraEpisode] {
+        AppLog.debug(.network, "episodes list start session=\(match.session)")
+        do {
+            let animeURL = baseURL.appendingPathComponent("anime/\(match.session)")
+            let links = try await moduleService.episodes(animeURL: animeURL)
+            AppLog.debug(.network, "episodes luna links count=\(links.count) session=\(match.session)")
+            let episodes: [SoraEpisode] = links.compactMap { link in
+                guard link.number > 0 else { return nil }
+                let href = link.href.isEmpty ? animeURL.absoluteString : link.href
+                guard let playURL = URL(string: href) else { return nil }
+                let id = URL(string: href)?.lastPathComponent ?? UUID().uuidString
+                return SoraEpisode(id: id, number: link.number, playURL: playURL)
+            }
+            if !episodes.isEmpty {
+                let sorted = episodes.sorted { $0.number < $1.number }
+                AppLog.debug(.network, "episodes list success count=\(sorted.count)")
+                return sorted
+            }
+        } catch {
+            AppLog.error(.network, "episodes luna load failed session=\(match.session) \(error.localizedDescription)")
+        }
+
+        let sorted = try await directEpisodes(session: match.session).sorted { $0.number < $1.number }
+        AppLog.debug(.network, "episodes list success count=\(sorted.count)")
+        return sorted
     }
 
     private func directEpisodes(session: String) async throws -> [SoraEpisode] {
