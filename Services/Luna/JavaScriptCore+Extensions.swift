@@ -238,53 +238,37 @@ extension JSContext {
                 }
             }
             
-            let maxAttempts = 3
-            let baseDelay: TimeInterval = 0.8
+            let session = URLSession.fetchData(allowRedirects: redirect.boolValue)
+            let task = session.downloadTask(with: request) { tempFileURL, response, error in
+                defer { session.finishTasksAndInvalidate() }
 
-            func performDownload(attempt: Int) {
-                let session = URLSession.fetchData(allowRedirects: redirect.boolValue)
-                let task = session.downloadTask(with: request) { tempFileURL, response, error in
-                    defer { session.finishTasksAndInvalidate() }
-
-                    let callResolve: ([String: Any]) -> Void = { dict in
-                        DispatchQueue.main.async {
-                            if !resolve.isUndefined {
-                                resolve.call(withArguments: [dict])
-                            } else {
-                                LunaLogger.shared.log("Resolve callback is undefined", type: "Error")
-                            }
-                        }
-                    }
-
-                    func retryOrFail(reason: String) {
-                        if attempt < maxAttempts {
-                            let delay = baseDelay * pow(2.0, Double(attempt - 1))
-                            LunaLogger.shared.log("fetchV2 retry \(attempt + 1)/\(maxAttempts) reason=\(reason)", type: "Warning")
-                            DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
-                                performDownload(attempt: attempt + 1)
-                            }
+                let callResolve: ([String: Any]) -> Void = { dict in
+                    DispatchQueue.main.async {
+                        if !resolve.isUndefined {
+                            resolve.call(withArguments: [dict])
                         } else {
-                            callResolve(["error": reason])
+                            LunaLogger.shared.log("Resolve callback is undefined", type: "Error")
                         }
                     }
+                }
 
-                    if let error = error {
-                        LunaLogger.shared.log("Network error in fetchV2NativeFunction: \(error.localizedDescription)", type: "Error")
-                        retryOrFail(reason: error.localizedDescription)
-                        return
-                    }
+                if let error = error {
+                    LunaLogger.shared.log("Network error in fetchV2NativeFunction: \(error.localizedDescription)", type: "Error")
+                    callResolve(["error": error.localizedDescription])
+                    return
+                }
 
-                    if let http = response as? HTTPURLResponse,
-                       http.statusCode >= 500 || http.statusCode == 429 {
-                        retryOrFail(reason: "HTTP \(http.statusCode)")
-                        return
-                    }
+                guard let tempFileURL = tempFileURL else {
+                    LunaLogger.shared.log("No data in response", type: "Error")
+                    callResolve(["error": "No data"])
+                    return
+                }
 
-                    guard let tempFileURL = tempFileURL else {
-                        LunaLogger.shared.log("No data in response", type: "Error")
-                        retryOrFail(reason: "No data")
-                        return
-                    }
+                if let http = response as? HTTPURLResponse,
+                   http.statusCode >= 500 || http.statusCode == 429 {
+                    callResolve(["error": "HTTP \(http.statusCode)"])
+                    return
+                }
                 
                 var safeHeaders: [String: String] = [:]
                 if let httpResponse = response as? HTTPURLResponse {
@@ -334,11 +318,9 @@ extension JSContext {
                     LunaLogger.shared.log("Error reading downloaded file: \(error.localizedDescription)", type: "Error")
                     callResolve(["error": "Error reading downloaded file"])
                 }
+                }
             }
             task.resume()
-            }
-
-            performDownload(attempt: 1)
         }
         
         self.setObject(fetchV2NativeFunction, forKeyedSubscript: "fetchV2Native" as NSString)

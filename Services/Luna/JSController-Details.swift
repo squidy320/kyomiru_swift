@@ -137,7 +137,7 @@ extension JSController {
                 dispatchGroup.leave()
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30.0, execute: timeoutWorkItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutWorkItem)
         
         guard let promiseEpisodes = promiseValueEpisodes else {
             LunaLogger.shared.log("extractEpisodes did not return a Promise", type: "Error")
@@ -249,7 +249,7 @@ extension JSController {
                 }
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30.0, execute: timeoutWorkItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutWorkItem)
         
         guard let promiseEpisodes = promiseValueEpisodes else {
             LunaLogger.shared.log("extractEpisodes did not return a Promise", type: "Error")
