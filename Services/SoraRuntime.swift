@@ -163,61 +163,33 @@ final class SoraRuntime {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         AppLog.debug(.network, "animepahe search start query=\(trimmed)")
+
         do {
-            let items = try await moduleService.search(query: trimmed)
-            let matches = items.compactMap { item -> SoraAnimeMatch? in
-                let sessionId = URL(string: item.href)?.lastPathComponent ?? ""
-                guard !sessionId.isEmpty else { return nil }
-                return SoraAnimeMatch(
-                    id: sessionId,
-                    title: item.title,
-                    imageURL: URL(string: item.imageUrl),
-                    session: sessionId,
-                    year: nil,
-                    format: nil,
-                    episodeCount: nil
-                )
-            }
-            AppLog.debug(.network, "animepahe luna search results count=\(matches.count)")
+            let matches = try await directSearchAnime(query: trimmed)
             if !matches.isEmpty {
-                AppLog.debug(.network, "animepahe search success count=\(matches.count)")
+                AppLog.debug(.network, "animepahe direct search success count=\(matches.count)")
                 return matches
             }
         } catch {
-            AppLog.error(.network, "animepahe luna search failed query=\(trimmed) \(error.localizedDescription)")
+            AppLog.error(.network, "animepahe direct search failed query=\(trimmed) \(error.localizedDescription)")
         }
 
-        // Fallback to direct API when JS loader fails.
-        AppLog.debug(.network, "animepahe search fallback to direct api")
-        let url = baseURL.appendingPathComponent("api")
-        var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        comps.queryItems = [
-            URLQueryItem(name: "m", value: "search"),
-            URLQueryItem(name: "q", value: trimmed),
-            URLQueryItem(name: "page", value: "1")
-        ]
-        let data = try await get(url: comps.url!)
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let list = root["data"] as? [[String: Any]] else { return [] }
-        let matches: [SoraAnimeMatch] = list.compactMap { (row: [String: Any]) -> SoraAnimeMatch? in
-            let sessionId = (row["session"] as? String) ?? ""
+        AppLog.debug(.network, "animepahe search fallback to module query=\(trimmed)")
+        let items = try await moduleService.search(query: trimmed)
+        let matches = items.compactMap { item -> SoraAnimeMatch? in
+            let sessionId = URL(string: item.href)?.lastPathComponent ?? ""
             guard !sessionId.isEmpty else { return nil }
-            let title = (row["title"] as? String) ?? "Unknown"
-            let image = (row["poster"] as? String).flatMap(URL.init(string:))
-            let year = row["year"] as? Int
-            let format = row["type"] as? String
-            let eps = row["episodes"] as? Int
             return SoraAnimeMatch(
                 id: sessionId,
-                title: title,
-                imageURL: image,
+                title: item.title,
+                imageURL: URL(string: item.imageUrl),
                 session: sessionId,
-                year: year,
-                format: format,
-                episodeCount: eps
+                year: nil,
+                format: nil,
+                episodeCount: nil
             )
         }
-        AppLog.debug(.network, "animepahe search success count=\(matches.count)")
+        AppLog.debug(.network, "animepahe module search results count=\(matches.count)")
         return matches
     }
 
@@ -240,27 +212,65 @@ final class SoraRuntime {
     func episodes(for match: SoraAnimeMatch) async throws -> [SoraEpisode] {
         AppLog.debug(.network, "episodes list start session=\(match.session)")
         do {
-            let animeURL = baseURL.appendingPathComponent("anime/\(match.session)")
-            let links = try await moduleService.episodes(animeURL: animeURL)
-            AppLog.debug(.network, "episodes luna links count=\(links.count) session=\(match.session)")
-            let episodes: [SoraEpisode] = links.compactMap { link in
-                guard link.number > 0 else { return nil }
-                let href = link.href.isEmpty ? animeURL.absoluteString : link.href
-                guard let playURL = URL(string: href) else { return nil }
-                let id = URL(string: href)?.lastPathComponent ?? UUID().uuidString
-                return SoraEpisode(id: id, number: link.number, playURL: playURL)
-            }
+            let episodes = try await directEpisodes(session: match.session)
             if !episodes.isEmpty {
                 let sorted = episodes.sorted { $0.number < $1.number }
-                AppLog.debug(.network, "episodes list success count=\(sorted.count)")
+                AppLog.debug(.network, "episodes direct load success count=\(sorted.count) session=\(match.session)")
                 return sorted
             }
+            AppLog.debug(.network, "episodes direct api returned no rows session=\(match.session)")
         } catch {
-            AppLog.error(.network, "episodes luna load failed session=\(match.session) \(error.localizedDescription)")
+            AppLog.error(.network, "episodes direct load failed session=\(match.session) \(error.localizedDescription)")
         }
 
-        // Fallback to direct API when JS loader fails.
-        AppLog.debug(.network, "episodes fallback to direct api session=\(match.session)")
+        let animeURL = baseURL.appendingPathComponent("anime/\(match.session)")
+        let links = try await moduleService.episodes(animeURL: animeURL)
+        AppLog.debug(.network, "episodes luna links count=\(links.count) session=\(match.session)")
+        let sorted = links.compactMap { link -> SoraEpisode? in
+            guard link.number > 0 else { return nil }
+            let href = link.href.isEmpty ? animeURL.absoluteString : link.href
+            guard let playURL = URL(string: href) else { return nil }
+            let id = URL(string: href)?.lastPathComponent ?? UUID().uuidString
+            return SoraEpisode(id: id, number: link.number, playURL: playURL)
+        }.sorted { $0.number < $1.number }
+        AppLog.debug(.network, "episodes list success count=\(sorted.count)")
+        return sorted
+    }
+
+    private func directSearchAnime(query: String) async throws -> [SoraAnimeMatch] {
+        AppLog.debug(.network, "animepahe search direct api query=\(query)")
+        let url = baseURL.appendingPathComponent("api")
+        var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "m", value: "search"),
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "page", value: "1")
+        ]
+        let data = try await get(url: comps.url!)
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let list = root["data"] as? [[String: Any]] else { return [] }
+        return list.compactMap { row in
+            let sessionId = (row["session"] as? String) ?? ""
+            guard !sessionId.isEmpty else { return nil }
+            let title = (row["title"] as? String) ?? "Unknown"
+            let image = (row["poster"] as? String).flatMap(URL.init(string:))
+            let year = row["year"] as? Int
+            let format = row["type"] as? String
+            let eps = row["episodes"] as? Int
+            return SoraAnimeMatch(
+                id: sessionId,
+                title: title,
+                imageURL: image,
+                session: sessionId,
+                year: year,
+                format: format,
+                episodeCount: eps
+            )
+        }
+    }
+
+    private func directEpisodes(session: String) async throws -> [SoraEpisode] {
+        AppLog.debug(.network, "episodes fallback to direct api session=\(session)")
         let url = baseURL.appendingPathComponent("api")
         var page = 1
         var out: [SoraEpisode] = []
@@ -269,13 +279,13 @@ final class SoraRuntime {
             var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)!
             comps.queryItems = [
                 URLQueryItem(name: "m", value: "release"),
-                URLQueryItem(name: "id", value: match.session),
+                URLQueryItem(name: "id", value: session),
                 URLQueryItem(name: "sort", value: "episode_asc"),
                 URLQueryItem(name: "page", value: "\(page)")
             ]
             let data = try await get(url: comps.url!)
             guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                AppLog.error(.network, "episodes list decode failed session=\(match.session)")
+                AppLog.error(.network, "episodes list decode failed session=\(session)")
                 break
             }
             lastPage = root["last_page"] as? Int ?? lastPage
@@ -283,17 +293,15 @@ final class SoraRuntime {
             let eps: [SoraEpisode] = rows.compactMap { row in
                 let epNumber = row["episode"] as? Int ?? 0
                 let episode2 = row["episode2"] as? Int ?? 0
-                let session = row["session"] as? String ?? ""
-                if epNumber <= 0 || episode2 != 0 || session.isEmpty { return nil }
-                let playURL = baseURL.appendingPathComponent("play/\(match.session)/\(session)")
-                return SoraEpisode(id: session, number: epNumber, playURL: playURL)
+                let episodeSession = row["session"] as? String ?? ""
+                if epNumber <= 0 || episode2 != 0 || episodeSession.isEmpty { return nil }
+                let playURL = baseURL.appendingPathComponent("play/\(session)/\(episodeSession)")
+                return SoraEpisode(id: episodeSession, number: epNumber, playURL: playURL)
             }
             out.append(contentsOf: eps)
             page += 1
         } while page <= lastPage
-        let sorted = out.sorted { $0.number < $1.number }
-        AppLog.debug(.network, "episodes list success count=\(sorted.count)")
-        return sorted
+        return out
     }
 
     func sources(for episode: SoraEpisode) async throws -> [SoraSource] {

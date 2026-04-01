@@ -381,7 +381,9 @@ struct LibraryView: View {
     }
 
     private func runLibraryBackgroundWork(sections: [AniListLibrarySection], generation: Int? = nil) async {
-        await prefetchAvailability(sections: sections, generation: generation)
+        async let artworkWarmup: Void = prefetchTMDBArtwork(sections: sections, generation: generation)
+        async let availabilityWarmup: Void = prefetchAvailability(sections: sections, generation: generation)
+        _ = await (artworkWarmup, availabilityWarmup)
         guard generation == nil || generation == libraryLoadGeneration else { return }
         await prefetchLibraryImages(sections: sections)
     }
@@ -405,6 +407,29 @@ struct LibraryView: View {
         await MainActor.run {
             availabilityById = updated
         }
+    }
+
+    private func prefetchTMDBArtwork(sections: [AniListLibrarySection], generation: Int? = nil, limit: Int = 18) async {
+        guard networkMonitor.isOnWiFi else { return }
+
+        let entries = Array(sections.flatMap(\.items).prefix(limit))
+        guard !entries.isEmpty else { return }
+
+        var urls: [URL] = []
+        for entry in entries {
+            if let generation, generation != libraryLoadGeneration { return }
+            if let meta = await appState.services.metadataService.fetchTMDBMetadata(for: entry.media) {
+                if let posterURL = meta.posterURL {
+                    urls.append(posterURL)
+                }
+                if let backdropURL = meta.backdropURL {
+                    urls.append(backdropURL)
+                }
+            }
+        }
+
+        if let generation, generation != libraryLoadGeneration { return }
+        await ImageCache.shared.prefetch(urls: urls)
     }
 
     private func prefetchLibraryImages(sections: [AniListLibrarySection], limit: Int = 18) async {

@@ -884,6 +884,10 @@ struct DetailsView: View {
                     streamingEpisodes = []
                 }
             }
+        } catch is CancellationError {
+            guard loadGeneration == episodeLoadGeneration else { return }
+            isLoading = false
+            AppLog.debug(.network, "details episodes load cancelled mediaId=\(media.id)")
         } catch {
             guard loadGeneration == episodeLoadGeneration else { return }
             errorMessage = "Failed to load episodes."

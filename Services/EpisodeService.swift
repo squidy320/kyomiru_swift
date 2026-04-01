@@ -34,6 +34,8 @@ final class EpisodeService {
                     throw AniListError.invalidResponse
                 }
                 matchStore.clear(mediaId: media.id)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 AppLog.error(.network, "stored match episodes failed mediaId=\(media.id) session=\(storedMatch.session) \(error.localizedDescription)")
                 if stored.isManual {
@@ -48,7 +50,12 @@ final class EpisodeService {
             throw AniListError.invalidResponse
         }
         matchStore.set(match: match, mediaId: media.id, isManual: false)
-        let episodes = try await runtime.episodes(for: match)
+        let episodes: [SoraEpisode]
+        do {
+            episodes = try await runtime.episodes(for: match)
+        } catch is CancellationError {
+            throw CancellationError()
+        }
         let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
         AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
         return MatchLoadResult(match: match, episodes: adjusted, isManual: false)

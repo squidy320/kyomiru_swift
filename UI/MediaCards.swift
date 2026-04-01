@@ -52,10 +52,13 @@ struct MediaPosterCard: View {
             if let tmdbPosterURL {
                 return tmdbPosterURL
             }
-            if (allowFallbackWhileLoading || enablesTMDBArtworkLookup) && !tmdbLookupComplete {
+            if enablesTMDBArtworkLookup {
+                if !tmdbLookupComplete {
+                    return allowFallbackWhileLoading ? imageURL : nil
+                }
                 return imageURL
             }
-            return tmdbLookupComplete ? imageURL : nil
+            return imageURL
         }()
         ZStack(alignment: .topTrailing) {
             ZStack(alignment: .bottomLeading) {
@@ -166,7 +169,15 @@ struct ContinueWatchingCard: View {
     var body: some View {
         let useComfortableLayout = appState.settings.useComfortableLayout
         let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
-        let resolvedURL = tmdbImageURL ?? ((tmdbLookupComplete || enablesTMDBArtworkLookup) ? imageURL : nil)
+        let resolvedURL: URL? = {
+            if let tmdbImageURL {
+                return tmdbImageURL
+            }
+            if enablesTMDBArtworkLookup {
+                return tmdbLookupComplete ? imageURL : nil
+            }
+            return imageURL
+        }()
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.06))
