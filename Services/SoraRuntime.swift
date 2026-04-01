@@ -21,8 +21,8 @@ final class AnimePaheModuleService {
         let service = try await loadServiceIfNeeded()
         AppLog.debug(.network, "animepahe module search using manifest=\(manifestURL.absoluteString)")
         return try await withOperationTimeout(seconds: 12, label: "animepahe module search") {
-            await withCheckedContinuation { cont in
-                js.fetchJsSearchResults(keyword: query, module: service) { results in
+            await withCheckedContinuation { [self] cont in
+                self.js.fetchJsSearchResults(keyword: query, module: service) { results in
                     cont.resume(returning: results)
                 }
             }
@@ -32,8 +32,8 @@ final class AnimePaheModuleService {
     func episodes(animeURL: URL) async throws -> [EpisodeLink] {
         _ = try await loadServiceIfNeeded()
         return try await withOperationTimeout(seconds: 35, label: "animepahe module episodes") {
-            await withCheckedContinuation { cont in
-                js.fetchEpisodesJS(url: animeURL.absoluteString) { results in
+            await withCheckedContinuation { [self] cont in
+                self.js.fetchEpisodesJS(url: animeURL.absoluteString) { results in
                     cont.resume(returning: results)
                 }
             }
@@ -43,8 +43,8 @@ final class AnimePaheModuleService {
     func sources(episodeURL: URL) async throws -> AnimePaheModuleStreamResult {
         let service = try await loadServiceIfNeeded()
         let result = try await withOperationTimeout(seconds: 35, label: "animepahe module sources") {
-            await withCheckedContinuation { cont in
-                js.fetchStreamUrlJS(episodeUrl: episodeURL.absoluteString, module: service) { result in
+            await withCheckedContinuation { [self] cont in
+                self.js.fetchStreamUrlJS(episodeUrl: episodeURL.absoluteString, module: service) { result in
                     cont.resume(returning: result)
                 }
             }
