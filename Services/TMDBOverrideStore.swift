@@ -6,6 +6,7 @@ struct TMDBManualOverride: Codable, Equatable {
     let mediaType: String?
     let seasonNumber: Int
     let episodeOffset: Int
+    let absoluteOffset: Int
     let showTitle: String?
     let seasonLabel: String?
     let updatedAt: TimeInterval

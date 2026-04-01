@@ -58,6 +58,7 @@ struct TMDBSeasonMatch: Equatable, Codable {
     let mediaType: String
     let seasonNumber: Int
     let episodeOffset: Int
+    let absoluteOffset: Int
 }
 
 struct TMDBResolvedMatch: Equatable, Codable {
@@ -65,6 +66,7 @@ struct TMDBResolvedMatch: Equatable, Codable {
     let mediaType: String
     let seasonNumber: Int
     let episodeOffset: Int
+    let absoluteOffset: Int
     let confidence: Double
     let reason: String
 }
@@ -371,6 +373,11 @@ final class TMDBMatchingService {
                     mediaType: show.mediaType,
                     seasonNumber: selection.seasonNumber,
                     episodeOffset: selection.episodeOffset,
+                    absoluteOffset: calculateAbsoluteOffset(
+                        seasonNumber: selection.seasonNumber,
+                        offsetWithinSeason: selection.episodeOffset,
+                        in: show
+                    ),
                     confidence: selection.confidence,
                     reason: selection.reason
                 )
@@ -399,11 +406,28 @@ final class TMDBMatchingService {
 
                 AppLog.debug(
                     .matching,
-                    "tmdb resolved match mediaId=\(media.id) showId=\(resolved.showId) season=\(resolved.seasonNumber) offset=\(resolved.episodeOffset) reason=\(resolved.reason)"
+                    "tmdb resolved match mediaId=\(media.id) showId=\(resolved.showId) season=\(resolved.seasonNumber) offset=\(resolved.episodeOffset) absOffset=\(resolved.absoluteOffset) reason=\(resolved.reason)"
                 )
                 return resolved
             }
         }
+    }
+
+    private func calculateAbsoluteOffset(
+        seasonNumber: Int,
+        offsetWithinSeason: Int,
+        in show: TMDBShowSummary
+    ) -> Int {
+        var absolute = 0
+        for season in show.seasons {
+            if season.seasonNumber < seasonNumber {
+                absolute += season.episodeCount
+            } else if season.seasonNumber == seasonNumber {
+                absolute += max(0, offsetWithinSeason)
+                break
+            }
+        }
+        return absolute
     }
 
     func resolveAnimeStructure(media: AniListMedia) async -> TMDBAnimeStructureMatch? {
@@ -607,12 +631,23 @@ final class TMDBMatchingService {
         showTitle: String? = nil,
         seasonLabel: String? = nil
     ) async {
+        var absoluteOffset = episodeOffset
+        if let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME",
+           let show = await fetchShowSummary(showId: showId, mediaType: mediaType, apiKey: apiKey) {
+            absoluteOffset = calculateAbsoluteOffset(
+                seasonNumber: seasonNumber,
+                offsetWithinSeason: episodeOffset,
+                in: show
+            )
+        }
+
         let overrideMatch = TMDBManualOverride(
             aniListId: aniListId,
             showId: showId,
             mediaType: mediaType,
             seasonNumber: seasonNumber,
             episodeOffset: episodeOffset,
+            absoluteOffset: absoluteOffset,
             showTitle: showTitle,
             seasonLabel: seasonLabel,
             updatedAt: Date().timeIntervalSince1970
@@ -1211,6 +1246,11 @@ final class TMDBMatchingService {
             )
         }
 
+        // Avoid low-confidence fallback to Season 1 Episode 1 if we have markers indicating it's a later part
+        if explicitSeasonMarker != nil || explicitPartMarker != nil || hasFinalSeasonMarker {
+            return nil
+        }
+
         return SelectedSeason(
             seasonNumber: seasons[0].seasonNumber,
             episodeOffset: 0,
@@ -1419,13 +1459,13 @@ final class TMDBMatchingService {
             if firstNumber >= start && firstNumber <= end {
                 return SeasonRangeMatch(
                     seasonNumber: season.seasonNumber,
-                    offset: start - 1
+                    offset: firstNumber - start
                 )
             }
             if lastNumber >= start && lastNumber <= end {
                 return SeasonRangeMatch(
                     seasonNumber: season.seasonNumber,
-                    offset: start - 1
+                    offset: max(0, lastNumber - expectedEpisodeCount - start + 1)
                 )
             }
             cursor = end + 1

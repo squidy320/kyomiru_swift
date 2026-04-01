@@ -5,6 +5,7 @@ struct TMDBCachedMetadata: Codable, Equatable {
     let showId: Int
     let seasonNumber: Int
     let episodeOffset: Int
+    let absoluteOffset: Int
     let cachedAt: Date
     let seasonDetails: TMDBSeasonDetails?
 }

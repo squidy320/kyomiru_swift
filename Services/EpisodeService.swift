@@ -90,11 +90,10 @@ final class EpisodeService {
 
         // Attempt to get accurate offset from TMDB mapping
         if let tmdbMatch = await tmdbMatcher.matchShowAndSeason(media: media) {
-            let offset = tmdbMatch.episodeOffset
+            let offset = tmdbMatch.absoluteOffset
             if offset != 0 {
-                // If offset is -24, it means AniList Ep 1 is TMDB Ep 25.
                 // Sora/Provider usually follows TMDB absolute numbering if it's a single entry.
-                let absoluteStart = 1 - offset
+                let absoluteStart = 1 + offset
                 let adjusted = sorted.filter { $0.sourceNumber >= absoluteStart }
                 
                 if let expected = media.episodes, expected > 0 {
