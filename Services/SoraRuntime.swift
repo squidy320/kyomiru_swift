@@ -257,10 +257,9 @@ final class SoraRuntime {
             let links = try await moduleService.episodes(animeURL: animeURL)
             AppLog.debug(.network, "episodes luna links count=\(links.count) session=\(match.session)")
             let episodes: [SoraEpisode] = links.compactMap { link in
-                guard link.number > 0 else { return nil }
-                let href = link.href.isEmpty ? animeURL.absoluteString : link.href
-                guard let playURL = URL(string: href) else { return nil }
-                let id = URL(string: href)?.lastPathComponent ?? UUID().uuidString
+                guard link.number > 0, !link.href.isEmpty else { return nil }
+                guard let playURL = URL(string: link.href) else { return nil }
+                let id = playURL.lastPathComponent
                 return SoraEpisode(id: id, number: link.number, playURL: playURL)
             }
             if !episodes.isEmpty {

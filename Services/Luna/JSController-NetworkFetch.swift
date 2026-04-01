@@ -101,6 +101,11 @@ extension JSContext {
         self.setObject(networkFetchNativeFunction, forKeyedSubscript: "networkFetchNative" as NSString)
 
         let networkFetchDefinition = """
+            function networkFetch(url, options) {
+                return new Promise(function(resolve, reject) {
+                    networkFetchNative(url, options, resolve, reject);
+                });
+            }
             """
 
         self.evaluateScript(networkFetchDefinition)
@@ -129,6 +134,11 @@ extension JSContext {
         }
         self.setObject(networkFetchSimpleNativeFunction, forKeyedSubscript: "networkFetchSimpleNative" as NSString)
         let networkFetchSimpleDefinition = """
+            function networkFetchSimple(url, options) {
+                return new Promise(function(resolve, reject) {
+                    networkFetchSimpleNative(url, options, resolve, reject);
+                });
+            }
             """
         self.evaluateScript(networkFetchSimpleDefinition)
     }

@@ -390,7 +390,7 @@ extension JSContext {
     func setupScrapingUtilities() {
         let scrapingUtils = """
         function getElementsByTag(html, tag) {
-            const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'gi');
+            const regex = new RegExp(`<${tag}[^>]*>([\\\\s\\\\S]*?)<\\\\/${tag}>`, 'gi');
             let result = [];
             let match;
             while ((match = regex.exec(html)) !== null) {
@@ -399,12 +399,12 @@ extension JSContext {
             return result;
         }
         function getAttribute(html, tag, attr) {
-            const regex = new RegExp(`<${tag}[^>]*${attr}=[\"']?([^\"' >]+)[\"']?[^>]*>`, 'i');
+            const regex = new RegExp(`<${tag}[^>]*${attr}=[\\"']?([^\\"'>]+)[\\"']?[^>]*>`, 'i');
             const match = regex.exec(html);
             return match ? match[1] : null;
         }
         function getInnerText(html) {
-            return html.replace(/<[^>]+>/g, '').replace(/\\s+/g, ' ').trim();
+            return html.replace(/<[^>]+>/g, '').replace(/\\\\s+/g, ' ').trim();
         }
         function extractBetween(str, start, end) {
             const s = str.indexOf(start);
@@ -417,7 +417,7 @@ extension JSContext {
             return html.replace(/<[^>]+>/g, '');
         }
         function normalizeWhitespace(str) {
-            return str.replace(/\\s+/g, ' ').trim();
+            return str.replace(/\\\\s+/g, ' ').trim();
         }
         function urlEncode(str) {
             return encodeURIComponent(str);
