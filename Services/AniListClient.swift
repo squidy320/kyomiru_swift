@@ -37,8 +37,12 @@ final class AniListClient {
     private var cachedTrackingEntries: [Int: (entry: AniListTrackingEntry?, expires: Date)] = [:]
     private var cachedAvailability: [Int: (entry: AniListEpisodeAvailability?, expires: Date)] = [:]
     private var cachedRelations: [Int: (edges: [AniListRelationEdge], expires: Date)] = [:]
+    private var cachedRelatedSections: [Int: (sections: [AniListRelatedSection], expires: Date)] = [:]
     private var cachedStreamingEpisodes: [Int: (episodes: [AniListStreamingEpisode], expires: Date)] = [:]
     private let requestGate = RequestGate(maxConcurrent: 4)
+    private let episodeAvailabilityTasks = InFlightIntTaskStore<AniListEpisodeAvailability?>()
+    private let relatedSectionsTasks = InFlightIntTaskStore<[AniListRelatedSection]>()
+    private let streamingEpisodesTasks = InFlightIntTaskStore<[AniListStreamingEpisode]>()
 
     init(cacheStore: CacheStore, session: URLSession = .custom) {
         self.cacheStore = cacheStore
@@ -831,122 +835,146 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
         if let cached = cachedAvailability[mediaId], cached.expires > Date() {
             return cached.entry
         }
-        AppLog.debug(.network, "episode availability start mediaId=\(mediaId)")
-        let query = """
-        query Availability($id: Int) {
-          Media(id: $id, type: ANIME) {
-            episodes
-            status
-            nextAiringEpisode { episode }
-          }
+        let task = await episodeAvailabilityTasks.task(for: mediaId) { [self] in
+            AppLog.debug(.network, "episode availability start mediaId=\(mediaId)")
+            let query = """
+            query Availability($id: Int) {
+              Media(id: $id, type: ANIME) {
+                episodes
+                status
+                nextAiringEpisode { episode }
+              }
+            }
+            """
+            let data = try await graphql(query: query, variables: ["id": mediaId], token: token)
+            guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let dataMap = root["data"] as? [String: Any],
+                  let media = dataMap["Media"] as? [String: Any] else {
+                AppLog.error(.network, "episode availability decode failed mediaId=\(mediaId)")
+                return nil
+            }
+            let total = media["episodes"] as? Int ?? 0
+            let status = media["status"] as? String
+            let nextEpisode = (media["nextAiringEpisode"] as? [String: Any])?["episode"] as? Int
+            let availability = AniListEpisodeAvailability(totalEpisodes: total, nextAiringEpisode: nextEpisode, status: status)
+            cachedAvailability[mediaId] = (availability, Date().addingTimeInterval(60 * 5))
+            AppLog.debug(.network, "episode availability success mediaId=\(mediaId)")
+            return availability
         }
-        """
-        let data = try await graphql(query: query, variables: ["id": mediaId], token: token)
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let dataMap = root["data"] as? [String: Any],
-              let media = dataMap["Media"] as? [String: Any] else {
-            AppLog.error(.network, "episode availability decode failed mediaId=\(mediaId)")
-            return nil
-        }
-        let total = media["episodes"] as? Int ?? 0
-        let status = media["status"] as? String
-        let nextEpisode = (media["nextAiringEpisode"] as? [String: Any])?["episode"] as? Int
-        let availability = AniListEpisodeAvailability(totalEpisodes: total, nextAiringEpisode: nextEpisode, status: status)
-        cachedAvailability[mediaId] = (availability, Date().addingTimeInterval(60 * 5))
-        AppLog.debug(.network, "episode availability success mediaId=\(mediaId)")
-        return availability
+        defer { Task { await episodeAvailabilityTasks.clear(mediaId) } }
+        return try await task.value
     }
 
     func relatedSections(mediaId: Int, token: String? = nil) async throws -> [AniListRelatedSection] {
-        AppLog.debug(.network, "related sections request start mediaId=\(mediaId)")
-        let query = """
-        query Related($id: Int) {
-          Media(id: $id, type: ANIME) {
-            relations {
-              edges {
-                relationType
-                node {
-                  id
-              idMal
-              title { romaji english native }
-                  coverImage { extraLarge large }
-                  bannerImage
-                  averageScore
-                  episodes
-                  seasonYear
-                  startDate { year month day }
-                  format
-                  status
-                  isAdult
-                  genres
-                  studios(isMain: true) { nodes { name } }
+        if let cached = cachedRelatedSections[mediaId], cached.expires > Date() {
+            AppLog.debug(.cache, "related sections memory cache hit mediaId=\(mediaId)")
+            return cached.sections
+        }
+
+        let task = await relatedSectionsTasks.task(for: mediaId) { [self] in
+            AppLog.debug(.network, "related sections request start mediaId=\(mediaId)")
+            let query = """
+            query Related($id: Int) {
+              Media(id: $id, type: ANIME) {
+                relations {
+                  edges {
+                    relationType
+                    node {
+                      id
+                  idMal
+                  title { romaji english native }
+                      coverImage { extraLarge large }
+                      bannerImage
+                      averageScore
+                      episodes
+                      seasonYear
+                      startDate { year month day }
+                      format
+                      status
+                      isAdult
+                      genres
+                      studios(isMain: true) { nodes { name } }
+                    }
+                  }
                 }
               }
             }
-          }
-        }
-        """
-        let data = try await graphql(query: query, variables: ["id": mediaId], token: token)
-        if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let edges = traverse(root, keyPath: ["data", "Media", "relations", "edges"]) as? [[String: Any]] {
-            var map: [String: [AniListMedia]] = [:]
-            for edge in edges {
-                guard let relation = edge["relationType"] as? String,
-                      let node = edge["node"] as? [String: Any],
-                      let media = decodeMedia(node) else { continue }
-                map[relation, default: []].append(media)
+            """
+            let data = try await graphql(query: query, variables: ["id": mediaId], token: token)
+            if let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let edges = traverse(root, keyPath: ["data", "Media", "relations", "edges"]) as? [[String: Any]] {
+                var map: [String: [AniListMedia]] = [:]
+                for edge in edges {
+                    guard let relation = edge["relationType"] as? String,
+                          let node = edge["node"] as? [String: Any],
+                          let media = decodeMedia(node) else { continue }
+                    map[relation, default: []].append(media)
+                }
+                let sections = map.map { relation, items in
+                    AniListRelatedSection(
+                        id: relation.lowercased(),
+                        title: relation.replacingOccurrences(of: "_", with: " ").capitalized,
+                        items: items
+                    )
+                }
+                if !sections.isEmpty {
+                    cachedRelatedSections[mediaId] = (sections, Date().addingTimeInterval(60 * 30))
+                    AppLog.debug(.network, "related sections request success mediaId=\(mediaId) count=\(sections.count)")
+                    return sections
+                }
+            } else {
+                AppLog.error(.network, "related sections decode failed mediaId=\(mediaId)")
             }
-            let sections = map.map { relation, items in
-                AniListRelatedSection(
-                    id: relation.lowercased(),
-                    title: relation.replacingOccurrences(of: "_", with: " ").capitalized,
-                    items: items
-                )
-            }
-            if !sections.isEmpty {
-                AppLog.debug(.network, "related sections request success mediaId=\(mediaId) count=\(sections.count)")
-                return sections
-            }
-        } else {
-            AppLog.error(.network, "related sections decode failed mediaId=\(mediaId)")
-        }
 
-        let fallbackQuery = """
-        query RelatedFallback($id: Int) {
-          Media(id: $id, type: ANIME) {
-            relations {
-              nodes {
-                id
-                idMal
-                title { romaji english native }
-                coverImage { extraLarge large }
-                bannerImage
-                averageScore
-                episodes
-                seasonYear
-                startDate { year month day }
-                format
-                status
-                isAdult
-                genres
-                studios(isMain: true) { nodes { name } }
+            let fallbackQuery = """
+            query RelatedFallback($id: Int) {
+              Media(id: $id, type: ANIME) {
+                relations {
+                  nodes {
+                    id
+                    idMal
+                    title { romaji english native }
+                    coverImage { extraLarge large }
+                    bannerImage
+                    averageScore
+                    episodes
+                    seasonYear
+                    startDate { year month day }
+                    format
+                    status
+                    isAdult
+                    genres
+                    studios(isMain: true) { nodes { name } }
+                  }
+                }
               }
             }
-          }
+            """
+            let fallbackData = try await graphql(query: fallbackQuery, variables: ["id": mediaId], token: token)
+            guard let fallbackRoot = try? JSONSerialization.jsonObject(with: fallbackData) as? [String: Any],
+                  let nodes = traverse(fallbackRoot, keyPath: ["data", "Media", "relations", "nodes"]) as? [[String: Any]] else {
+                AppLog.error(.network, "related sections fallback decode failed mediaId=\(mediaId)")
+                return []
+            }
+            let items = nodes.compactMap { decodeMedia($0) }
+            let sections = items.isEmpty ? [] : [
+                AniListRelatedSection(id: "related", title: "Related", items: items)
+            ]
+            cachedRelatedSections[mediaId] = (sections, Date().addingTimeInterval(60 * 30))
+            AppLog.debug(.network, "related sections fallback success mediaId=\(mediaId) count=\(sections.count)")
+            return sections
         }
-        """
-        let fallbackData = try await graphql(query: fallbackQuery, variables: ["id": mediaId], token: token)
-        guard let fallbackRoot = try? JSONSerialization.jsonObject(with: fallbackData) as? [String: Any],
-              let nodes = traverse(fallbackRoot, keyPath: ["data", "Media", "relations", "nodes"]) as? [[String: Any]] else {
-            AppLog.error(.network, "related sections fallback decode failed mediaId=\(mediaId)")
-            return []
+        defer { Task { await relatedSectionsTasks.clear(mediaId) } }
+
+        do {
+            return try await task.value
+        } catch {
+            if let cached = cachedRelatedSections[mediaId] {
+                AppLog.debug(.cache, "related sections stale memory fallback mediaId=\(mediaId)")
+                return cached.sections
+            }
+            throw error
         }
-        let items = nodes.compactMap { decodeMedia($0) }
-        let sections = items.isEmpty ? [] : [
-            AniListRelatedSection(id: "related", title: "Related", items: items)
-        ]
-        AppLog.debug(.network, "related sections fallback success mediaId=\(mediaId) count=\(sections.count)")
-        return sections
     }
 
     func relationsGraph(mediaId: Int, token: String? = nil) async throws -> [AniListRelationEdge] {
@@ -1020,43 +1048,58 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
             AppLog.debug(.cache, "streaming episodes disk cache hit mediaId=\(mediaId)")
             return decoded
         }
-        AppLog.debug(.network, "streaming episodes request start mediaId=\(mediaId)")
-        let query = """
-        query StreamingEpisodes($id: Int) {
-          Media(id: $id, type: ANIME) {
-            streamingEpisodes {
-              title
-              thumbnail
-              url
+        let task = await streamingEpisodesTasks.task(for: mediaId) { [self] in
+            AppLog.debug(.network, "streaming episodes request start mediaId=\(mediaId)")
+            let query = """
+            query StreamingEpisodes($id: Int) {
+              Media(id: $id, type: ANIME) {
+                streamingEpisodes {
+                  title
+                  thumbnail
+                  url
+                }
+              }
             }
-          }
+            """
+            let data = try await graphql(query: query, variables: ["id": mediaId])
+            guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let list = traverse(root, keyPath: ["data", "Media", "streamingEpisodes"]) as? [[String: Any]] else {
+                AppLog.error(.network, "streaming episodes decode failed mediaId=\(mediaId)")
+                return []
+            }
+            let episodes = list.map { row -> AniListStreamingEpisode in
+                let title = row["title"] as? String ?? "Episode"
+                let thumb = row["thumbnail"] as? String
+                let url = row["url"] as? String
+                let number = extractEpisodeNumber(fromTitle: title) ?? extractEpisodeNumber(fromURL: url)
+                return AniListStreamingEpisode(
+                    title: title,
+                    thumbnailURL: thumb.flatMap(URL.init(string:)),
+                    url: url.flatMap(URL.init(string:)),
+                    episodeNumber: number
+                )
+            }
+            let parsedCount = episodes.filter { ($0.episodeNumber ?? 0) > 0 }.count
+            cachedStreamingEpisodes[mediaId] = (episodes, Date().addingTimeInterval(60 * 30))
+            if let encoded = try? JSONEncoder().encode(episodes) {
+                cacheStore.writeJSON(encoded, forKey: cacheKey)
+            }
+            AppLog.debug(.network, "streaming episodes request success mediaId=\(mediaId) count=\(episodes.count) parsed=\(parsedCount)")
+            return episodes
         }
-        """
-        let data = try await graphql(query: query, variables: ["id": mediaId])
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let list = traverse(root, keyPath: ["data", "Media", "streamingEpisodes"]) as? [[String: Any]] else {
-            AppLog.error(.network, "streaming episodes decode failed mediaId=\(mediaId)")
-            return []
+        defer { Task { await streamingEpisodesTasks.clear(mediaId) } }
+
+        do {
+            return try await task.value
+        } catch {
+            if let stale = cacheStore.readJSON(forKey: cacheKey),
+               let decoded = try? JSONDecoder().decode([AniListStreamingEpisode].self, from: stale) {
+                cachedStreamingEpisodes[mediaId] = (decoded, Date().addingTimeInterval(60))
+                AppLog.debug(.cache, "streaming episodes stale cache fallback mediaId=\(mediaId)")
+                return decoded
+            }
+            throw error
         }
-        let episodes = list.map { row -> AniListStreamingEpisode in
-            let title = row["title"] as? String ?? "Episode"
-            let thumb = row["thumbnail"] as? String
-            let url = row["url"] as? String
-            let number = extractEpisodeNumber(fromTitle: title) ?? extractEpisodeNumber(fromURL: url)
-            return AniListStreamingEpisode(
-                title: title,
-                thumbnailURL: thumb.flatMap(URL.init(string:)),
-                url: url.flatMap(URL.init(string:)),
-                episodeNumber: number
-            )
-        }
-        let parsedCount = episodes.filter { ($0.episodeNumber ?? 0) > 0 }.count
-        cachedStreamingEpisodes[mediaId] = (episodes, Date().addingTimeInterval(60 * 30))
-        if let encoded = try? JSONEncoder().encode(episodes) {
-            cacheStore.writeJSON(encoded, forKey: cacheKey)
-        }
-        AppLog.debug(.network, "streaming episodes request success mediaId=\(mediaId) count=\(episodes.count) parsed=\(parsedCount)")
-        return episodes
     }
 
     private func decodeViewer(data: Data) -> AniListUser? {
@@ -1352,6 +1395,23 @@ actor RequestGate {
         } else {
             current = max(0, current - 1)
         }
+    }
+}
+
+actor InFlightIntTaskStore<Value> {
+    private var tasks: [Int: Task<Value, Error>] = [:]
+
+    func task(for key: Int, create: @escaping @Sendable () async throws -> Value) -> Task<Value, Error> {
+        if let existing = tasks[key] {
+            return existing
+        }
+        let task = Task(operation: create)
+        tasks[key] = task
+        return task
+    }
+
+    func clear(_ key: Int) {
+        tasks[key] = nil
     }
 }
 
