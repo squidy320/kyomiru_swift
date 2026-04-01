@@ -318,7 +318,6 @@ extension JSContext {
                     LunaLogger.shared.log("Error reading downloaded file: \(error.localizedDescription)", type: "Error")
                     callResolve(["error": "Error reading downloaded file"])
                 }
-                }
             }
             task.resume()
         }
