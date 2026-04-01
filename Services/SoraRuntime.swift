@@ -164,6 +164,18 @@ final class SoraRuntime {
         guard !trimmed.isEmpty else { return [] }
         AppLog.debug(.network, "animepahe search start query=\(trimmed)")
         do {
+            let matches = try await directSearchAnime(query: trimmed)
+            AppLog.debug(.network, "animepahe direct search results count=\(matches.count)")
+            if !matches.isEmpty {
+                AppLog.debug(.network, "animepahe search success count=\(matches.count) source=direct")
+                return matches
+            }
+        } catch {
+            AppLog.error(.network, "animepahe direct search failed query=\(trimmed) \(error.localizedDescription)")
+        }
+
+        AppLog.debug(.network, "animepahe search fallback to luna module")
+        do {
             let items = try await moduleService.search(query: trimmed)
             let matches = items.compactMap { item -> SoraAnimeMatch? in
                 let sessionId = URL(string: item.href)?.lastPathComponent ?? ""
@@ -180,17 +192,14 @@ final class SoraRuntime {
             }
             AppLog.debug(.network, "animepahe luna search results count=\(matches.count)")
             if !matches.isEmpty {
-                AppLog.debug(.network, "animepahe search success count=\(matches.count)")
+                AppLog.debug(.network, "animepahe search success count=\(matches.count) source=luna")
                 return matches
             }
         } catch {
             AppLog.error(.network, "animepahe luna search failed query=\(trimmed) \(error.localizedDescription)")
         }
 
-        AppLog.debug(.network, "animepahe search fallback to direct api")
-        let matches = try await directSearchAnime(query: trimmed)
-        AppLog.debug(.network, "animepahe direct search results count=\(matches.count)")
-        return matches
+        return []
     }
 
     private func directSearchAnime(query: String) async throws -> [SoraAnimeMatch] {

@@ -92,7 +92,7 @@ enum TitleMatcher {
             media.title.best,
         ].compactMap { $0 }
         let queries = titles.flatMap(buildQueries)
-        return Array(Set(queries))
+        return stableUniqueQueries(queries)
     }
 
     static func buildQueries(from title: String) -> [String] {
@@ -107,17 +107,18 @@ enum TitleMatcher {
         ).trimmingCharacters(in: .whitespacesAndNewlines)
         let romanNormalized = romanToArabic(raw)
         let romanFinalRemoved = stripFinalSeasonMarkers(romanNormalized)
-        return Array(Set([
-            raw,
+        let preferred = [
             noTrailing,
             cleanedSeason,
             finalSeasonRemoved,
             stripSeasonMarkers(finalSeasonRemoved),
-            romanNormalized,
             stripSeasonMarkers(romanNormalized),
             romanFinalRemoved,
-            stripSeasonMarkers(romanFinalRemoved)
-        ]))
+            stripSeasonMarkers(romanFinalRemoved),
+            romanNormalized,
+            raw
+        ]
+        return stableUniqueQueries(preferred)
     }
 
     static func stripSeasonMarkers(_ input: String) -> String {
@@ -274,6 +275,20 @@ enum TitleMatcher {
             }
         }
         return nil
+    }
+
+    private static func stableUniqueQueries(_ queries: [String]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for query in queries {
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let key = cleanTitle(trimmed)
+            guard !key.isEmpty, !seen.contains(key) else { continue }
+            seen.insert(key)
+            out.append(trimmed)
+        }
+        return out
     }
 }
 

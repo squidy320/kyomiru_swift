@@ -34,52 +34,86 @@ extension JSController {
             completion([])
             return
         }
-        
-        let thenBlock: @convention(block) (JSValue) -> Void = { result in
-            
-            LunaLogger.shared.log(result.toString(), type: "HTMLStrings")
-            if let jsonString = result.toString(),
-               let data = jsonString.data(using: .utf8) {
-                do {
-                    if let array = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
-                        let resultItems = array.compactMap { item -> SearchItem? in
-                            guard let title = item["title"] as? String,
-                                  let imageUrl = item["image"] as? String,
-                                  let href = item["href"] as? String else {
-                                LunaLogger.shared.log("Invalid search result data format", type: "Error")
-                                return nil
-                            }
-                            return SearchItem(title: title, imageUrl: imageUrl, href: href)
-                        }
-                        
-                        DispatchQueue.main.async {
-                            completion(resultItems)
-                        }
-                        
-                    } else {
-                        LunaLogger.shared.log("Could not parse JSON response", type: "Error")
-                        DispatchQueue.main.async {
-                            completion([])
-                        }
-                    }
-                } catch {
-                    LunaLogger.shared.log("JSON parsing error: \(error)", type: "Error")
-                    DispatchQueue.main.async {
-                        completion([])
-                    }
+
+        var hasCompleted = false
+        let completionQueue = DispatchQueue(label: "search.completion")
+
+        let timeoutWorkItem = DispatchWorkItem {
+            LunaLogger.shared.log("Timeout for searchResults", type: "Warning")
+            completionQueue.sync {
+                guard !hasCompleted else {
+                    LunaLogger.shared.log("searchResults: timeout called but already completed", type: "Debug")
+                    return
                 }
-            } else {
-                LunaLogger.shared.log("Invalid search result format", type: "Error")
+                hasCompleted = true
                 DispatchQueue.main.async {
                     completion([])
                 }
             }
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutWorkItem)
+        
+        let thenBlock: @convention(block) (JSValue) -> Void = { result in
+            timeoutWorkItem.cancel()
+            completionQueue.sync {
+                guard !hasCompleted else {
+                    LunaLogger.shared.log("searchResults: thenBlock called but already completed", type: "Debug")
+                    return
+                }
+                hasCompleted = true
+
+                LunaLogger.shared.log(result.toString(), type: "HTMLStrings")
+                if let jsonString = result.toString(),
+                   let data = jsonString.data(using: .utf8) {
+                    do {
+                        if let array = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
+                            let resultItems = array.compactMap { item -> SearchItem? in
+                                guard let title = item["title"] as? String,
+                                      let imageUrl = item["image"] as? String,
+                                      let href = item["href"] as? String else {
+                                    LunaLogger.shared.log("Invalid search result data format", type: "Error")
+                                    return nil
+                                }
+                                return SearchItem(title: title, imageUrl: imageUrl, href: href)
+                            }
+
+                            DispatchQueue.main.async {
+                                completion(resultItems)
+                            }
+
+                        } else {
+                            LunaLogger.shared.log("Could not parse JSON response", type: "Error")
+                            DispatchQueue.main.async {
+                                completion([])
+                            }
+                        }
+                    } catch {
+                        LunaLogger.shared.log("JSON parsing error: \(error)", type: "Error")
+                        DispatchQueue.main.async {
+                            completion([])
+                        }
+                    }
+                } else {
+                    LunaLogger.shared.log("Invalid search result format", type: "Error")
+                    DispatchQueue.main.async {
+                        completion([])
+                    }
+                }
+            }
+        }
         
         let catchBlock: @convention(block) (JSValue) -> Void = { error in
-            LunaLogger.shared.log("Search operation failed: \(String(describing: error.toString()))", type: "Error")
-            DispatchQueue.main.async {
-                completion([])
+            timeoutWorkItem.cancel()
+            completionQueue.sync {
+                guard !hasCompleted else {
+                    LunaLogger.shared.log("searchResults: catchBlock called but already completed", type: "Debug")
+                    return
+                }
+                hasCompleted = true
+                LunaLogger.shared.log("Search operation failed: \(String(describing: error.toString()))", type: "Error")
+                DispatchQueue.main.async {
+                    completion([])
+                }
             }
         }
         
