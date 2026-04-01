@@ -11,6 +11,7 @@ struct MediaPosterCard: View {
     let size: CGSize?
     let overlayOpacity: Double
     let allowFallbackWhileLoading: Bool
+    let enablesTMDBArtworkLookup: Bool
     @EnvironmentObject private var appState: AppState
     @State private var tmdbPosterURL: URL?
     @State private var tmdbLookupComplete = false
@@ -25,7 +26,8 @@ struct MediaPosterCard: View {
         cornerBadge: String?,
         size: CGSize? = nil,
         overlayOpacity: Double = 0.85,
-        allowFallbackWhileLoading: Bool = false
+        allowFallbackWhileLoading: Bool = false,
+        enablesTMDBArtworkLookup: Bool = true
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -37,6 +39,7 @@ struct MediaPosterCard: View {
         self.size = size
         self.overlayOpacity = overlayOpacity
         self.allowFallbackWhileLoading = allowFallbackWhileLoading
+        self.enablesTMDBArtworkLookup = enablesTMDBArtworkLookup
     }
 
     var body: some View {
@@ -136,6 +139,11 @@ struct MediaPosterCard: View {
         }
         .task(id: media?.id ?? 0) {
             guard let media else { return }
+            guard enablesTMDBArtworkLookup else {
+                tmdbPosterURL = nil
+                tmdbLookupComplete = true
+                return
+            }
             tmdbLookupComplete = false
             tmdbPosterURL = await appState.services.metadataService.posterURL(for: media)
             tmdbLookupComplete = true
@@ -151,6 +159,7 @@ struct ContinueWatchingCard: View {
     let imageURL: URL?
     let episodeBadge: String?
     let media: AniListMedia?
+    let enablesTMDBArtworkLookup: Bool
     @EnvironmentObject private var appState: AppState
     @State private var tmdbImageURL: URL?
     @State private var tmdbLookupComplete = false
@@ -225,6 +234,11 @@ struct ContinueWatchingCard: View {
         }
         .task(id: media?.id ?? 0) {
             guard let media else { return }
+            guard enablesTMDBArtworkLookup else {
+                tmdbImageURL = nil
+                tmdbLookupComplete = true
+                return
+            }
             tmdbLookupComplete = false
             tmdbImageURL = await appState.services.metadataService.backdropURL(for: media)
             tmdbLookupComplete = true

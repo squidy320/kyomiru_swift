@@ -19,6 +19,7 @@ struct DiscoveryView: View {
     @State private var isLoadingImdbTrending = false
     @State private var imdbAniListMap: [Int: AniListMedia] = [:]
     @State private var navigateMedia: AniListMedia?
+    @State private var discoveryLoadGeneration = 0
     @StateObject private var networkMonitor = NetworkMonitor.shared
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
@@ -99,7 +100,8 @@ struct DiscoveryView: View {
                                                             media: media,
                                                             score: media.averageScore,
                                                             statusBadge: statusBadge(for: media),
-                                                            cornerBadge: nil
+                                                            cornerBadge: nil,
+                                                            enablesTMDBArtworkLookup: false
                                                         )
                                                         .frame(width: UIConstants.posterCardWidth)
                                                     }
@@ -139,8 +141,6 @@ struct DiscoveryView: View {
             await loadImdbTrending()
             if sections.isEmpty {
                 await loadDiscovery(forceRefresh: false)
-            } else if !hasAllCoreSections(sections) {
-                await loadDiscovery(forceRefresh: true)
             }
         }
         .onChange(of: query) { _, _ in
@@ -355,7 +355,8 @@ struct DiscoveryView: View {
                             media: media,
                             score: media.averageScore,
                             statusBadge: statusBadge(for: media),
-                            cornerBadge: nil
+                            cornerBadge: nil,
+                            enablesTMDBArtworkLookup: false
                         )
                         .frame(width: UIConstants.posterCardWidth)
                     }
@@ -413,21 +414,31 @@ private extension DiscoveryView {
     }
 
     func loadDiscovery(forceRefresh: Bool) async {
+        if isLoading { return }
+        discoveryLoadGeneration += 1
+        let loadGeneration = discoveryLoadGeneration
         AppLog.debug(.network, "discovery load start")
         isLoading = true
         errorMessage = nil
         do {
-            sections = try await appState.services.aniListClient.discoverySections(
+            let loaded = try await appState.services.aniListClient.discoverySections(
                 sort: discoverySort(),
                 forceRefresh: forceRefresh
             )
+            guard loadGeneration == discoveryLoadGeneration else { return }
+            sections = loaded
+        } catch is CancellationError {
+            guard loadGeneration == discoveryLoadGeneration else { return }
+            AppLog.debug(.network, "discovery load cancelled")
         } catch {
+            guard loadGeneration == discoveryLoadGeneration else { return }
             if sections.isEmpty {
                 sections = []
                 errorMessage = "AniList is temporarily unavailable. Showing fallback content until it comes back."
             }
             AppLog.error(.network, "discovery load failed \(error.localizedDescription)")
         }
+        guard loadGeneration == discoveryLoadGeneration else { return }
         isLoading = false
         AppLog.debug(.network, "discovery load complete sections=\(sections.count)")
     }
@@ -608,7 +619,8 @@ struct GenreDetailGridView: View {
                             media: media,
                             score: media.averageScore,
                             statusBadge: nil,
-                            cornerBadge: nil
+                            cornerBadge: nil,
+                            enablesTMDBArtworkLookup: false
                         )
                         .frame(width: UIConstants.posterCardWidth)
                     }
@@ -776,7 +788,8 @@ private struct DiscoverySectionView: View {
                                 media: media,
                                 score: media.averageScore,
                                 statusBadge: statusBadge(for: media),
-                                cornerBadge: nil
+                                cornerBadge: nil,
+                                enablesTMDBArtworkLookup: false
                             )
                             .frame(width: UIConstants.posterCardWidth)
                         }

@@ -20,6 +20,7 @@ struct LibraryView: View {
     @State private var continuePlayerStartAt: Double?
     @State private var showContinuePlayer = false
     @State private var showContinueSourceSheet = false
+    @State private var libraryLoadGeneration = 0
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -64,7 +65,8 @@ struct LibraryView: View {
                                                     timeRemainingText: item.timeRemainingText,
                                                     imageURL: item.imageURL,
                                                     episodeBadge: item.episodeBadge,
-                                                    media: item.media
+                                                    media: item.media,
+                                                    enablesTMDBArtworkLookup: false
                                                 )
                                                 .frame(height: UIConstants.continueCardHeight)
                                             }
@@ -232,9 +234,7 @@ struct LibraryView: View {
                let cached = appState.services.aniListClient.cachedLibrarySections(token: token, allowStale: true),
                !cached.isEmpty {
                 applyLibrarySections(cached)
-                await prefetchAvailability(sections: cached)
-                await prefetchLibraryImages(sections: cached)
-                await prefetchContinueWatchingThumbnails(items: continueWatchingItems())
+                await runLibraryBackgroundWork(sections: cached)
             }
             if sections.isEmpty {
                 await loadLibrary(forceRefresh: false)
@@ -260,7 +260,6 @@ struct LibraryView: View {
         }
         .onChange(of: sections) { _, _ in
             Task { await prefetchLibraryImages(sections: sections) }
-            Task { await prefetchContinueWatchingThumbnails(items: continueWatchingItems()) }
         }
     }
 
@@ -350,20 +349,24 @@ struct LibraryView: View {
     private func loadLibrary(forceRefresh: Bool = false) async {
         guard appState.authState.isSignedIn,
               let token = appState.authState.token else { return }
+        libraryLoadGeneration += 1
+        let loadGeneration = libraryLoadGeneration
         AppLog.debug(.network, "library load start")
         isLoading = true
         errorMessage = nil
         do {
             let items = try await appState.services.aniListClient.librarySections(token: token, forceRefresh: forceRefresh)
+            guard loadGeneration == libraryLoadGeneration else { return }
             applyLibrarySections(items)
-            await prefetchAvailability(sections: items)
-            await prefetchLibraryImages(sections: items)
+            await runLibraryBackgroundWork(sections: items, generation: loadGeneration)
         } catch {
+            guard loadGeneration == libraryLoadGeneration else { return }
             if sections.isEmpty {
                 errorMessage = "AniList is temporarily unavailable. Showing your cached library when available."
             }
             AppLog.error(.network, "library load failed \(error.localizedDescription)")
         }
+        guard loadGeneration == libraryLoadGeneration else { return }
         isLoading = false
         AppLog.debug(.network, "library load complete sections=\(sections.count)")
     }
@@ -377,29 +380,30 @@ struct LibraryView: View {
         MediaStatus.fromSectionTitle(title)
     }
 
-    private func prefetchAvailability(sections: [AniListLibrarySection]) async {
+    private func runLibraryBackgroundWork(sections: [AniListLibrarySection], generation: Int? = nil) async {
+        await prefetchAvailability(sections: sections, generation: generation)
+        guard generation == nil || generation == libraryLoadGeneration else { return }
+        await prefetchLibraryImages(sections: sections)
+    }
+
+    private func prefetchAvailability(sections: [AniListLibrarySection], generation: Int? = nil) async {
         guard let token = appState.authState.token, appState.authState.isSignedIn else { return }
-        let watching = sections.first(where: { statusForSection($0.title) == .watching })?.items ?? []
+        let watching = Array((sections.first(where: { statusForSection($0.title) == .watching })?.items ?? []).prefix(6))
         if watching.isEmpty { return }
-        await withTaskGroup(of: (Int, AniListEpisodeAvailability?).self) { group in
-            for entry in watching {
-                group.addTask {
-                    let avail = try? await appState.services.aniListClient.episodeAvailability(
-                        token: token,
-                        mediaId: entry.media.id
-                    )
-                    return (entry.media.id, avail ?? nil)
-                }
+        var updated = availabilityById
+        for entry in watching {
+            if let generation, generation != libraryLoadGeneration { return }
+            let avail = try? await appState.services.aniListClient.episodeAvailability(
+                token: token,
+                mediaId: entry.media.id
+            )
+            if let avail {
+                updated[entry.media.id] = avail
             }
-            var updated = availabilityById
-            for await (id, avail) in group {
-                if let avail {
-                    updated[id] = avail
-                }
-            }
-            await MainActor.run {
-                availabilityById = updated
-            }
+        }
+        if let generation, generation != libraryLoadGeneration { return }
+        await MainActor.run {
+            availabilityById = updated
         }
     }
 
@@ -415,37 +419,6 @@ struct LibraryView: View {
         }
 
         await ImageCache.shared.prefetch(urls: urls)
-    }
-
-    private func prefetchContinueWatchingThumbnails(items: [ContinueItem], limit: Int = 8) async {
-        guard !items.isEmpty else { return }
-        let slice = items.prefix(limit)
-        for item in slice {
-            guard continueThumbs[item.id] == nil, let media = item.media else { continue }
-            do {
-                let episodes: [SoraEpisode]
-                if let cached = continueEpisodes[item.id] {
-                    episodes = cached
-                } else {
-                    let result = try await appState.services.episodeService.loadEpisodes(media: media)
-                    continueEpisodes[item.id] = result.episodes
-                    episodes = result.episodes
-                }
-                let meta: [Int: EpisodeMetadata]
-                if let metaCached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: episodes) {
-                    meta = metaCached
-                } else {
-                    meta = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: episodes)
-                }
-                if let thumb = meta[item.episodeNumber]?.thumbnailURL {
-                    await MainActor.run {
-                        continueThumbs[item.id] = thumb
-                    }
-                }
-            } catch {
-                AppLog.error(.network, "continue thumbnails failed mediaId=\(item.id) \(error.localizedDescription)")
-            }
-        }
     }
 
     private func resumeContinueWatching(_ item: ContinueItem) {
@@ -669,7 +642,8 @@ private struct LibrarySection: View {
                                     media: entry.media,
                                     score: entry.media.averageScore,
                                     statusBadge: nil,
-                                    cornerBadge: showNew ? "NEW" : nil
+                                    cornerBadge: showNew ? "NEW" : nil,
+                                    enablesTMDBArtworkLookup: false
                                 )
                                 .frame(width: UIConstants.posterCardWidth)
                             }
