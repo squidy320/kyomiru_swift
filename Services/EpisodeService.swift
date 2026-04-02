@@ -110,8 +110,14 @@ final class EpisodeService {
             }
             return lhs.sourceNumber < rhs.sourceNumber
         }
+        let expected = media.episodes ?? 0
+        let rawMin = sorted.first?.sourceNumber ?? 1
+        let rawMax = sorted.last?.sourceNumber ?? rawMin
+        let seasonMarker = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best) ?? 1
+        let hasPartMarker = TitleMatcher.extractPartMarkerNumber(from: media.title.best) != nil
 
-        // Attempt to get accurate offset from TMDB mapping
+        // Only use TMDB for season-local slicing. Absolute franchise offsets can hide
+        // valid AnimePahe episode lists when the provider already points at a season page.
         let tmdbMatch = await withThrowingTaskGroup(of: TMDBSeasonMatch?.self) { group in
             group.addTask {
                 await self.tmdbMatcher.matchShowAndSeason(media: media)
@@ -123,38 +129,27 @@ final class EpisodeService {
             return (try? await group.next()!) ?? nil
         }
 
-        if let tmdbMatch {
-            let offset = tmdbMatch.absoluteOffset
-            // Sora/Provider usually follows TMDB absolute numbering if it's a single entry.
-            let absoluteStart = 1 + offset
-            
-            // Safeguard: If the highest source number is less than our absolute start,
-            // then Sora numbering is likely relative to the season, not absolute.
-            if let maxSource = sorted.last?.sourceNumber, maxSource < absoluteStart {
-                AppLog.debug(.matching, "TMDB offset skipped (Sora numbering likely relative) mediaId=\(media.id) offset=\(offset) maxSource=\(maxSource)")
-            } else {
-                let adjusted = sorted.filter { $0.sourceNumber >= absoluteStart }
+        if let tmdbMatch, expected > 0 {
+            let offset = tmdbMatch.episodeOffset
+            let seasonStart = offset + 1
+            let canApplySeasonSlice =
+                seasonStart > 1 &&
+                rawMin == 1 &&
+                rawMax >= seasonStart &&
+                sorted.count > offset
 
-                if let expected = media.episodes, expected > 0 {
-                    let slice = Array(adjusted.prefix(expected))
-                    if !slice.isEmpty {
-                        AppLog.debug(.matching, "TMDB offset applied mediaId=\(media.id) offset=\(offset) start=\(absoluteStart) count=\(slice.count)")
-                        return enumerateDisplayNumbers(slice)
-                    }
+            if canApplySeasonSlice {
+                let slice = Array(sorted.dropFirst(offset).prefix(expected))
+                if !slice.isEmpty {
+                    AppLog.debug(.matching, "TMDB season-local offset applied mediaId=\(media.id) season=\(tmdbMatch.seasonNumber) offset=\(offset) count=\(slice.count)")
+                    return enumerateDisplayNumbers(slice)
                 }
-
-                if !adjusted.isEmpty {
-                    AppLog.debug(.matching, "TMDB offset applied (no limit) mediaId=\(media.id) offset=\(offset) start=\(absoluteStart)")
-                    return enumerateDisplayNumbers(adjusted)
-                }
+            } else if offset > 0 {
+                AppLog.debug(.matching, "TMDB offset skipped for episode shaping mediaId=\(media.id) season=\(tmdbMatch.seasonNumber) offset=\(offset) min=\(rawMin) max=\(rawMax)")
             }
         }
+
         // Fallback to heuristic slicing if TMDB fails or offset is 0
-        let expected = media.episodes ?? 0
-        let seasonMarker = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best) ?? 1
-        let hasPartMarker = TitleMatcher.extractPartMarkerNumber(from: media.title.best) != nil
-        let rawMin = sorted.first?.sourceNumber ?? 1
-        let rawMax = sorted.last?.sourceNumber ?? rawMin
 
         if expected > 0, seasonMarker > 1, rawMin == 1 {
             let offset = expected * (seasonMarker - 1)

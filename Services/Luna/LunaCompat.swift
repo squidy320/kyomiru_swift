@@ -35,6 +35,42 @@ struct ServiceMetadata: Codable, Hashable {
     let novel: Bool?
     let settings: Bool?
 
+    init(
+        sourceName: String,
+        author: Author,
+        iconUrl: String,
+        version: String,
+        language: String,
+        baseUrl: String,
+        streamType: String,
+        quality: String,
+        searchBaseUrl: String,
+        scriptUrl: String,
+        softsub: Bool? = nil,
+        multiStream: Bool? = nil,
+        multiSubs: Bool? = nil,
+        type: String? = nil,
+        novel: Bool? = nil,
+        settings: Bool? = nil
+    ) {
+        self.sourceName = sourceName
+        self.author = author
+        self.iconUrl = iconUrl
+        self.version = version
+        self.language = language
+        self.baseUrl = baseUrl
+        self.streamType = streamType
+        self.quality = quality
+        self.searchBaseUrl = searchBaseUrl
+        self.scriptUrl = scriptUrl
+        self.softsub = softsub
+        self.multiStream = multiStream
+        self.multiSubs = multiSubs
+        self.type = type
+        self.novel = novel
+        self.settings = settings
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let legacy = try decoder.container(keyedBy: LegacyKeys.self)

@@ -8,7 +8,25 @@ struct AnimePaheModuleStreamResult {
 
 final class AnimePaheModuleService {
     private let session: URLSession
-    private let manifestURL = URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.json")!
+    private let sourceURL = URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.json")!
+    private let scriptURL = URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.js")!
+    private let metadata = ServiceMetadata(
+        sourceName: "AnimePahe",
+        author: .init(
+            name: "50/50",
+            icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3122kQwublLkZ6rf1fEpUP79BxZOFmH9BSA&s"
+        ),
+        iconUrl: "https://files.catbox.moe/fu5sq7.png",
+        version: "1.0.1",
+        language: "English",
+        baseUrl: "https://animepahe.si/",
+        streamType: "HLS",
+        quality: "1080p",
+        searchBaseUrl: "https://animepahe.si/",
+        scriptUrl: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.js",
+        softsub: true,
+        type: "anime"
+    )
     private let js = JSController.shared
     private var loadedService: Service?
     private var loadedAt: Date?
@@ -19,7 +37,7 @@ final class AnimePaheModuleService {
 
     func search(query: String) async throws -> [SearchItem] {
         let service = try await loadServiceIfNeeded()
-        AppLog.debug(.network, "animepahe module search using manifest=\(manifestURL.absoluteString)")
+        AppLog.debug(.network, "animepahe module search using hardcoded source=\(sourceURL.absoluteString)")
         return try await withOperationTimeout(seconds: 12, label: "animepahe module search") {
             await withCheckedContinuation { [self] cont in
                 self.js.fetchJsSearchResults(keyword: query, module: service) { results in
@@ -86,18 +104,7 @@ final class AnimePaheModuleService {
             return service
         }
 
-        AppLog.debug(.network, "animepahe module manifest load start url=\(manifestURL.absoluteString)")
-        var manifestRequest = URLRequest(url: manifestURL)
-        manifestRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
-        manifestRequest.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (manifestData, _) = try await fetch(manifestRequest, label: "animepahe-module-manifest")
-        let metadata = try JSONDecoder().decode(ServiceMetadata.self, from: manifestData)
-        AppLog.debug(.network, "animepahe module manifest loaded name=\(metadata.sourceName) version=\(metadata.version)")
-
-        guard let scriptURL = URL(string: metadata.scriptUrl) else {
-            throw URLError(.badURL)
-        }
-
+        AppLog.debug(.network, "animepahe module hardcoded bootstrap source=\(sourceURL.absoluteString) script=\(scriptURL.absoluteString)")
         var scriptRequest = URLRequest(url: scriptURL)
         scriptRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
         scriptRequest.setValue("text/javascript,*/*", forHTTPHeaderField: "Accept")
@@ -125,7 +132,7 @@ final class AnimePaheModuleService {
             id: UUID(),
             metadata: metadata,
             jsScript: script,
-            url: manifestURL.absoluteString,
+            url: sourceURL.absoluteString,
             isActive: true,
             sortIndex: 0
         )
