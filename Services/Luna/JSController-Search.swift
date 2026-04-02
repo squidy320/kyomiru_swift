@@ -66,10 +66,10 @@ extension JSController {
                     if let array = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
                         let resultItems = array.compactMap { item -> SearchItem? in
                             guard let title = item["title"] as? String,
-                                  let imageUrl = (item["image"] as? String) ?? (item["imageUrl"] as? String) ?? "",
                                   let href = item["href"] as? String else {
                                 return nil
                             }
+                            let imageUrl = (item["image"] as? String) ?? (item["imageUrl"] as? String) ?? ""
                             return SearchItem(title: title, imageUrl: imageUrl, href: href)
                         }
                         DispatchQueue.main.async { completion(resultItems) }

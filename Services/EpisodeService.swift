@@ -112,7 +112,7 @@ final class EpisodeService {
         }
 
         // Attempt to get accurate offset from TMDB mapping
-        let tmdbMatch = await withThrowingTaskGroup(of: TMDBResolvedMatch?.self) { group in
+        let tmdbMatch = await withThrowingTaskGroup(of: TMDBSeasonMatch?.self) { group in
             group.addTask {
                 await self.tmdbMatcher.matchShowAndSeason(media: media)
             }
