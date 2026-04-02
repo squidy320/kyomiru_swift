@@ -72,7 +72,7 @@ final class SourceModuleService {
     private var loadedService: Service?
     private var loadedAt: Date?
 
-    init(config: SourceProviderConfiguration, session: URLSession = .custom) {
+    fileprivate init(config: SourceProviderConfiguration, session: URLSession = .custom) {
         self.config = config
         self.session = session
     }
