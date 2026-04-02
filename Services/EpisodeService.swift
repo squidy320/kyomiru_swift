@@ -116,19 +116,26 @@ final class EpisodeService {
             let offset = tmdbMatch.absoluteOffset
             // Sora/Provider usually follows TMDB absolute numbering if it's a single entry.
             let absoluteStart = 1 + offset
-            let adjusted = sorted.filter { $0.sourceNumber >= absoluteStart }
+            
+            // Safeguard: If the highest source number is less than our absolute start,
+            // then Sora numbering is likely relative to the season, not absolute.
+            if let maxSource = sorted.last?.sourceNumber, maxSource < absoluteStart {
+                AppLog.debug(.matching, "TMDB offset skipped (Sora numbering likely relative) mediaId=\(media.id) offset=\(offset) maxSource=\(maxSource)")
+            } else {
+                let adjusted = sorted.filter { $0.sourceNumber >= absoluteStart }
 
-            if let expected = media.episodes, expected > 0 {
-                let slice = Array(adjusted.prefix(expected))
-                if !slice.isEmpty {
-                    AppLog.debug(.matching, "TMDB offset applied mediaId=\(media.id) offset=\(offset) start=\(absoluteStart) count=\(slice.count)")
-                    return enumerateDisplayNumbers(slice)
+                if let expected = media.episodes, expected > 0 {
+                    let slice = Array(adjusted.prefix(expected))
+                    if !slice.isEmpty {
+                        AppLog.debug(.matching, "TMDB offset applied mediaId=\(media.id) offset=\(offset) start=\(absoluteStart) count=\(slice.count)")
+                        return enumerateDisplayNumbers(slice)
+                    }
                 }
-            }
 
-            if !adjusted.isEmpty {
-                AppLog.debug(.matching, "TMDB offset applied (no limit) mediaId=\(media.id) offset=\(offset) start=\(absoluteStart)")
-                return enumerateDisplayNumbers(adjusted)
+                if !adjusted.isEmpty {
+                    AppLog.debug(.matching, "TMDB offset applied (no limit) mediaId=\(media.id) offset=\(offset) start=\(absoluteStart)")
+                    return enumerateDisplayNumbers(adjusted)
+                }
             }
         }
         // Fallback to heuristic slicing if TMDB fails or offset is 0
