@@ -30,19 +30,26 @@ final class EpisodeService {
                 }
 
                 AppLog.debug(.matching, "stored match yielded no episodes mediaId=\(media.id) session=\(storedMatch.session) manual=\(stored.isManual)")
-                if stored.isManual {
-                    throw AniListError.invalidResponse
-                }
                 matchStore.clear(mediaId: media.id)
+                return try await loadAutoMatchedEpisodes(media: media, replaceExisting: false)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
                 AppLog.error(.network, "stored match episodes failed mediaId=\(media.id) session=\(storedMatch.session) \(error.localizedDescription)")
-                if stored.isManual {
-                    throw error
+                if Task.isCancelled {
+                    throw CancellationError()
                 }
                 matchStore.clear(mediaId: media.id)
+                return try await loadAutoMatchedEpisodes(media: media, replaceExisting: false)
             }
+        }
+
+        return try await loadAutoMatchedEpisodes(media: media, replaceExisting: true)
+    }
+
+    private func loadAutoMatchedEpisodes(media: AniListMedia, replaceExisting: Bool) async throws -> MatchLoadResult {
+        if replaceExisting == false {
+            AppLog.debug(.matching, "stored match fallback to auto mediaId=\(media.id)")
         }
 
         guard let match = try await runtime.autoMatch(media: media) else {
