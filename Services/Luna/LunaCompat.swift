@@ -241,7 +241,7 @@ extension URLSession {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 45
         config.timeoutIntervalForResource = 120
-        config.waitsForConnectivity = true
+        config.waitsForConnectivity = false
         return URLSession(configuration: config)
     }
 
@@ -250,13 +250,13 @@ extension URLSession {
             let config = URLSessionConfiguration.default
             config.timeoutIntervalForRequest = 45
             config.timeoutIntervalForResource = 120
-            config.waitsForConnectivity = true
+            config.waitsForConnectivity = false
             return URLSession(configuration: config)
         }
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 45
         config.timeoutIntervalForResource = 120
-        config.waitsForConnectivity = true
+        config.waitsForConnectivity = false
         return URLSession(configuration: config, delegate: RedirectBlocker(), delegateQueue: nil)
     }
 

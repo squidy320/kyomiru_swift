@@ -9,27 +9,32 @@ final class MatchStore {
 
     private init() {}
 
-    func match(for mediaId: Int) -> StoredMatch? {
+    func match(for mediaId: Int, provider: StreamingProvider = .current) -> StoredMatch? {
         let map = loadMap()
-        return map[String(mediaId)]
+        guard let stored = map[String(mediaId)] else { return nil }
+        let storedProvider = StreamingProvider(rawValue: stored.provider ?? "") ?? .animePahe
+        guard storedProvider == provider else { return nil }
+        return stored
     }
 
-    func set(match: SoraAnimeMatch, mediaId: Int, isManual: Bool) {
+    func set(match: SoraAnimeMatch, mediaId: Int, isManual: Bool, provider: StreamingProvider = .current) {
         var map = loadMap()
         let stored = StoredMatch(
             mediaId: mediaId,
             session: match.session,
             title: match.title,
             imageURL: match.imageURL?.absoluteString,
+            detailURL: match.detailURL?.absoluteString,
             year: match.year,
             format: match.format,
             episodeCount: match.episodeCount,
+            provider: provider.rawValue,
             isManual: isManual,
             updatedAt: Date().timeIntervalSince1970
         )
         map[String(mediaId)] = stored
         saveMap(map)
-        AppLog.debug(.matching, "match saved mediaId=\(mediaId) session=\(match.session) manual=\(isManual)")
+        AppLog.debug(.matching, "match saved mediaId=\(mediaId) session=\(match.session) provider=\(provider.title) manual=\(isManual)")
     }
 
     func clear(mediaId: Int) {
@@ -59,9 +64,11 @@ struct StoredMatch: Codable, Hashable {
     let session: String
     let title: String
     let imageURL: String?
+    let detailURL: String?
     let year: Int?
     let format: String?
     let episodeCount: Int?
+    let provider: String?
     let isManual: Bool
     let updatedAt: TimeInterval
 
@@ -72,6 +79,7 @@ struct StoredMatch: Codable, Hashable {
             title: title,
             imageURL: imageURL.flatMap(URL.init(string:)),
             session: session,
+            detailURL: detailURL.flatMap(URL.init(string:)),
             year: year,
             format: format,
             episodeCount: episodeCount

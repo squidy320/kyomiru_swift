@@ -5,6 +5,7 @@ struct SoraAnimeMatch: Identifiable, Equatable {
     let title: String
     let imageURL: URL?
     let session: String
+    let detailURL: URL?
     let year: Int?
     let format: String?
     let episodeCount: Int?

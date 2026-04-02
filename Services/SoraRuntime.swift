@@ -1,44 +1,113 @@
 import Foundation
 
-struct AnimePaheModuleStreamResult {
+struct SourceModuleStreamResult {
     let streams: [String]?
     let subtitles: [String]?
     let sources: [[String: Any]]?
 }
 
-final class AnimePaheModuleService {
+private struct SourceProviderConfiguration {
+    let provider: StreamingProvider
+    let sourceURL: URL
+    let scriptURL: URL
+    let baseURL: URL
+    let metadata: ServiceMetadata
+    let supportsDirectSearch: Bool
+    let supportsDirectEpisodes: Bool
+    let scriptPatches: [(String, String)]
+    let searchTimeout: Double
+    let episodeTimeout: Double
+    let sourceTimeout: Double
+    let logKey: String
+
+    static func make(for provider: StreamingProvider) -> SourceProviderConfiguration {
+        switch provider {
+        case .animePahe:
+            return SourceProviderConfiguration(
+                provider: .animePahe,
+                sourceURL: URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.json")!,
+                scriptURL: URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.js")!,
+                baseURL: URL(string: "https://animepahe.si")!,
+                metadata: ServiceMetadata(
+                    sourceName: "AnimePahe",
+                    author: .init(
+                        name: "50/50",
+                        icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3122kQwublLkZ6rf1fEpUP79BxZOFmH9BSA&s"
+                    ),
+                    iconUrl: "https://files.catbox.moe/fu5sq7.png",
+                    version: "1.0.1",
+                    language: "English",
+                    baseUrl: "https://animepahe.si/",
+                    streamType: "HLS",
+                    quality: "1080p",
+                    searchBaseUrl: "https://animepahe.si/",
+                    scriptUrl: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.js",
+                    softsub: true,
+                    type: "anime"
+                ),
+                supportsDirectSearch: true,
+                supportsDirectEpisodes: true,
+                scriptPatches: [
+                    ("match(/<div class=\"anime-synopsis\">(.*?)<\\/div>/s)", "match(/<div class=\\\"anime-synopsis\\\">([\\s\\S]*?)<\\/div>/)"),
+                    ("match(/<strong>Aired:<\\/strong>(.*?)<\\/p>/s)", "match(/<strong>Aired:<\\/strong>([\\s\\S]*?)<\\/p>/)"),
+                    ("match(/<script>(.*?)<\\/script>/s)", "match(/<script>([\\s\\S]*?)<\\/script>/)")
+                ],
+                searchTimeout: 12,
+                episodeTimeout: 35,
+                sourceTimeout: 35,
+                logKey: "animepahe"
+            )
+        case .animeKai:
+            return SourceProviderConfiguration(
+                provider: .animeKai,
+                sourceURL: URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animekai/animekai.json")!,
+                scriptURL: URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animekai/animekai.js")!,
+                baseURL: URL(string: "https://animekai.to")!,
+                metadata: ServiceMetadata(
+                    sourceName: "AnimeKai",
+                    author: .init(
+                        name: "50/50",
+                        icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3122kQwublLkZ6rf1fEpUP79BxZOFmH9BSA&s"
+                    ),
+                    iconUrl: "https://apktodo.io/uploads/2025/5/animekai-icon.jpg",
+                    version: "1.0.1",
+                    language: "English",
+                    baseUrl: "https://animekai.to/",
+                    streamType: "HLS",
+                    quality: "1080p",
+                    searchBaseUrl: "https://animekai.to/",
+                    scriptUrl: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animekai/animekai.js",
+                    softsub: false,
+                    type: "anime"
+                ),
+                supportsDirectSearch: false,
+                supportsDirectEpisodes: false,
+                scriptPatches: [],
+                searchTimeout: 15,
+                episodeTimeout: 35,
+                sourceTimeout: 35,
+                logKey: "animekai"
+            )
+        }
+    }
+}
+
+final class SourceModuleService {
     private let session: URLSession
-    private let sourceURL = URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.json")!
-    private let scriptURL = URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.js")!
-    private let metadata = ServiceMetadata(
-        sourceName: "AnimePahe",
-        author: .init(
-            name: "50/50",
-            icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3122kQwublLkZ6rf1fEpUP79BxZOFmH9BSA&s"
-        ),
-        iconUrl: "https://files.catbox.moe/fu5sq7.png",
-        version: "1.0.1",
-        language: "English",
-        baseUrl: "https://animepahe.si/",
-        streamType: "HLS",
-        quality: "1080p",
-        searchBaseUrl: "https://animepahe.si/",
-        scriptUrl: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.js",
-        softsub: true,
-        type: "anime"
-    )
+    private let config: SourceProviderConfiguration
     private let js = JSController.shared
     private var loadedService: Service?
     private var loadedAt: Date?
 
-    init(session: URLSession = .custom) {
+    init(config: SourceProviderConfiguration, session: URLSession = .custom) {
+        self.config = config
         self.session = session
     }
 
     func search(query: String) async throws -> [SearchItem] {
         let service = try await loadServiceIfNeeded()
-        AppLog.debug(.network, "animepahe module search using hardcoded source=\(sourceURL.absoluteString)")
-        return try await withOperationTimeout(seconds: 12, label: "animepahe module search") {
+        AppLog.debug(.network, "\(config.logKey) module search using hardcoded source=\(config.sourceURL.absoluteString)")
+        return try await withOperationTimeout(seconds: config.searchTimeout, label: "\(config.logKey) module search") {
             await withCheckedContinuation { [self] cont in
                 self.js.fetchJsSearchResults(keyword: query, module: service) { results in
                     cont.resume(returning: results)
@@ -49,7 +118,7 @@ final class AnimePaheModuleService {
 
     func episodes(animeURL: URL) async throws -> [EpisodeLink] {
         _ = try await loadServiceIfNeeded()
-        return try await withOperationTimeout(seconds: 35, label: "animepahe module episodes") {
+        return try await withOperationTimeout(seconds: config.episodeTimeout, label: "\(config.logKey) module episodes") {
             await withCheckedContinuation { [self] cont in
                 self.js.fetchEpisodesJS(url: animeURL.absoluteString) { results in
                     cont.resume(returning: results)
@@ -58,16 +127,16 @@ final class AnimePaheModuleService {
         }
     }
 
-    func sources(episodeURL: URL) async throws -> AnimePaheModuleStreamResult {
+    func sources(episodeURL: URL) async throws -> SourceModuleStreamResult {
         let service = try await loadServiceIfNeeded()
-        let result = try await withOperationTimeout(seconds: 35, label: "animepahe module sources") {
+        let result = try await withOperationTimeout(seconds: config.sourceTimeout, label: "\(config.logKey) module sources") {
             await withCheckedContinuation { [self] cont in
                 self.js.fetchStreamUrlJS(episodeUrl: episodeURL.absoluteString, module: service) { result in
                     cont.resume(returning: result)
                 }
             }
         }
-        return AnimePaheModuleStreamResult(
+        return SourceModuleStreamResult(
             streams: result.streams,
             subtitles: result.subtitles,
             sources: result.sources
@@ -100,39 +169,29 @@ final class AnimePaheModuleService {
         if let service = loadedService,
            let loadedAt,
            now.timeIntervalSince(loadedAt) < 1800 {
-            AppLog.debug(.network, "animepahe module cache hit")
+            AppLog.debug(.network, "\(config.logKey) module cache hit")
             return service
         }
 
-        AppLog.debug(.network, "animepahe module hardcoded bootstrap source=\(sourceURL.absoluteString) script=\(scriptURL.absoluteString)")
-        var scriptRequest = URLRequest(url: scriptURL)
+        AppLog.debug(.network, "\(config.logKey) module hardcoded bootstrap source=\(config.sourceURL.absoluteString) script=\(config.scriptURL.absoluteString)")
+        var scriptRequest = URLRequest(url: config.scriptURL)
         scriptRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
         scriptRequest.setValue("text/javascript,*/*", forHTTPHeaderField: "Accept")
-        let (scriptData, _) = try await fetch(scriptRequest, label: "animepahe-module-script")
+        let (scriptData, _) = try await fetch(scriptRequest, label: "\(config.logKey)-module-script")
         var script = String(data: scriptData, encoding: .utf8) ?? ""
         if script.isEmpty {
             throw URLError(.cannotDecodeContentData)
         }
 
-        script = script
-            .replacingOccurrences(
-                of: "match(/<div class=\"anime-synopsis\">(.*?)<\\/div>/s)",
-                with: "match(/<div class=\\\"anime-synopsis\\\">([\\s\\S]*?)<\\/div>/)"
-            )
-            .replacingOccurrences(
-                of: "match(/<strong>Aired:<\\/strong>(.*?)<\\/p>/s)",
-                with: "match(/<strong>Aired:<\\/strong>([\\s\\S]*?)<\\/p>/)"
-            )
-            .replacingOccurrences(
-                of: "match(/<script>(.*?)<\\/script>/s)",
-                with: "match(/<script>([\\s\\S]*?)<\\/script>/)"
-            )
+        for patch in config.scriptPatches {
+            script = script.replacingOccurrences(of: patch.0, with: patch.1)
+        }
 
         let service = Service(
             id: UUID(),
-            metadata: metadata,
+            metadata: config.metadata,
             jsScript: script,
-            url: sourceURL.absoluteString,
+            url: config.sourceURL.absoluteString,
             isActive: true,
             sortIndex: 0
         )
@@ -140,7 +199,7 @@ final class AnimePaheModuleService {
         loadedService = service
         loadedAt = now
         js.loadScript(script)
-        AppLog.debug(.network, "animepahe module script loaded into JSContext size=\(script.count)")
+        AppLog.debug(.network, "\(config.logKey) module script loaded into JSContext size=\(script.count)")
         return service
     }
 
@@ -156,56 +215,63 @@ final class AnimePaheModuleService {
 }
 
 final class SoraRuntime {
-    private let baseURL = URL(string: "https://animepahe.si")!
+    private let config: SourceProviderConfiguration
+    private let baseURL: URL
     private let session: URLSession
     private var cookieHeader: String?
-    private let moduleService: AnimePaheModuleService
+    private let moduleService: SourceModuleService
     private let searchTasks = InFlightStringTaskStore<[SoraAnimeMatch]>()
 
-    init(session: URLSession = .custom) {
+    init(provider: StreamingProvider = .current, session: URLSession = .custom) {
+        self.config = SourceProviderConfiguration.make(for: provider)
+        self.baseURL = self.config.baseURL
         self.session = session
-        self.moduleService = AnimePaheModuleService(session: session)
+        self.moduleService = SourceModuleService(config: self.config, session: session)
     }
 
     func searchAnime(query: String) async throws -> [SoraAnimeMatch] {
         let trimmed = normalizeSearchQuery(query)
         guard !trimmed.isEmpty else { return [] }
         let task = await searchTasks.task(for: trimmed) { [self] in
-            AppLog.debug(.network, "animepahe search start query=\(trimmed)")
-            do {
-                let matches = try await directSearchAnime(query: trimmed)
-                AppLog.debug(.network, "animepahe direct search results count=\(matches.count)")
-                if !matches.isEmpty {
-                    AppLog.debug(.network, "animepahe search success count=\(matches.count) source=direct")
-                    return matches
+            AppLog.debug(.network, "\(config.logKey) search start query=\(trimmed)")
+            if config.supportsDirectSearch {
+                do {
+                    let matches = try await directSearchAnime(query: trimmed)
+                    AppLog.debug(.network, "\(config.logKey) direct search results count=\(matches.count)")
+                    if !matches.isEmpty {
+                        AppLog.debug(.network, "\(config.logKey) search success count=\(matches.count) source=direct")
+                        return matches
+                    }
+                } catch {
+                    AppLog.error(.network, "\(config.logKey) direct search failed query=\(trimmed) \(error.localizedDescription)")
                 }
-            } catch {
-                AppLog.error(.network, "animepahe direct search failed query=\(trimmed) \(error.localizedDescription)")
             }
 
-            AppLog.debug(.network, "animepahe search fallback to luna module")
+            AppLog.debug(.network, "\(config.logKey) search fallback to luna module")
             do {
                 let items = try await moduleService.search(query: trimmed)
                 let matches = items.compactMap { item -> SoraAnimeMatch? in
-                    let sessionId = URL(string: item.href)?.lastPathComponent ?? ""
+                    guard let detailURL = URL(string: item.href) else { return nil }
+                    let sessionId = detailURL.lastPathComponent
                     guard !sessionId.isEmpty else { return nil }
                     return SoraAnimeMatch(
                         id: sessionId,
                         title: item.title,
                         imageURL: URL(string: item.imageUrl),
                         session: sessionId,
+                        detailURL: detailURL,
                         year: nil,
                         format: nil,
                         episodeCount: nil
                     )
                 }
-                AppLog.debug(.network, "animepahe luna search results count=\(matches.count)")
+                AppLog.debug(.network, "\(config.logKey) luna search results count=\(matches.count)")
                 if !matches.isEmpty {
-                    AppLog.debug(.network, "animepahe search success count=\(matches.count) source=luna")
+                    AppLog.debug(.network, "\(config.logKey) search success count=\(matches.count) source=luna")
                     return matches
                 }
             } catch {
-                AppLog.error(.network, "animepahe luna search failed query=\(trimmed) \(error.localizedDescription)")
+                AppLog.error(.network, "\(config.logKey) luna search failed query=\(trimmed) \(error.localizedDescription)")
             }
 
             return []
@@ -215,7 +281,7 @@ final class SoraRuntime {
     }
 
     private func directSearchAnime(query: String) async throws -> [SoraAnimeMatch] {
-        AppLog.debug(.network, "animepahe search direct api query=\(query)")
+        AppLog.debug(.network, "\(config.logKey) search direct api query=\(query)")
         let url = baseURL.appendingPathComponent("api")
         var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)!
         comps.queryItems = [
@@ -239,6 +305,7 @@ final class SoraRuntime {
                 title: title,
                 imageURL: image,
                 session: sessionId,
+                detailURL: baseURL.appendingPathComponent("anime/\(sessionId)"),
                 year: year,
                 format: format,
                 episodeCount: eps
@@ -265,7 +332,7 @@ final class SoraRuntime {
     func episodes(for match: SoraAnimeMatch) async throws -> [SoraEpisode] {
         AppLog.debug(.network, "episodes list start session=\(match.session)")
         do {
-            let animeURL = baseURL.appendingPathComponent("anime/\(match.session)")
+            let animeURL = match.detailURL ?? baseURL.appendingPathComponent("anime/\(match.session)")
             let links = try await moduleService.episodes(animeURL: animeURL)
             AppLog.debug(.network, "episodes luna links count=\(links.count) session=\(match.session)")
             let episodes: [SoraEpisode] = links.compactMap { link in
@@ -288,6 +355,9 @@ final class SoraRuntime {
             AppLog.error(.network, "episodes luna load failed session=\(match.session) \(error.localizedDescription)")
         }
 
+        guard config.supportsDirectEpisodes else {
+            throw AniListError.invalidResponse
+        }
         let sorted = try await directEpisodes(session: match.session).sorted { $0.number < $1.number }
         AppLog.debug(.network, "episodes list success count=\(sorted.count)")
         return sorted
@@ -531,8 +601,13 @@ final class SoraRuntime {
         }
 
         AppLog.debug(.network, "http get start \(url.absoluteString)")
-        let (data, response) = try await self.fetch(request, label: "animepahe-get")
+        let (data, response) = try await self.fetch(request, label: "\(config.logKey)-get")
         self.mergeCookies(from: response)
+        if let http = response as? HTTPURLResponse {
+            AppLog.debug(.network, "http get response status=\(http.statusCode) bytes=\(data.count) url=\(url.absoluteString)")
+        } else {
+            AppLog.debug(.network, "http get response bytes=\(data.count) url=\(url.absoluteString)")
+        }
 
         if self.shouldBypassDdos(response: response, data: data) {
             AppLog.debug(.network, "ddos bypass triggered for \(url.host ?? "")")
@@ -551,8 +626,13 @@ final class SoraRuntime {
             if let cookieHeader = self.cookieHeader {
                 retry.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
             }
-            let (retryData, retryResponse) = try await self.fetch(retry, label: "animepahe-get-retry")
+            let (retryData, retryResponse) = try await self.fetch(retry, label: "\(config.logKey)-get-retry")
             self.mergeCookies(from: retryResponse)
+            if let http = retryResponse as? HTTPURLResponse {
+                AppLog.debug(.network, "http get retry response status=\(http.statusCode) bytes=\(retryData.count) url=\(url.absoluteString)")
+            } else {
+                AppLog.debug(.network, "http get retry response bytes=\(retryData.count) url=\(url.absoluteString)")
+            }
             return retryData
         }
         return data
@@ -571,11 +651,17 @@ final class SoraRuntime {
 
     private func fetch(_ request: URLRequest, label: String) async throws -> (Data, URLResponse) {
         return try await NetworkRetry.withRetries(label: label) { [self] in
-            let (data, response) = try await self.session.data(for: request)
-            if let http = response as? HTTPURLResponse, http.statusCode >= 500 || http.statusCode == 429 {
-                throw URLError(.badServerResponse)
+            do {
+                let (data, response) = try await self.session.data(for: request)
+                if let http = response as? HTTPURLResponse, http.statusCode >= 500 || http.statusCode == 429 {
+                    AppLog.debug(.network, "\(label) response status=\(http.statusCode) url=\(request.url?.absoluteString ?? "")")
+                    throw URLError(.badServerResponse)
+                }
+                return (data, response)
+            } catch {
+                AppLog.error(.network, "\(label) failed url=\(request.url?.absoluteString ?? "") \(error.localizedDescription)")
+                throw error
             }
-            return (data, response)
         }
     }
 

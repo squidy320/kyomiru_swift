@@ -98,6 +98,7 @@ struct SettingsView: View {
                     .font(.system(size: 13))
                     .foregroundColor(Theme.textSecondary)
                 HStack(spacing: 8) {
+                    settingsTag(appState.settings.streamingProvider.title)
                     settingsTag(appState.settings.playerBackend.title)
                     settingsTag("Audio \(appState.settings.defaultAudio)")
                     settingsTag("Quality \(appState.settings.defaultQuality)")
@@ -111,6 +112,20 @@ struct SettingsView: View {
     private var playerTab: some View {
         VStack(alignment: .leading, spacing: sectionSpacing) {
             SettingsSectionCard(title: "Streaming Defaults", subtitle: "Applied automatically when a matching source exists.") {
+                Picker("Streaming Source", selection: Binding(
+                    get: { appState.settings.streamingProvider },
+                    set: { appState.settings.streamingProvider = $0 }
+                )) {
+                    ForEach(StreamingProvider.allCases) { provider in
+                        Text(provider.title).tag(provider)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(appState.settings.streamingProvider.summary)
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.textSecondary)
+
                 Picker("Playback Engine", selection: Binding(
                     get: { appState.settings.playerBackend },
                     set: { appState.settings.playerBackend = $0 }

@@ -1,6 +1,7 @@
 import SwiftUI
 
 final class SettingsState: ObservableObject {
+    @AppStorage("settings.streamingProvider") private var streamingProviderRaw: String = StreamingProvider.animePahe.rawValue
     @AppStorage("settings.defaultAudio") private var defaultAudioRaw: String = "Sub"
     @AppStorage("settings.defaultQuality") private var defaultQualityRaw: String = "Auto"
     @AppStorage("settings.playerBackend") private var playerBackendRaw: String = PlayerBackend.avPlayer.rawValue
@@ -17,6 +18,14 @@ final class SettingsState: ObservableObject {
         get { defaultAudioRaw }
         set {
             defaultAudioRaw = newValue
+            objectWillChange.send()
+        }
+    }
+
+    var streamingProvider: StreamingProvider {
+        get { StreamingProvider(rawValue: streamingProviderRaw) ?? .animePahe }
+        set {
+            streamingProviderRaw = newValue.rawValue
             objectWillChange.send()
         }
     }
@@ -98,6 +107,36 @@ final class SettingsState: ObservableObject {
         set {
             useComfortableLayoutRaw = newValue
             objectWillChange.send()
+        }
+    }
+}
+
+enum StreamingProvider: String, CaseIterable, Identifiable, Codable {
+    case animePahe
+    case animeKai
+
+    static let storageKey = "settings.streamingProvider"
+
+    static var current: StreamingProvider {
+        let raw = UserDefaults.standard.string(forKey: storageKey)
+        return StreamingProvider(rawValue: raw ?? "") ?? .animePahe
+    }
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .animePahe: return "AnimePahe"
+        case .animeKai: return "AnimeKai"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .animePahe:
+            return "Fast direct API fallback when AnimePahe is healthy."
+        case .animeKai:
+            return "Luna-powered AnimeKai source with alternate search, episodes, and streams."
         }
     }
 }
