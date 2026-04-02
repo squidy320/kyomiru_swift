@@ -381,9 +381,6 @@ struct LibraryView: View {
     }
 
     private func runLibraryBackgroundWork(sections: [AniListLibrarySection], generation: Int? = nil) async {
-        async let artworkWarmup: Void = prefetchTMDBArtwork(sections: sections, generation: generation)
-        async let availabilityWarmup: Void = prefetchAvailability(sections: sections, generation: generation)
-        _ = await (artworkWarmup, availabilityWarmup)
         guard generation == nil || generation == libraryLoadGeneration else { return }
         await prefetchLibraryImages(sections: sections)
     }
