@@ -141,6 +141,7 @@ struct DetailsView: View {
     @State private var importCandidates: [EpisodeImportCandidate] = []
     @State private var importMessage: String?
     @State private var downloadMessage: String?
+    @State private var initialLoadTask: Task<Void, Never>?
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
@@ -186,13 +187,8 @@ struct DetailsView: View {
         .navigationBarBackButtonHidden(!isPad)
         .navigationTitle(isPad ? "" : media.title.best)
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            AppLog.debug(.ui, "details view load mediaId=\(media.id)")
-            tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
-            episodeMetadataProvider = appState.services.episodeMetadataService.preferredProvider(for: media)
-            await loadEpisodes()
-            await loadRelated()
-            isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
+        .task(id: media.id) {
+            startInitialLoad()
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let episode = selectedEpisode, !sources.isEmpty {
@@ -988,6 +984,20 @@ struct DetailsView: View {
                 }
                 AppLog.error(.matching, "manual match search failed mediaId=\(media.id) \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func startInitialLoad() {
+        initialLoadTask?.cancel()
+        initialLoadTask = Task { @MainActor in
+            AppLog.debug(.ui, "details view load mediaId=\(media.id)")
+            tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
+            episodeMetadataProvider = appState.services.episodeMetadataService.preferredProvider(for: media)
+            await loadEpisodes()
+            guard !Task.isCancelled else { return }
+            await loadRelated()
+            guard !Task.isCancelled else { return }
+            isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
         }
     }
 
