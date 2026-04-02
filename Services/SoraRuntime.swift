@@ -258,7 +258,12 @@ final class SoraRuntime {
             AppLog.debug(.network, "episodes luna links count=\(links.count) session=\(match.session)")
             let episodes: [SoraEpisode] = links.compactMap { link in
                 guard link.number > 0, !link.href.isEmpty else { return nil }
-                guard let playURL = URL(string: link.href) else { return nil }
+                
+                let fullHref = link.href.starts(with: "/") 
+                    ? baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + link.href
+                    : link.href
+                
+                guard let playURL = URL(string: fullHref) else { return nil }
                 let id = playURL.lastPathComponent
                 return SoraEpisode(id: id, number: link.number, playURL: playURL)
             }

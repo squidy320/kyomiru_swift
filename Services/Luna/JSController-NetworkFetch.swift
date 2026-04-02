@@ -66,14 +66,22 @@ extension JSContext {
                 var options = NetworkFetchOptions()
 
                 if let optionsDict = optionsValue?.toDictionary() {
-                    let timeoutSeconds = optionsDict["timeoutSeconds"] as? Int ?? 10
-                    let headers = optionsDict["headers"] as? [String: String] ?? [:]
+                    let timeoutSeconds = (optionsDict["timeoutSeconds"] as? NSNumber)?.intValue ?? 10
+                    
+                    var headers: [String: String] = [:]
+                    if let headersDict = optionsDict["headers"] as? [String: Any] {
+                        for (key, value) in headersDict {
+                            headers[key] = String(describing: value)
+                        }
+                    }
+                    
                     let cutoff = optionsDict["cutoff"] as? String
                     let returnHTML = optionsDict["returnHTML"] as? Bool ?? false
                     let returnCookies = optionsDict["returnCookies"] as? Bool ?? true
-                    let clickSelectors = optionsDict["clickSelectors"] as? [String] ?? []
-                    let waitForSelectors = optionsDict["waitForSelectors"] as? [String] ?? []
-                    let maxWaitTime = optionsDict["maxWaitTime"] as? Int ?? 5
+                    
+                    let clickSelectors = (optionsDict["clickSelectors"] as? [String]) ?? []
+                    let waitForSelectors = (optionsDict["waitForSelectors"] as? [String]) ?? []
+                    let maxWaitTime = (optionsDict["maxWaitTime"] as? NSNumber)?.intValue ?? 5
                     let htmlContent = optionsDict["htmlContent"] as? String
 
                     options = NetworkFetchOptions(

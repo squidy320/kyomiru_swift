@@ -114,26 +114,23 @@ final class EpisodeService {
         // Attempt to get accurate offset from TMDB mapping
         if let tmdbMatch = await tmdbMatcher.matchShowAndSeason(media: media) {
             let offset = tmdbMatch.absoluteOffset
-            if offset != 0 {
-                // Sora/Provider usually follows TMDB absolute numbering if it's a single entry.
-                let absoluteStart = 1 + offset
-                let adjusted = sorted.filter { $0.sourceNumber >= absoluteStart }
-                
-                if let expected = media.episodes, expected > 0 {
-                    let slice = Array(adjusted.prefix(expected))
-                    if !slice.isEmpty {
-                        AppLog.debug(.matching, "TMDB offset applied mediaId=\(media.id) offset=\(offset) start=\(absoluteStart) count=\(slice.count)")
-                        return enumerateDisplayNumbers(slice)
-                    }
-                }
-                
-                if !adjusted.isEmpty {
-                    AppLog.debug(.matching, "TMDB offset applied (no limit) mediaId=\(media.id) offset=\(offset) start=\(absoluteStart)")
-                    return enumerateDisplayNumbers(adjusted)
+            // Sora/Provider usually follows TMDB absolute numbering if it's a single entry.
+            let absoluteStart = 1 + offset
+            let adjusted = sorted.filter { $0.sourceNumber >= absoluteStart }
+
+            if let expected = media.episodes, expected > 0 {
+                let slice = Array(adjusted.prefix(expected))
+                if !slice.isEmpty {
+                    AppLog.debug(.matching, "TMDB offset applied mediaId=\(media.id) offset=\(offset) start=\(absoluteStart) count=\(slice.count)")
+                    return enumerateDisplayNumbers(slice)
                 }
             }
-        }
 
+            if !adjusted.isEmpty {
+                AppLog.debug(.matching, "TMDB offset applied (no limit) mediaId=\(media.id) offset=\(offset) start=\(absoluteStart)")
+                return enumerateDisplayNumbers(adjusted)
+            }
+        }
         // Fallback to heuristic slicing if TMDB fails or offset is 0
         let expected = media.episodes ?? 0
         let seasonMarker = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best) ?? 1
