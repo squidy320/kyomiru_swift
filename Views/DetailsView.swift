@@ -1043,7 +1043,7 @@ struct DetailsView: View {
         tmdbMatchError = nil
         tmdbMatchCandidates = []
         Task {
-            let results = await appState.services.tmdbMatchingService.searchShows(query: trimmed)
+            let results = await appState.services.tmdbMatchingService.searchShows(query: trimmed, media: media)
             await MainActor.run {
                 guard searchGeneration == tmdbMatchSearchGeneration else { return }
                 tmdbMatchCandidates = results

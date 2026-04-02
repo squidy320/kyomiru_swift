@@ -35,7 +35,7 @@ final class EpisodeService {
             AppLog.debug(.matching, "using stored match mediaId=\(media.id) session=\(storedMatch.session) provider=\(provider.title) manual=\(stored.isManual)")
             do {
                 let episodes = try await runtime.episodes(for: storedMatch)
-                let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
+                let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media, provider: provider)
                 if isPlausibleEpisodeMatch(match: storedMatch, episodes: adjusted, media: media, provider: provider) {
                     AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
                     return MatchLoadResult(match: storedMatch, episodes: adjusted, isManual: stored.isManual)
@@ -75,11 +75,17 @@ final class EpisodeService {
             throw AniListError.invalidResponse
         }
 
-        let probeLimit = provider == .animeKai ? min(rankedCandidates.count, 8) : 1
+        let probeLimit: Int
+        if provider == .animeKai {
+            let topScore = rankedCandidates.first?.matchScore ?? 0
+            probeLimit = topScore >= 0.94 ? min(rankedCandidates.count, 2) : min(rankedCandidates.count, 4)
+        } else {
+            probeLimit = 1
+        }
         for match in rankedCandidates.prefix(probeLimit) {
             do {
                 let episodes = try await runtime.episodes(for: match)
-                let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
+                let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media, provider: provider)
                 guard isPlausibleEpisodeMatch(match: match, episodes: adjusted, media: media, provider: provider) else {
                     AppLog.debug(.matching, "auto match candidate rejected mediaId=\(media.id) session=\(match.session) provider=\(provider.title) count=\(adjusted.count) score=\(match.matchScore ?? 0)")
                     continue
@@ -143,7 +149,7 @@ final class EpisodeService {
         let provider = StreamingProvider.current
         let runtime = SoraRuntime(provider: provider)
         let episodes = try await runtime.episodes(for: match)
-        let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
+        let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media, provider: provider)
         guard isPlausibleEpisodeMatch(match: match, episodes: adjusted, media: media, provider: provider) else {
             AppLog.debug(.matching, "manual match rejected mediaId=\(media.id) session=\(match.session) provider=\(provider.title) count=\(adjusted.count)")
             throw EpisodeMatchValidationError.implausibleEpisodes
@@ -157,7 +163,11 @@ final class EpisodeService {
         matchStore.clear(mediaId: media.id)
     }
 
-    private func applySeasonOffsetIfNeeded(episodes: [SoraEpisode], media: AniListMedia) async -> [SoraEpisode] {
+    private func applySeasonOffsetIfNeeded(
+        episodes: [SoraEpisode],
+        media: AniListMedia,
+        provider: StreamingProvider
+    ) async -> [SoraEpisode] {
         guard !episodes.isEmpty else { return episodes }
 
         let sorted = episodes.sorted { lhs, rhs in
@@ -171,6 +181,18 @@ final class EpisodeService {
         let rawMax = sorted.last?.sourceNumber ?? rawMin
         let seasonMarker = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best) ?? 1
         let hasPartMarker = TitleMatcher.extractPartMarkerNumber(from: media.title.best) != nil
+        let looksSeasonLocal =
+            rawMin == 1 &&
+            seasonMarker <= 1 &&
+            !hasPartMarker &&
+            (expected == 0 || (sorted.count >= expected && rawMax <= max(expected, rawMin)))
+
+        if provider == .animeKai && looksSeasonLocal {
+            AppLog.debug(.matching, "TMDB shaping skipped mediaId=\(media.id) provider=\(provider.title) reason=season-local")
+            return sorted.map {
+                SoraEpisode(id: $0.id, sourceNumber: $0.sourceNumber, displayNumber: $0.sourceNumber, playURL: $0.playURL)
+            }
+        }
 
         // Only use TMDB for season-local slicing. Absolute franchise offsets can hide
         // valid AnimePahe episode lists when the provider already points at a season page.

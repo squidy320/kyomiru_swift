@@ -188,12 +188,21 @@ final class SourceModuleService {
 }
 
 final class SoraRuntime {
+    private struct CachedEpisode: Codable {
+        let id: String
+        let sourceNumber: Int
+        let displayNumber: Int
+        let playURL: String
+    }
+
     private let config: SourceProviderConfiguration
     private let baseURL: URL
     private let session: URLSession
     private var cookieHeader: String?
     private let moduleService: SourceModuleService
+    private let cacheStore = CacheStore()
     private let searchTasks = InFlightStringTaskStore<[SoraAnimeMatch]>()
+    private let episodeTasks = InFlightStringTaskStore<[SoraEpisode]>()
 
     init(provider: StreamingProvider = .current, session: URLSession = .custom) {
         self.config = SourceProviderConfiguration.make(for: provider)
@@ -303,41 +312,53 @@ final class SoraRuntime {
     }
 
     func episodes(for match: SoraAnimeMatch) async throws -> [SoraEpisode] {
-        AppLog.debug(.network, "episodes list start session=\(match.session)")
-        do {
-            let animeURL = match.detailURL ?? baseURL.appendingPathComponent("anime/\(match.session)")
-            let links = try await moduleService.episodes(animeURL: animeURL)
-            AppLog.debug(.network, "episodes luna links count=\(links.count) session=\(match.session)")
-            let episodes: [SoraEpisode] = links.compactMap { link in
-                guard link.number > 0, !link.href.isEmpty else { return nil }
-                
-                let fullHref = link.href.starts(with: "/") 
-                    ? baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + link.href
-                    : link.href
-                
-                guard let playURL = URL(string: fullHref) else { return nil }
-                let episodeToken = URLComponents(url: playURL, resolvingAgainstBaseURL: false)?
-                    .queryItems?
-                    .first(where: { $0.name == "token" })?
-                    .value
-                let id = episodeToken ?? playURL.absoluteString
-                return SoraEpisode(id: id, number: link.number, playURL: playURL)
-            }
-            if !episodes.isEmpty {
-                let sorted = episodes.sorted { $0.number < $1.number }
-                AppLog.debug(.network, "episodes list success count=\(sorted.count)")
-                return sorted
-            }
-        } catch {
-            AppLog.error(.network, "episodes luna load failed session=\(match.session) \(error.localizedDescription)")
+        let cacheKey = episodeCacheKey(for: match)
+        if let cached = cachedEpisodes(forKey: cacheKey) {
+            AppLog.debug(.network, "episodes list cache hit session=\(match.session) count=\(cached.count)")
+            return cached
         }
 
-        guard config.supportsDirectEpisodes else {
-            throw AniListError.invalidResponse
+        AppLog.debug(.network, "episodes list start session=\(match.session)")
+        let task = await episodeTasks.task(for: cacheKey) { [self] in
+            do {
+                let animeURL = match.detailURL ?? baseURL.appendingPathComponent("anime/\(match.session)")
+                let links = try await moduleService.episodes(animeURL: animeURL)
+                AppLog.debug(.network, "episodes luna links count=\(links.count) session=\(match.session)")
+                let episodes: [SoraEpisode] = links.compactMap { link in
+                    guard link.number > 0, !link.href.isEmpty else { return nil }
+                    
+                    let fullHref = link.href.starts(with: "/")
+                        ? baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + link.href
+                        : link.href
+                    
+                    guard let playURL = URL(string: fullHref) else { return nil }
+                    let episodeToken = URLComponents(url: playURL, resolvingAgainstBaseURL: false)?
+                        .queryItems?
+                        .first(where: { $0.name == "token" })?
+                        .value
+                    let id = episodeToken ?? playURL.absoluteString
+                    return SoraEpisode(id: id, number: link.number, playURL: playURL)
+                }
+                if !episodes.isEmpty {
+                    let sorted = episodes.sorted { $0.number < $1.number }
+                    writeEpisodesToCache(sorted, forKey: cacheKey)
+                    AppLog.debug(.network, "episodes list success count=\(sorted.count)")
+                    return sorted
+                }
+            } catch {
+                AppLog.error(.network, "episodes luna load failed session=\(match.session) \(error.localizedDescription)")
+            }
+
+            guard config.supportsDirectEpisodes else {
+                throw AniListError.invalidResponse
+            }
+            let sorted = try await directEpisodes(session: match.session).sorted { $0.number < $1.number }
+            writeEpisodesToCache(sorted, forKey: cacheKey)
+            AppLog.debug(.network, "episodes list success count=\(sorted.count)")
+            return sorted
         }
-        let sorted = try await directEpisodes(session: match.session).sorted { $0.number < $1.number }
-        AppLog.debug(.network, "episodes list success count=\(sorted.count)")
-        return sorted
+        defer { Task { await episodeTasks.clear(cacheKey) } }
+        return try await task.value
     }
 
     private func directEpisodes(session: String) async throws -> [SoraEpisode] {
@@ -753,6 +774,41 @@ final class SoraRuntime {
     private func getText(url: URL, referer: URL? = nil) async throws -> String {
         let data = try await get(url: url, referer: referer)
         return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func episodeCacheKey(for match: SoraAnimeMatch) -> String {
+        let detail = match.detailURL?.absoluteString ?? match.session
+        return "episodes.\(config.provider.rawValue).\(detail)"
+    }
+
+    private func cachedEpisodes(forKey key: String) -> [SoraEpisode]? {
+        guard let data = cacheStore.readJSON(forKey: key, maxAge: 15 * 60),
+              let decoded = try? JSONDecoder().decode([CachedEpisode].self, from: data) else {
+            return nil
+        }
+        let episodes = decoded.compactMap { episode -> SoraEpisode? in
+            guard let playURL = URL(string: episode.playURL) else { return nil }
+            return SoraEpisode(
+                id: episode.id,
+                sourceNumber: episode.sourceNumber,
+                displayNumber: episode.displayNumber,
+                playURL: playURL
+            )
+        }
+        return episodes.isEmpty ? nil : episodes
+    }
+
+    private func writeEpisodesToCache(_ episodes: [SoraEpisode], forKey key: String) {
+        let payload = episodes.map {
+            CachedEpisode(
+                id: $0.id,
+                sourceNumber: $0.sourceNumber,
+                displayNumber: $0.displayNumber,
+                playURL: $0.playURL.absoluteString
+            )
+        }
+        guard let data = try? JSONEncoder().encode(payload) else { return }
+        cacheStore.writeJSON(data, forKey: key)
     }
 
 }
