@@ -312,6 +312,11 @@ final class EpisodeService {
             return true
         }
 
+        let isReleasing = (media.status ?? "").uppercased() == "RELEASING"
+        if isReleasing {
+            return !episodes.isEmpty
+        }
+
         let expected = max(media.episodes ?? 0, match.episodeCount ?? 0)
         if expected <= 1 {
             return !episodes.isEmpty
