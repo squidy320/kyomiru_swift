@@ -846,7 +846,7 @@ struct DetailsView: View {
         isLoading = true
         errorMessage = nil
         do {
-            let result = try await appState.services.episodeService.loadEpisodes(media: media)
+            let result = try await fetchEpisodesDetached(for: media)
             guard loadGeneration == episodeLoadGeneration else { return }
             episodes = result.episodes
             isLoading = false
@@ -983,6 +983,20 @@ struct DetailsView: View {
                     activeMatchQuery = nil
                 }
                 AppLog.error(.matching, "manual match search failed mediaId=\(media.id) \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func fetchEpisodesDetached(for media: AniListMedia) async throws -> EpisodeService.MatchLoadResult {
+        let episodeService = appState.services.episodeService
+        return try await withCheckedThrowingContinuation { continuation in
+            Task.detached(priority: .userInitiated) {
+                do {
+                    let result = try await episodeService.loadEpisodes(media: media)
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
             }
         }
     }
