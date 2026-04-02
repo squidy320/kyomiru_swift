@@ -7,6 +7,7 @@
     objects = {
 
 /* Begin PBXBuildFile section */
+        4F9D0B2A7C164E1E8A12B9F4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7E3A8C1B5D2F4A9C8B6E1D03 /* Assets.xcassets */; };
         9749FCDEB57240EABD536F98 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB03B22F525412691AD3912 /* RootView.swift */; };
         D4E5F60718293A4B5C6D7E8F /* NavigationShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* NavigationShell.swift */; };
 		57D7D511708747C286FA1D14 /* AniListModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A722697BFB5416EA44A529C /* AniListModels.swift */; };
@@ -141,6 +142,7 @@
         2110ACC12DA4498F90623464 /* KyomiruApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KyomiruApp.swift; sourceTree = "<group>"; };
         9086C63B78104A0B85864ECF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
         38B34000AF8743898D5971C2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+        7E3A8C1B5D2F4A9C8B6E1D03 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
         9319810F7BFF414F98EB8BD5 /* JSController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSController.swift; sourceTree = "<group>"; };
         E38F26C8A04294DC0BE2DC9A /* JSController-Search.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JSController-Search.swift"; sourceTree = "<group>"; };
         054BD8EF3437F74017E74A35 /* JSController-Streams.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JSController-Streams.swift"; sourceTree = "<group>"; };
@@ -293,6 +295,7 @@
         };        C3B872E7402442BEA5900710 /* Resources */ = {
             isa = PBXGroup;
             children = (
+                7E3A8C1B5D2F4A9C8B6E1D03 /* Assets.xcassets */,
                 38B34000AF8743898D5971C2 /* Info.plist */,
             );
             path = Resources;
@@ -365,6 +368,7 @@
             isa = PBXResourcesBuildPhase;
             buildActionMask = 2147483647;
             files = (
+                4F9D0B2A7C164E1E8A12B9F4 /* Assets.xcassets in Resources */,
             );
             runOnlyForDeploymentPostprocessing = 0;
         };

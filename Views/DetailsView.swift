@@ -20,6 +20,21 @@ enum StreamSourcePreferenceResolver {
         return Int(digits) ?? 0
     }
 
+    static func hasExactPreferredSource(
+        in sources: [SoraSource],
+        preferredAudio: String,
+        preferredQuality: String
+    ) -> Bool {
+        let audioMatches = sources.filter { audioKey($0.subOrDub) == audioKey(preferredAudio) }
+        guard !audioMatches.isEmpty else { return false }
+        if preferredQuality.lowercased() == "auto" {
+            return true
+        }
+        return audioMatches.contains {
+            !$0.quality.isEmpty && $0.quality.lowercased().contains(preferredQuality.lowercased())
+        }
+    }
+
     static func streamVariantRank(_ source: SoraSource) -> Int {
         let url = source.url.absoluteString.lowercased()
         if url.contains("/owo.m3u8") { return 2 }
@@ -72,8 +87,11 @@ enum StreamSourcePreferenceResolver {
             filtered = sources
         }
         if selectedQuality.lowercased() != "auto" {
-            filtered = filtered.filter {
+            let exactMatches = filtered.filter {
                 !$0.quality.isEmpty && $0.quality.lowercased().contains(selectedQuality.lowercased())
+            }
+            if !exactMatches.isEmpty {
+                filtered = exactMatches
             }
         }
         return sortedSources(filtered)
@@ -85,12 +103,27 @@ enum StreamSourcePreferenceResolver {
         preferredQuality: String
     ) -> SoraSource? {
         let audioMatches = sources.filter { audioKey($0.subOrDub) == audioKey(preferredAudio) }
-        guard !audioMatches.isEmpty else { return nil }
+        let pool = audioMatches.isEmpty ? sources : audioMatches
+        guard !pool.isEmpty else { return nil }
         if preferredQuality.lowercased() == "auto" {
-            return sortedSources(audioMatches).first
+            return sortedSources(pool).first
         }
-        return sortedSources(audioMatches).first {
+        if let exact = sortedSources(pool).first(where: {
             !$0.quality.isEmpty && $0.quality.lowercased().contains(preferredQuality.lowercased())
+        }) {
+            return exact
+        }
+        let preferredRank = qualityRank(preferredQuality)
+        if preferredRank <= 0 {
+            return sortedSources(pool).first
+        }
+        return sortedSources(pool).min { lhs, rhs in
+            let leftDistance = abs(qualityRank(lhs.quality) - preferredRank)
+            let rightDistance = abs(qualityRank(rhs.quality) - preferredRank)
+            if leftDistance != rightDistance {
+                return leftDistance < rightDistance
+            }
+            return qualityRank(lhs.quality) > qualityRank(rhs.quality)
         }
     }
 }
@@ -623,6 +656,8 @@ struct DetailsView: View {
                             .foregroundColor(.white)
                             .lineLimit(2)
                     }
+
+                    phoneHeroMetaBlock
                 }
                 .padding(.horizontal, UIConstants.standardPadding)
                 .padding(.bottom, 24)
@@ -777,6 +812,26 @@ struct DetailsView: View {
         }
         .opacity(genres.isEmpty ? 0 : 1)
         .frame(height: genres.isEmpty ? 0 : nil)
+    }
+
+    private var phoneHeroMetaBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            let primary = phoneHeroPrimaryInfo
+            if !primary.isEmpty {
+                Text(primary)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(2)
+            }
+
+            let genres = phoneHeroGenreInfo
+            if !genres.isEmpty {
+                Text(genres)
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(2)
+            }
+        }
     }
 
     private var episodeList: some View {
@@ -1227,6 +1282,27 @@ struct DetailsView: View {
     private func runtimeText(from meta: EpisodeMetadata?) -> String? {
         guard let minutes = meta?.runtimeMinutes, minutes > 0 else { return nil }
         return "\(minutes)m"
+    }
+
+    private var phoneHeroPrimaryInfo: String {
+        var parts: [String] = []
+        if let eps = media.episodes, eps > 0 {
+            parts.append(eps == 1 ? "1 EP" : "\(eps) EPS")
+        }
+        if let studio = media.studios.first, !studio.isEmpty {
+            parts.append(studio)
+        }
+        if let score = media.averageScore {
+            parts.append("\(score)%")
+        }
+        if let seasonYear = media.seasonYear {
+            parts.append("\(seasonYear)")
+        }
+        return parts.joined(separator: " • ")
+    }
+
+    private var phoneHeroGenreInfo: String {
+        Array(media.genres.prefix(4)).joined(separator: " • ")
     }
 
     private func isEpisodeWatched(_ number: Int) -> Bool {
@@ -2059,8 +2135,8 @@ struct StreamSourcePickerSheet: View {
                             Text(option).tag(option)
                         }
                     }
-                    if exactPreferredSource == nil {
-                        Text("Your saved \(preferredAudio) / \(preferredQuality) preference is not available for this episode.")
+                    if !hasExactPreferredSource {
+                        Text("Your exact \(preferredAudio) / \(preferredQuality) stream is unavailable, so the closest valid source will be used.")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
@@ -2089,6 +2165,10 @@ struct StreamSourcePickerSheet: View {
                                             .foregroundColor(.white)
                                     } else if exactPreferredSource?.id == source.id {
                                         Text("Preferred")
+                                            .font(.system(size: 11, weight: .semibold))
+                                            .foregroundColor(.secondary)
+                                    } else if currentSource?.id == source.id {
+                                        Text("Best Match")
                                             .font(.system(size: 11, weight: .semibold))
                                             .foregroundColor(.secondary)
                                     }
@@ -2155,7 +2235,16 @@ struct StreamSourcePickerSheet: View {
     }
 
     private var exactPreferredSource: SoraSource? {
-        StreamSourcePreferenceResolver.preferredSource(
+        guard hasExactPreferredSource else { return nil }
+        return StreamSourcePreferenceResolver.preferredSource(
+            in: sources,
+            preferredAudio: preferredAudio,
+            preferredQuality: preferredQuality
+        )
+    }
+
+    private var hasExactPreferredSource: Bool {
+        StreamSourcePreferenceResolver.hasExactPreferredSource(
             in: sources,
             preferredAudio: preferredAudio,
             preferredQuality: preferredQuality
@@ -2187,12 +2276,20 @@ struct StreamSourcePickerSheet: View {
             return
         }
 
-        if let exact = exactPreferredSource,
-           filteredSources.contains(where: { $0.id == exact.id }) {
-            selectedSourceID = exact.id
+        if let preferred = preferredSource,
+           filteredSources.contains(where: { $0.id == preferred.id }) {
+            selectedSourceID = preferred.id
         } else {
             selectedSourceID = filteredSources.first?.id
         }
+    }
+
+    private var preferredSource: SoraSource? {
+        StreamSourcePreferenceResolver.preferredSource(
+            in: sources,
+            preferredAudio: preferredAudio,
+            preferredQuality: preferredQuality
+        )
     }
 }
 

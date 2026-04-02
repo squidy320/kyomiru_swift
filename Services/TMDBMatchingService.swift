@@ -1134,6 +1134,7 @@ final class TMDBMatchingService {
 
             for title in rawTitles {
                 titles.insert(title)
+                titles.formUnion(searchTitleAliases(for: item, title: title))
                 let strippedSeason = TitleMatcher.stripSeasonMarkers(title)
                 if !strippedSeason.isEmpty {
                     titles.insert(strippedSeason)
@@ -1149,6 +1150,36 @@ final class TMDBMatchingService {
             }
         }
         return titles
+    }
+
+    private func searchTitleAliases(for media: AniListMedia, title: String) -> Set<String> {
+        var aliases: Set<String> = []
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return aliases }
+
+        let colonParts = trimmed
+            .split(separator: ":", maxSplits: 1, omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if colonParts.count == 2 {
+            aliases.insert(colonParts[0])
+            aliases.insert(colonParts[1])
+            aliases.insert("\(colonParts[1]) \(colonParts[0])")
+        }
+
+        if trimmed.localizedCaseInsensitiveContains("steel ball run") {
+            aliases.insert("Steel Ball Run")
+            aliases.insert("JoJo's Bizarre Adventure")
+            aliases.insert("JoJo no Kimyou na Bouken")
+            aliases.insert("Steel Ball Run JoJo's Bizarre Adventure")
+        }
+
+        if let english = media.title.english?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !english.isEmpty,
+           english != trimmed {
+            aliases.insert(english)
+        }
+
+        return aliases
     }
 
     private func fetchShowSummary(showId: Int, mediaType: String, apiKey: String) async -> TMDBShowSummary? {
@@ -1576,19 +1607,42 @@ final class TMDBMatchingService {
     }
 
     private func nearestSeasonByName(seasons: [TMDBSeasonInfo], targetTitle: String) -> (seasonNumber: Int, score: Double)? {
-        let cleanedTarget = TitleMatcher.cleanTitle(targetTitle)
-        guard !cleanedTarget.isEmpty else { return nil }
+        let targetCandidates = seasonNameCandidates(from: targetTitle)
+        guard !targetCandidates.isEmpty else { return nil }
         
         let matches = seasons.compactMap { season -> (Int, Double)? in
             guard let name = season.name, !name.isEmpty else { return nil }
             let cleanedName = TitleMatcher.cleanTitle(name)
             guard !cleanedName.isEmpty else { return nil }
             
-            let score = TitleMatcher.diceCoefficient(cleanedTarget, cleanedName)
-            guard score >= 0.7 else { return nil }
+            let score = targetCandidates
+                .map { TitleMatcher.diceCoefficient($0, cleanedName) }
+                .max() ?? 0.0
+            guard score >= 0.58 else { return nil }
             return (season.seasonNumber, score)
         }
         return matches.max(by: { $0.1 < $1.1 }).map { ($0.0, $0.1) }
+    }
+
+    private func seasonNameCandidates(from title: String) -> [String] {
+        var candidates: [String] = []
+        let cleaned = TitleMatcher.cleanTitle(title)
+        if !cleaned.isEmpty {
+            candidates.append(cleaned)
+        }
+
+        let colonParts = title
+            .split(separator: ":", maxSplits: 1, omittingEmptySubsequences: true)
+            .map { TitleMatcher.cleanTitle(String($0)) }
+            .filter { !$0.isEmpty }
+        candidates.append(contentsOf: colonParts)
+
+        if title.localizedCaseInsensitiveContains("steel ball run") {
+            candidates.append(TitleMatcher.cleanTitle("Steel Ball Run"))
+        }
+
+        var seen: Set<String> = []
+        return candidates.filter { seen.insert($0).inserted }
     }
 
     private func date(from fuzzy: AniListFuzzyDate?) -> Date? {

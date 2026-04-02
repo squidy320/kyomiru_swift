@@ -34,6 +34,7 @@ struct ContentView: View {
         .environmentObject(appState.authState)
         .tint(appState.settings.accentColor)
         .background(Theme.baseBackground.ignoresSafeArea())
+        .preferredColorScheme(appState.settings.appearanceThemeMode.colorScheme)
         .task {
             AppLog.debug(.ui, "root view task start")
             await appState.bootstrap()
