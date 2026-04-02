@@ -36,174 +36,78 @@ extension JSController {
             return
         }
         
-        guard let extractDetailsFunction = context.objectForKeyedSubscript("extractDetails") else {
-            LunaLogger.shared.log("No JavaScript function extractDetails found", type: "Error")
-            completion([], [])
-            return
-        }
-        
-        guard let extractEpisodesFunction = context.objectForKeyedSubscript("extractEpisodes") else {
-            LunaLogger.shared.log("No JavaScript function extractEpisodes found", type: "Error")
+        guard let extractDetailsFunction = context.objectForKeyedSubscript("extractDetails"),
+              let extractEpisodesFunction = context.objectForKeyedSubscript("extractEpisodes") else {
+            LunaLogger.shared.log("Missing JS functions in module", type: "Error")
             completion([], [])
             return
         }
         
         var resultItems: [LunaDetailsItem] = []
         var episodeLinks: [EpisodeLink] = []
-        
         let dispatchGroup = DispatchGroup()
+        let lock = NSLock()
         
+        // 1. Details
         dispatchGroup.enter()
-        var hasLeftDetailsGroup = false
-        let detailsGroupQueue = DispatchQueue(label: "details.group")
+        let promiseDetails = extractDetailsFunction.call(withArguments: [url.absoluteString])
         
-        let promiseValueDetails = extractDetailsFunction.call(withArguments: [url.absoluteString])
-        guard let promiseDetails = promiseValueDetails else {
-            LunaLogger.shared.log("extractDetails did not return a Promise", type: "Error")
-            detailsGroupQueue.sync {
-                guard !hasLeftDetailsGroup else { return }
-                hasLeftDetailsGroup = true
-                dispatchGroup.leave()
-            }
-            completion([], [])
-            return
-        }
-        
-        let thenBlockDetails: @convention(block) (JSValue) -> Void = { result in
-            detailsGroupQueue.sync {
-                guard !hasLeftDetailsGroup else {
-                    LunaLogger.shared.log("extractDetails: thenBlock called but group already left", type: "Debug")
-                    return
-                }
-                hasLeftDetailsGroup = true
-                
-                if let jsonOfDetails = result.toString(),
-                   let dataDetails = jsonOfDetails.data(using: .utf8) {
-                    do {
-                        if let array = try JSONSerialization.jsonObject(with: dataDetails, options: []) as? [[String: Any]] {
-                            resultItems = array.map { item -> LunaDetailsItem in
-                                LunaDetailsItem(
-                                    description: item["description"] as? String ?? "",
-                                    aliases: item["aliases"] as? String ?? "",
-                                    airdate: item["airdate"] as? String ?? ""
-                                )
-                            }
-                        } else {
-                            LunaLogger.shared.log("Failed to parse JSON of extractDetails", type: "Error")
-                        }
-                    } catch {
-                        LunaLogger.shared.log("JSON parsing error of extract details: \(error)", type: "Error")
+        let detailsThen: @convention(block) (JSValue) -> Void = { result in
+            if let json = result.toString(), let data = json.data(using: .utf8) {
+                if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    lock.lock()
+                    resultItems = array.map { item in
+                        LunaDetailsItem(
+                            description: item["description"] as? String ?? "",
+                            aliases: item["aliases"] as? String ?? "",
+                            airdate: item["airdate"] as? String ?? ""
+                        )
                     }
-                } else {
-                    LunaLogger.shared.log("Result is not a string of extractDetails", type: "Error")
+                    lock.unlock()
                 }
-                dispatchGroup.leave()
             }
+            dispatchGroup.leave()
         }
         
-        let catchBlockDetails: @convention(block) (JSValue) -> Void = { error in
-            detailsGroupQueue.sync {
-                guard !hasLeftDetailsGroup else {
-                    LunaLogger.shared.log("extractDetails: catchBlock called but group already left", type: "Debug")
-                    return
-                }
-                hasLeftDetailsGroup = true
-                
-                LunaLogger.shared.log("Promise rejected of extractDetails: \(String(describing: error.toString()))", type: "Error")
-                dispatchGroup.leave()
-            }
+        let detailsCatch: @convention(block) (JSValue) -> Void = { _ in dispatchGroup.leave() }
+        
+        if let promise = promiseDetails, !promise.isUndefined {
+            promise.invokeMethod("then", withArguments: [JSValue(object: detailsThen, in: context) as Any])
+            promise.invokeMethod("catch", withArguments: [JSValue(object: detailsCatch, in: context) as Any])
+        } else {
+            dispatchGroup.leave()
         }
         
-        let thenFunctionDetails = JSValue(object: thenBlockDetails, in: context)
-        let catchFunctionDetails = JSValue(object: catchBlockDetails, in: context)
-        
-        promiseDetails.invokeMethod("then", withArguments: [thenFunctionDetails as Any])
-        promiseDetails.invokeMethod("catch", withArguments: [catchFunctionDetails as Any])
-        
+        // 2. Episodes
         dispatchGroup.enter()
-        let promiseValueEpisodes = extractEpisodesFunction.call(withArguments: [url.absoluteString])
+        let promiseEpisodes = extractEpisodesFunction.call(withArguments: [url.absoluteString])
         
-        var hasLeftEpisodesGroup = false
-        let episodesGroupQueue = DispatchQueue(label: "episodes.group")
-        
-        let timeoutWorkItem = DispatchWorkItem {
-            LunaLogger.shared.log("Timeout for extractEpisodes", type: "Warning")
-            episodesGroupQueue.sync {
-                guard !hasLeftEpisodesGroup else {
-                    LunaLogger.shared.log("extractEpisodes: timeout called but group already left", type: "Debug")
-                    return
-                }
-                hasLeftEpisodesGroup = true
-                dispatchGroup.leave()
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutWorkItem)
-        
-        guard let promiseEpisodes = promiseValueEpisodes else {
-            LunaLogger.shared.log("extractEpisodes did not return a Promise", type: "Error")
-            timeoutWorkItem.cancel()
-            episodesGroupQueue.sync {
-                guard !hasLeftEpisodesGroup else { return }
-                hasLeftEpisodesGroup = true
-                dispatchGroup.leave()
-            }
-            completion([], [])
-            return
-        }
-        
-        let thenBlockEpisodes: @convention(block) (JSValue) -> Void = { result in
-            timeoutWorkItem.cancel()
-            episodesGroupQueue.sync {
-                guard !hasLeftEpisodesGroup else {
-                    LunaLogger.shared.log("extractEpisodes: thenBlock called but group already left", type: "Debug")
-                    return
-                }
-                hasLeftEpisodesGroup = true
-                
-                if let jsonOfEpisodes = result.toString(),
-                   let dataEpisodes = jsonOfEpisodes.data(using: .utf8) {
-                    do {
-                        if let array = try JSONSerialization.jsonObject(with: dataEpisodes, options: []) as? [[String: Any]] {
-                            episodeLinks = array.map { item -> EpisodeLink in
-                                EpisodeLink(
-                                    number: item["number"] as? Int ?? 0,
-                                    title: "",
-                                    href: item["href"] as? String ?? "",
-                                    duration: nil
-                                )
-                            }
-                        } else {
-                            LunaLogger.shared.log("Failed to parse JSON of extractEpisodes", type: "Error")
-                        }
-                    } catch {
-                        LunaLogger.shared.log("JSON parsing error of extractEpisodes: \(error)", type: "Error")
+        let episodesThen: @convention(block) (JSValue) -> Void = { result in
+            if let json = result.toString(), let data = json.data(using: .utf8) {
+                if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    lock.lock()
+                    episodeLinks = array.map { item in
+                        EpisodeLink(
+                            number: item["number"] as? Int ?? 0,
+                            title: "",
+                            href: item["href"] as? String ?? "",
+                            duration: nil
+                        )
                     }
-                } else {
-                    LunaLogger.shared.log("Result is not a string of extractEpisodes", type: "Error")
+                    lock.unlock()
                 }
-                dispatchGroup.leave()
             }
+            dispatchGroup.leave()
         }
         
-        let catchBlockEpisodes: @convention(block) (JSValue) -> Void = { error in
-            timeoutWorkItem.cancel()
-            episodesGroupQueue.sync {
-                guard !hasLeftEpisodesGroup else {
-                    LunaLogger.shared.log("extractEpisodes: catchBlock called but group already left", type: "Debug")
-                    return
-                }
-                hasLeftEpisodesGroup = true
-                
-                LunaLogger.shared.log("Promise rejected of extractEpisodes: \(String(describing: error.toString()))", type: "Error")
-                dispatchGroup.leave()
-            }
+        let episodesCatch: @convention(block) (JSValue) -> Void = { _ in dispatchGroup.leave() }
+        
+        if let promise = promiseEpisodes, !promise.isUndefined {
+            promise.invokeMethod("then", withArguments: [JSValue(object: episodesThen, in: context) as Any])
+            promise.invokeMethod("catch", withArguments: [JSValue(object: episodesCatch, in: context) as Any])
+        } else {
+            dispatchGroup.leave()
         }
-        
-        let thenFunctionEpisodes = JSValue(object: thenBlockEpisodes, in: context)
-        let catchFunctionEpisodes = JSValue(object: catchBlockEpisodes, in: context)
-        
-        promiseEpisodes.invokeMethod("then", withArguments: [thenFunctionEpisodes as Any])
-        promiseEpisodes.invokeMethod("catch", withArguments: [catchFunctionEpisodes as Any])
         
         dispatchGroup.notify(queue: .main) {
             completion(resultItems, episodeLinks)
@@ -212,7 +116,6 @@ extension JSController {
     
     func fetchEpisodesJS(url: String, completion: @escaping ([EpisodeLink]) -> Void) {
         guard let url = URL(string: url) else {
-            LunaLogger.shared.log("Invalid URL in fetchEpisodesJS: \(url)", type: "Error")
             completion([])
             return
         }
@@ -224,97 +127,61 @@ extension JSController {
         }
         
         guard let extractEpisodesFunction = context.objectForKeyedSubscript("extractEpisodes") else {
-            LunaLogger.shared.log("No JavaScript function extractEpisodes found", type: "Error")
             completion([])
             return
         }
         
-        var episodeLinks: [EpisodeLink] = []
-        
-        let promiseValueEpisodes = extractEpisodesFunction.call(withArguments: [url.absoluteString])
-        
+        let promiseValue = extractEpisodesFunction.call(withArguments: [url.absoluteString])
+        guard let promise = promiseValue, !promise.isUndefined && !promise.isNull else {
+            completion([])
+            return
+        }
+
         var hasCompleted = false
-        let completionQueue = DispatchQueue(label: "episodes.completion")
+        let lock = NSLock()
         
         let timeoutWorkItem = DispatchWorkItem {
-            LunaLogger.shared.log("Timeout for extractEpisodes", type: "Warning")
-            completionQueue.sync {
-                guard !hasCompleted else {
-                    LunaLogger.shared.log("extractEpisodes: timeout called but already completed", type: "Debug")
-                    return
-                }
-                hasCompleted = true
-                DispatchQueue.main.async {
-                    completion([])
-                }
-            }
+            lock.lock()
+            defer { lock.unlock() }
+            guard !hasCompleted else { return }
+            hasCompleted = true
+            DispatchQueue.main.async { completion([]) }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutWorkItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0, execute: timeoutWorkItem)
         
-        guard let promiseEpisodes = promiseValueEpisodes else {
-            LunaLogger.shared.log("extractEpisodes did not return a Promise", type: "Error")
+        let thenBlock: @convention(block) (JSValue) -> Void = { result in
             timeoutWorkItem.cancel()
-            completion([])
-            return
-        }
-        
-        let thenBlockEpisodes: @convention(block) (JSValue) -> Void = { result in
-            timeoutWorkItem.cancel()
-            completionQueue.sync {
-                guard !hasCompleted else {
-                    LunaLogger.shared.log("extractEpisodes: thenBlock called but already completed", type: "Debug")
-                    return
-                }
-                hasCompleted = true
-                
-                if let jsonOfEpisodes = result.toString(),
-                   let dataEpisodes = jsonOfEpisodes.data(using: .utf8) {
-                    do {
-                        if let array = try JSONSerialization.jsonObject(with: dataEpisodes, options: []) as? [[String: Any]] {
-                            episodeLinks = array.map { item -> EpisodeLink in
-                                EpisodeLink(
-                                    number: item["number"] as? Int ?? 0,
-                                    title: "",
-                                    href: item["href"] as? String ?? "",
-                                    duration: nil
-                                )
-                            }
-                        } else {
-                            LunaLogger.shared.log("Failed to parse JSON of extractEpisodes", type: "Error")
-                        }
-                    } catch {
-                        LunaLogger.shared.log("JSON parsing error of extractEpisodes: \(error)", type: "Error")
+            lock.lock()
+            guard !hasCompleted else { lock.unlock(); return }
+            hasCompleted = true
+            lock.unlock()
+            
+            var links: [EpisodeLink] = []
+            if let json = result.toString(), let data = json.data(using: .utf8) {
+                if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    links = array.map { item in
+                        EpisodeLink(
+                            number: item["number"] as? Int ?? 0,
+                            title: "",
+                            href: item["href"] as? String ?? "",
+                            duration: nil
+                        )
                     }
-                } else {
-                    LunaLogger.shared.log("Result is not a string of extractEpisodes", type: "Error")
-                }
-                
-                DispatchQueue.main.async {
-                    completion(episodeLinks)
                 }
             }
+            DispatchQueue.main.async { completion(links) }
         }
         
-        let catchBlockEpisodes: @convention(block) (JSValue) -> Void = { error in
+        let catchBlock: @convention(block) (JSValue) -> Void = { _ in
             timeoutWorkItem.cancel()
-            completionQueue.sync {
-                guard !hasCompleted else {
-                    LunaLogger.shared.log("extractEpisodes: catchBlock called but already completed", type: "Debug")
-                    return
-                }
-                hasCompleted = true
-                
-                LunaLogger.shared.log("Promise rejected of extractEpisodes: \(String(describing: error.toString()))", type: "Error")
-                DispatchQueue.main.async {
-                    completion([])
-                }
-            }
+            lock.lock()
+            guard !hasCompleted else { lock.unlock(); return }
+            hasCompleted = true
+            lock.unlock()
+            DispatchQueue.main.async { completion([]) }
         }
         
-        let thenFunctionEpisodes = JSValue(object: thenBlockEpisodes, in: context)
-        let catchFunctionEpisodes = JSValue(object: catchBlockEpisodes, in: context)
-        
-        promiseEpisodes.invokeMethod("then", withArguments: [thenFunctionEpisodes as Any])
-        promiseEpisodes.invokeMethod("catch", withArguments: [catchFunctionEpisodes as Any])
+        promise.invokeMethod("then", withArguments: [JSValue(object: thenBlock, in: context) as Any])
+        promise.invokeMethod("catch", withArguments: [JSValue(object: catchBlock, in: context) as Any])
     }
 }

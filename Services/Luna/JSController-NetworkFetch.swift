@@ -62,41 +62,41 @@ struct NetworkFetchOptions {
 extension JSContext {
     func setupNetworkFetch() {
         let networkFetchNativeFunction: @convention(block) (String, JSValue?, JSValue, JSValue) -> Void = { urlString, optionsValue, resolve, reject in
-            DispatchQueue.main.async {
-                var options = NetworkFetchOptions()
+            var options = NetworkFetchOptions()
 
-                if let optionsDict = optionsValue?.toDictionary() {
-                    let timeoutSeconds = (optionsDict["timeoutSeconds"] as? NSNumber)?.intValue ?? 10
-                    
-                    var headers: [String: String] = [:]
-                    if let headersDict = optionsDict["headers"] as? [String: Any] {
-                        for (key, value) in headersDict {
-                            headers[key] = String(describing: value)
-                        }
+            if let optionsDict = optionsValue?.toDictionary() {
+                let timeoutSeconds = (optionsDict["timeoutSeconds"] as? NSNumber)?.intValue ?? 10
+                
+                var headers: [String: String] = [:]
+                if let headersDict = optionsDict["headers"] as? [String: Any] {
+                    for (key, value) in headersDict {
+                        headers[key] = String(describing: value)
                     }
-                    
-                    let cutoff = optionsDict["cutoff"] as? String
-                    let returnHTML = optionsDict["returnHTML"] as? Bool ?? false
-                    let returnCookies = optionsDict["returnCookies"] as? Bool ?? true
-                    
-                    let clickSelectors = (optionsDict["clickSelectors"] as? [String]) ?? []
-                    let waitForSelectors = (optionsDict["waitForSelectors"] as? [String]) ?? []
-                    let maxWaitTime = (optionsDict["maxWaitTime"] as? NSNumber)?.intValue ?? 5
-                    let htmlContent = optionsDict["htmlContent"] as? String
-
-                    options = NetworkFetchOptions(
-                        timeoutSeconds: timeoutSeconds,
-                        headers: headers,
-                        cutoff: cutoff,
-                        returnHTML: returnHTML,
-                        returnCookies: returnCookies,
-                        clickSelectors: clickSelectors,
-                        waitForSelectors: waitForSelectors,
-                        maxWaitTime: maxWaitTime,
-                        htmlContent: htmlContent
-                    )
                 }
+                
+                let cutoff = optionsDict["cutoff"] as? String
+                let returnHTML = optionsDict["returnHTML"] as? Bool ?? false
+                let returnCookies = optionsDict["returnCookies"] as? Bool ?? true
+                
+                let clickSelectors = (optionsDict["clickSelectors"] as? [String]) ?? []
+                let waitForSelectors = (optionsDict["waitForSelectors"] as? [String]) ?? []
+                let maxWaitTime = (optionsDict["maxWaitTime"] as? NSNumber)?.intValue ?? 5
+                let htmlContent = optionsDict["htmlContent"] as? String
 
+                options = NetworkFetchOptions(
+                    timeoutSeconds: timeoutSeconds,
+                    headers: headers,
+                    cutoff: cutoff,
+                    returnHTML: returnHTML,
+                    returnCookies: returnCookies,
+                    clickSelectors: clickSelectors,
+                    waitForSelectors: waitForSelectors,
+                    maxWaitTime: maxWaitTime,
+                    htmlContent: htmlContent
+                )
+            }
+
+            DispatchQueue.main.async {
                 NetworkFetchManager.shared.performNetworkFetch(
                     urlString: urlString,
                     options: options,
@@ -121,15 +121,15 @@ extension JSContext {
 
     func setupNetworkFetchSimple() {
         let networkFetchSimpleNativeFunction: @convention(block) (String, JSValue?, JSValue, JSValue) -> Void = { urlString, optionsValue, resolve, reject in
+            var timeoutSeconds = 5
+            var htmlContent: String? = nil
+            var headers: [String: String] = [:]
+            if let optionsDict = optionsValue?.toDictionary() {
+                timeoutSeconds = optionsDict["timeoutSeconds"] as? Int ?? 5
+                htmlContent = optionsDict["htmlContent"] as? String
+                headers = optionsDict["headers"] as? [String: String] ?? [:]
+            }
             DispatchQueue.main.async {
-                var timeoutSeconds = 5
-                var htmlContent: String? = nil
-                var headers: [String: String] = [:]
-                if let optionsDict = optionsValue?.toDictionary() {
-                    timeoutSeconds = optionsDict["timeoutSeconds"] as? Int ?? 5
-                    htmlContent = optionsDict["htmlContent"] as? String
-                    headers = optionsDict["headers"] as? [String: String] ?? [:]
-                }
                 NetworkFetchSimpleManager.shared.performNetworkFetch(
                     urlString: urlString,
                     timeoutSeconds: timeoutSeconds,
@@ -353,21 +353,64 @@ class NetworkFetchManager: NSObject, ObservableObject {
     }
     
     func performNetworkFetch(urlString: String, options: NetworkFetchOptions, resolve: JSValue, reject: JSValue) {
-        let monitorId = UUID().uuidString
-        let monitor = NetworkFetchMonitor()
-        activeMonitors[monitorId] = monitor
+        // We use a hybrid approach: if advanced features like cutoff or clickSelectors are needed,
+        // we MUST use the WebView monitor. Otherwise, for speed and reliability, use direct URLSession.
         
-        monitor.startMonitoring(
-            urlString: urlString,
-            options: options
-        ) { [weak self] result in
-            self?.activeMonitors.removeValue(forKey: monitorId)
+        let needsWebView = options.cutoff != nil || !options.clickSelectors.isEmpty || !options.waitForSelectors.isEmpty || options.htmlContent != nil
+        
+        if needsWebView {
+            let monitorId = UUID().uuidString
+            let monitor = NetworkFetchMonitor()
+            activeMonitors[monitorId] = monitor
             
-            DispatchQueue.main.async {
-                if !resolve.isUndefined {
-                    resolve.call(withArguments: [result])
+            monitor.startMonitoring(urlString: urlString, options: options) { [weak self] result in
+                self?.activeMonitors.removeValue(forKey: monitorId)
+                DispatchQueue.main.async {
+                    if !resolve.isUndefined { resolve.call(withArguments: [result]) }
                 }
             }
+        } else {
+            // Fast direct path
+            guard let url = URL(string: urlString) else {
+                reject.call(withArguments: ["Invalid URL"])
+                return
+            }
+            
+            var request = URLRequest(url: url)
+            request.timeoutInterval = TimeInterval(options.timeoutSeconds)
+            for (key, value) in options.headers {
+                request.setValue(value, forHTTPHeaderField: key)
+            }
+            
+            let session = URLSession.fetchData(allowRedirects: true)
+            let task = session.dataTask(with: request) { data, response, error in
+                defer { session.finishTasksAndInvalidate() }
+                
+                if let error = error {
+                    let res: [String: Any] = ["success": false, "error": error.localizedDescription]
+                    DispatchQueue.main.async { resolve.call(withArguments: [res]) }
+                    return
+                }
+                
+                let http = response as? HTTPURLResponse
+                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                
+                var resHeaders: [String: String] = [:]
+                if let all = http?.allHeaderFields {
+                    for (k, v) in all { if let ks = k as? String, let vs = v as? String { resHeaders[ks] = vs } }
+                }
+                
+                let result: [String: Any] = [
+                    "originalUrl": urlString,
+                    "status": http?.statusCode ?? 0,
+                    "headers": resHeaders,
+                    "body": body,
+                    "success": true,
+                    "requests": [urlString]
+                ]
+                DispatchQueue.main.async { resolve.call(withArguments: [result]) }
+            }
+            task.resume()
         }
     }
 }
