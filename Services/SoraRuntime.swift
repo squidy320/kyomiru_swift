@@ -160,6 +160,7 @@ final class SoraRuntime {
     private let session: URLSession
     private var cookieHeader: String?
     private let moduleService: AnimePaheModuleService
+    private let searchTasks = InFlightStringTaskStore<[SoraAnimeMatch]>()
 
     init(session: URLSession = .custom) {
         self.session = session
@@ -167,46 +168,50 @@ final class SoraRuntime {
     }
 
     func searchAnime(query: String) async throws -> [SoraAnimeMatch] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = normalizeSearchQuery(query)
         guard !trimmed.isEmpty else { return [] }
-        AppLog.debug(.network, "animepahe search start query=\(trimmed)")
-        do {
-            let matches = try await directSearchAnime(query: trimmed)
-            AppLog.debug(.network, "animepahe direct search results count=\(matches.count)")
-            if !matches.isEmpty {
-                AppLog.debug(.network, "animepahe search success count=\(matches.count) source=direct")
-                return matches
+        let task = await searchTasks.task(for: trimmed) { [self] in
+            AppLog.debug(.network, "animepahe search start query=\(trimmed)")
+            do {
+                let matches = try await directSearchAnime(query: trimmed)
+                AppLog.debug(.network, "animepahe direct search results count=\(matches.count)")
+                if !matches.isEmpty {
+                    AppLog.debug(.network, "animepahe search success count=\(matches.count) source=direct")
+                    return matches
+                }
+            } catch {
+                AppLog.error(.network, "animepahe direct search failed query=\(trimmed) \(error.localizedDescription)")
             }
-        } catch {
-            AppLog.error(.network, "animepahe direct search failed query=\(trimmed) \(error.localizedDescription)")
-        }
 
-        AppLog.debug(.network, "animepahe search fallback to luna module")
-        do {
-            let items = try await moduleService.search(query: trimmed)
-            let matches = items.compactMap { item -> SoraAnimeMatch? in
-                let sessionId = URL(string: item.href)?.lastPathComponent ?? ""
-                guard !sessionId.isEmpty else { return nil }
-                return SoraAnimeMatch(
-                    id: sessionId,
-                    title: item.title,
-                    imageURL: URL(string: item.imageUrl),
-                    session: sessionId,
-                    year: nil,
-                    format: nil,
-                    episodeCount: nil
-                )
+            AppLog.debug(.network, "animepahe search fallback to luna module")
+            do {
+                let items = try await moduleService.search(query: trimmed)
+                let matches = items.compactMap { item -> SoraAnimeMatch? in
+                    let sessionId = URL(string: item.href)?.lastPathComponent ?? ""
+                    guard !sessionId.isEmpty else { return nil }
+                    return SoraAnimeMatch(
+                        id: sessionId,
+                        title: item.title,
+                        imageURL: URL(string: item.imageUrl),
+                        session: sessionId,
+                        year: nil,
+                        format: nil,
+                        episodeCount: nil
+                    )
+                }
+                AppLog.debug(.network, "animepahe luna search results count=\(matches.count)")
+                if !matches.isEmpty {
+                    AppLog.debug(.network, "animepahe search success count=\(matches.count) source=luna")
+                    return matches
+                }
+            } catch {
+                AppLog.error(.network, "animepahe luna search failed query=\(trimmed) \(error.localizedDescription)")
             }
-            AppLog.debug(.network, "animepahe luna search results count=\(matches.count)")
-            if !matches.isEmpty {
-                AppLog.debug(.network, "animepahe search success count=\(matches.count) source=luna")
-                return matches
-            }
-        } catch {
-            AppLog.error(.network, "animepahe luna search failed query=\(trimmed) \(error.localizedDescription)")
-        }
 
-        return []
+            return []
+        }
+        defer { Task { await searchTasks.clear(trimmed) } }
+        return try await task.value
     }
 
     private func directSearchAnime(query: String) async throws -> [SoraAnimeMatch] {
@@ -510,61 +515,58 @@ final class SoraRuntime {
     }
 
     private func get(url: URL, referer: URL? = nil) async throws -> Data {
-        try await withThrowingTaskGroup(of: Data.self) { group in
-            group.addTask {
-                var request = URLRequest(url: url)
-                request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
-                request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-                request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
-                request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
-                request.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Origin")
-                if let referer {
-                    request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
-                } else {
-                    request.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Referer")
-                }
-                if let cookieHeader = self.cookieHeader {
-                    request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
-                }
-                
-                AppLog.debug(.network, "http get start \(url.absoluteString)")
-                let (data, response) = try await self.fetch(request, label: "animepahe-get")
-                self.mergeCookies(from: response)
-
-                if self.shouldBypassDdos(response: response, data: data) {
-                    AppLog.debug(.network, "ddos bypass triggered for \(url.host ?? "")")
-                    try await self.performDdosBypass(targetURL: url)
-                    var retry = URLRequest(url: url)
-                    retry.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
-                    retry.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-                    retry.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
-                    retry.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
-                    retry.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Origin")
-                    if let referer {
-                        retry.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
-                    } else {
-                        retry.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Referer")
-                    }
-                    if let cookieHeader = self.cookieHeader {
-                        retry.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
-                    }
-                    let (retryData, retryResponse) = try await self.fetch(retry, label: "animepahe-get-retry")
-                    self.mergeCookies(from: retryResponse)
-                    return retryData
-                }
-                return data
-            }
-            
-            group.addTask {
-                try await Task.sleep(nanoseconds: 15 * 1_000_000_000)
-                AppLog.error(.network, "http get timeout \(url.absoluteString)")
-                throw URLError(.timedOut)
-            }
-            
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
+        var request = URLRequest(url: url)
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        request.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Origin")
+        if let referer {
+            request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
+        } else {
+            request.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Referer")
         }
+        if let cookieHeader = self.cookieHeader {
+            request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        }
+
+        AppLog.debug(.network, "http get start \(url.absoluteString)")
+        let (data, response) = try await self.fetch(request, label: "animepahe-get")
+        self.mergeCookies(from: response)
+
+        if self.shouldBypassDdos(response: response, data: data) {
+            AppLog.debug(.network, "ddos bypass triggered for \(url.host ?? "")")
+            try await self.performDdosBypass(targetURL: url)
+            var retry = URLRequest(url: url)
+            retry.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+            retry.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+            retry.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+            retry.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+            retry.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Origin")
+            if let referer {
+                retry.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
+            } else {
+                retry.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Referer")
+            }
+            if let cookieHeader = self.cookieHeader {
+                retry.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+            }
+            let (retryData, retryResponse) = try await self.fetch(retry, label: "animepahe-get-retry")
+            self.mergeCookies(from: retryResponse)
+            return retryData
+        }
+        return data
+    }
+
+    private func normalizeSearchQuery(_ query: String) -> String {
+        query
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+            .replacingOccurrences(of: "\u{2018}", with: "'")
+            .replacingOccurrences(of: "\u{201C}", with: "\"")
+            .replacingOccurrences(of: "\u{201D}", with: "\"")
+            .replacingOccurrences(of: "\u{2013}", with: "-")
+            .replacingOccurrences(of: "\u{2014}", with: "-")
     }
 
     private func fetch(_ request: URLRequest, label: String) async throws -> (Data, URLResponse) {
@@ -690,5 +692,22 @@ final class SoraRuntime {
         return String(data: data, encoding: .utf8) ?? ""
     }
 
+}
+
+actor InFlightStringTaskStore<Value> {
+    private var tasks: [String: Task<Value, Error>] = [:]
+
+    func task(for key: String, create: @escaping @Sendable () async throws -> Value) -> Task<Value, Error> {
+        if let existing = tasks[key] {
+            return existing
+        }
+        let task = Task(operation: create)
+        tasks[key] = task
+        return task
+    }
+
+    func clear(_ key: String) {
+        tasks[key] = nil
+    }
 }
 
