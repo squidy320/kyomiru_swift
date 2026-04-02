@@ -117,6 +117,7 @@ struct DetailsView: View {
     @State private var matchCandidates: [SoraAnimeMatch] = []
     @State private var matchError: String?
     @State private var matchQuery: String = ""
+    @State private var activeMatchQuery: String?
     @State private var isLoadingTMDBMatch = false
     @State private var tmdbMatchCandidates: [TMDBSearchResult] = []
     @State private var tmdbMatchError: String?
@@ -952,9 +953,13 @@ struct DetailsView: View {
 
     private func performMatchSearch(query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isLoadingMatch, activeMatchQuery == trimmed {
+            return
+        }
         matchSearchGeneration += 1
         let searchGeneration = matchSearchGeneration
         isLoadingMatch = true
+        activeMatchQuery = trimmed
         matchError = nil
         matchCandidates = []
         Task {
@@ -972,12 +977,14 @@ struct DetailsView: View {
                         matchError = "No matches found."
                     }
                     isLoadingMatch = false
+                    activeMatchQuery = nil
                 }
             } catch {
                 await MainActor.run {
                     guard searchGeneration == matchSearchGeneration else { return }
                     matchError = "Failed to search matches."
                     isLoadingMatch = false
+                    activeMatchQuery = nil
                 }
                 AppLog.error(.matching, "manual match search failed mediaId=\(media.id) \(error.localizedDescription)")
             }
