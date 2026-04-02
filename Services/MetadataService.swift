@@ -251,31 +251,43 @@ final class MetadataService {
             )
         }
 
-        if let structured = await tmdbMatcher.resolveAnimeStructure(media: media) {
-            return ResolvedArtworkContext(
-                showId: structured.showId,
-                mediaType: structured.mediaType,
-                posterSeasonNumber: structured.mediaType == "tv" ? structured.currentSegment.posterSeasonNumber : nil
-            )
-        }
+        let structured = await tmdbMatcher.resolveAnimeStructure(media: media)
 
         if let resolved = await tmdbMatcher.resolveShowAndSeason(
             media: media,
             preferredSeasonNumber: TitleMatcher.extractSeasonNumber(from: media.title.best),
             expectedEpisodeCount: media.episodes
         ) {
+            let posterSeasonNumber: Int?
+            if let structured,
+               structured.showId == resolved.showId,
+               structured.mediaType == resolved.mediaType,
+               resolved.mediaType == "tv" {
+                posterSeasonNumber = structured.currentSegment.posterSeasonNumber
+            } else {
+                posterSeasonNumber = resolved.mediaType == "tv" ? resolved.seasonNumber : nil
+            }
             return ResolvedArtworkContext(
                 showId: resolved.showId,
                 mediaType: resolved.mediaType,
-                posterSeasonNumber: resolved.mediaType == "tv" ? resolved.seasonNumber : nil
+                posterSeasonNumber: posterSeasonNumber
             )
         }
 
         if let target = await tmdbMatcher.resolveArtworkTarget(media: media) {
+            let posterSeasonNumber: Int?
+            if let structured,
+               structured.showId == target.id,
+               structured.mediaType == target.mediaType,
+               target.mediaType == "tv" {
+                posterSeasonNumber = structured.currentSegment.posterSeasonNumber
+            } else {
+                posterSeasonNumber = target.mediaType == "tv" ? cacheStoreSeasonNumber(for: media.id) : nil
+            }
             return ResolvedArtworkContext(
                 showId: target.id,
                 mediaType: target.mediaType,
-                posterSeasonNumber: target.mediaType == "tv" ? cacheStoreSeasonNumber(for: media.id) : nil
+                posterSeasonNumber: posterSeasonNumber
             )
         }
 
@@ -463,9 +475,9 @@ final class MetadataService {
 
     private func metadataCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:media:v12:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
+            return "tmdb:media:v13:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
         }
-        return "tmdb:media:v12:\(mediaId)"
+        return "tmdb:media:v13:\(mediaId)"
     }
 
     private func logoCacheKey(for mediaId: Int) -> String {
@@ -514,6 +526,8 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:media:v11:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v12:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v12:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v13:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v13:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v2:\(mediaId)")
