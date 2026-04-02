@@ -350,12 +350,17 @@ final class TMDBMatchingService {
                     return nil
                 }
 
-                let structured = await self.resolveAnimeStructure(
-                    media: media,
-                    showIdOverride: target.id,
-                    mediaTypeOverride: target.mediaType,
-                    showOverride: show
-                )
+                let structured: TMDBAnimeStructureMatch?
+                if self.isSpecialLike(media) {
+                    structured = nil
+                } else {
+                    structured = await self.resolveAnimeStructure(
+                        media: media,
+                        showIdOverride: target.id,
+                        mediaTypeOverride: target.mediaType,
+                        showOverride: show
+                    )
+                }
 
                 let selection = structured.map {
                     SelectedSeason(
@@ -749,7 +754,8 @@ final class TMDBMatchingService {
     func fetchSeasonChoices(for media: AniListMedia, showId: Int, mediaType: String = "tv") async -> [TMDBSeasonChoice] {
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return [] }
         guard let summary = await fetchShowSummary(showId: showId, mediaType: mediaType, apiKey: apiKey) else { return [] }
-        if let structured = await resolveAnimeStructure(media: media, showIdOverride: showId, mediaTypeOverride: mediaType, showOverride: summary) {
+        if !isSpecialLike(media),
+           let structured = await resolveAnimeStructure(media: media, showIdOverride: showId, mediaTypeOverride: mediaType, showOverride: summary) {
             let structuredChoices = structured.segments.map { segment in
                 TMDBSeasonChoice(
                     showId: showId,
