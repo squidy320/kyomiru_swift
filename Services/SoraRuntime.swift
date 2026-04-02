@@ -316,7 +316,11 @@ final class SoraRuntime {
                     : link.href
                 
                 guard let playURL = URL(string: fullHref) else { return nil }
-                let id = playURL.lastPathComponent
+                let episodeToken = URLComponents(url: playURL, resolvingAgainstBaseURL: false)?
+                    .queryItems?
+                    .first(where: { $0.name == "token" })?
+                    .value
+                let id = episodeToken ?? playURL.absoluteString
                 return SoraEpisode(id: id, number: link.number, playURL: playURL)
             }
             if !episodes.isEmpty {
