@@ -2098,11 +2098,13 @@ final class TMDBMatchingService {
     ) -> AniListTMDBSegment? {
         guard let currentIndex = franchise.firstIndex(where: { $0.media.id == media.id }) else { return nil }
         let current = franchise[currentIndex]
+        let knownBefore = franchise.prefix(currentIndex).compactMap(\.media.episodes).filter { $0 > 0 }.reduce(0, +)
+        let knownAfter = franchise.dropFirst(currentIndex + 1).compactMap(\.media.episodes).filter { $0 > 0 }.reduce(0, +)
         let currentCount = inferredEpisodeCount(
             for: current,
             index: currentIndex,
             franchise: franchise,
-            cursor: 0,
+            cursor: knownBefore,
             totalEpisodes: absoluteEpisodes.count
         )
         guard currentCount > 0 else { return nil }
@@ -2131,8 +2133,6 @@ final class TMDBMatchingService {
             )
         }
 
-        let knownBefore = franchise.prefix(currentIndex).compactMap(\.media.episodes).filter { $0 > 0 }.reduce(0, +)
-        let knownAfter = franchise.dropFirst(currentIndex + 1).compactMap(\.media.episodes).filter { $0 > 0 }.reduce(0, +)
         let minStart = knownBefore
         let maxStart = absoluteEpisodes.count - knownAfter - currentCount
         guard maxStart >= minStart, minStart >= 0 else { return nil }

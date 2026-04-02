@@ -54,7 +54,7 @@ struct MediaPosterCard: View {
             }
             if enablesTMDBArtworkLookup {
                 if !tmdbLookupComplete {
-                    return allowFallbackWhileLoading ? imageURL : nil
+                    return imageURL
                 }
                 return imageURL
             }
@@ -174,7 +174,7 @@ struct ContinueWatchingCard: View {
                 return tmdbImageURL
             }
             if enablesTMDBArtworkLookup {
-                return tmdbLookupComplete ? imageURL : nil
+                return imageURL
             }
             return imageURL
         }()
