@@ -426,8 +426,6 @@ private struct DownloadsQueueView: View {
             return "Downloading"
         case .downloadingHLS:
             return "Downloading HLS"
-        case .remuxing:
-            return "Remuxing"
         case .completed:
             return "Completed"
         case .failed:
@@ -441,7 +439,7 @@ private struct DownloadsQueueView: View {
     private func actionRow(for item: DownloadItem) -> some View {
         HStack(spacing: 10) {
             switch item.state {
-            case .queued, .downloading, .downloadingHLS, .remuxing:
+            case .queued, .downloading, .downloadingHLS:
                 actionButton("Cancel", tint: Color.orange.opacity(0.85)) {
                     DownloadManager.shared.cancel(itemId: item.id)
                 }
@@ -477,7 +475,7 @@ private struct DownloadsQueueView: View {
             return Color.orange.opacity(0.9)
         case .completed:
             return Color.green.opacity(0.85)
-        case .queued, .downloading, .downloadingHLS, .remuxing:
+        case .queued, .downloading, .downloadingHLS:
             return Theme.textSecondary
         }
     }
@@ -818,11 +816,6 @@ private struct DownloadsDetailView: View {
                     Button("Delete") {
                         DownloadManager.shared.delete(itemId: item.id)
                     }
-                    if DownloadManager.shared.shouldOfferRemux(for: item) {
-                        Button("Remux to MP4") {
-                            DownloadManager.shared.retryRemux(itemId: item.id)
-                        }
-                    }
                 }
             }
         }
@@ -852,11 +845,6 @@ private struct DownloadsDetailView: View {
                     .contextMenu {
                         Button("Delete") {
                             DownloadManager.shared.delete(itemId: item.id)
-                        }
-                        if DownloadManager.shared.shouldOfferRemux(for: item) {
-                            Button("Remux to MP4") {
-                                DownloadManager.shared.retryRemux(itemId: item.id)
-                            }
                         }
                     }
                 }

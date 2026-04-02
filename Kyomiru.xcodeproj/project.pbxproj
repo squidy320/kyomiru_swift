@@ -75,22 +75,6 @@
         2CFF3ECD27116963C051730A /* JSController-NetworkFetch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45A0F16D55021ED2DE2E8DE8 /* JSController-NetworkFetch.swift */; };
         4788F2D20516CCB44531164A /* JavaScriptCore+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 334866F7F2A74AB9510C2588 /* JavaScriptCore+Extensions.swift */; };
 		5FB9970930229D05437710EC /* LunaCompat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D3DAE2316A4076C61FFB793 /* LunaCompat.swift */; };
-		BB11BB22CC33DD44EE55FF11 /* ffmpegkit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF03 /* ffmpegkit.xcframework */; };
-		BB11BB22CC33DD44EE55FF12 /* libavcodec.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF04 /* libavcodec.xcframework */; };
-		BB11BB22CC33DD44EE55FF13 /* libavdevice.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF05 /* libavdevice.xcframework */; };
-		BB11BB22CC33DD44EE55FF14 /* libavfilter.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF06 /* libavfilter.xcframework */; };
-		BB11BB22CC33DD44EE55FF15 /* libavformat.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF07 /* libavformat.xcframework */; };
-		BB11BB22CC33DD44EE55FF16 /* libavutil.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF08 /* libavutil.xcframework */; };
-		BB11BB22CC33DD44EE55FF17 /* libswresample.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF09 /* libswresample.xcframework */; };
-		BB11BB22CC33DD44EE55FF18 /* libswscale.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */; };
-		BB11BB22CC33DD44EE55FF21 /* ffmpegkit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF03 /* ffmpegkit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		BB11BB22CC33DD44EE55FF22 /* libavcodec.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF04 /* libavcodec.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		BB11BB22CC33DD44EE55FF23 /* libavdevice.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF05 /* libavdevice.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		BB11BB22CC33DD44EE55FF24 /* libavfilter.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF06 /* libavfilter.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		BB11BB22CC33DD44EE55FF25 /* libavformat.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF07 /* libavformat.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		BB11BB22CC33DD44EE55FF26 /* libavutil.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF08 /* libavutil.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		BB11BB22CC33DD44EE55FF27 /* libswresample.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF09 /* libswresample.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		BB11BB22CC33DD44EE55FF28 /* libswscale.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 
 
 /* Begin PBXFileReference section */
@@ -164,14 +148,6 @@
         45A0F16D55021ED2DE2E8DE8 /* JSController-NetworkFetch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JSController-NetworkFetch.swift"; sourceTree = "<group>"; };
         334866F7F2A74AB9510C2588 /* JavaScriptCore+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "JavaScriptCore+Extensions.swift"; sourceTree = "<group>"; };
         4D3DAE2316A4076C61FFB793 /* LunaCompat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LunaCompat.swift; sourceTree = "<group>"; };
-		AA11BB22CC33DD44EE55FF03 /* ffmpegkit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = ffmpegkit.xcframework; sourceTree = "<group>"; };
-		AA11BB22CC33DD44EE55FF04 /* libavcodec.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libavcodec.xcframework; sourceTree = "<group>"; };
-		AA11BB22CC33DD44EE55FF05 /* libavdevice.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libavdevice.xcframework; sourceTree = "<group>"; };
-		AA11BB22CC33DD44EE55FF06 /* libavfilter.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libavfilter.xcframework; sourceTree = "<group>"; };
-		AA11BB22CC33DD44EE55FF07 /* libavformat.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libavformat.xcframework; sourceTree = "<group>"; };
-		AA11BB22CC33DD44EE55FF08 /* libavutil.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libavutil.xcframework; sourceTree = "<group>"; };
-		AA11BB22CC33DD44EE55FF09 /* libswresample.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libswresample.xcframework; sourceTree = "<group>"; };
-		AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = libswscale.xcframework; sourceTree = "<group>"; };
 
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -181,14 +157,6 @@
 			files = (
 				5C97AFFC7DD823D160FB8E18 /* WebKit.framework in Frameworks */,
 				1F1794364860EAEFCE63C284 /* JavaScriptCore.framework in Frameworks */,
-				BB11BB22CC33DD44EE55FF11 /* ffmpegkit.xcframework in Frameworks */,
-				BB11BB22CC33DD44EE55FF12 /* libavcodec.xcframework in Frameworks */,
-				BB11BB22CC33DD44EE55FF13 /* libavdevice.xcframework in Frameworks */,
-				BB11BB22CC33DD44EE55FF14 /* libavfilter.xcframework in Frameworks */,
-				BB11BB22CC33DD44EE55FF15 /* libavformat.xcframework in Frameworks */,
-				BB11BB22CC33DD44EE55FF16 /* libavutil.xcframework in Frameworks */,
-				BB11BB22CC33DD44EE55FF17 /* libswresample.xcframework in Frameworks */,
-				BB11BB22CC33DD44EE55FF18 /* libswscale.xcframework in Frameworks */,
 			);
             runOnlyForDeploymentPostprocessing = 0;
         };
@@ -201,14 +169,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				BB11BB22CC33DD44EE55FF21 /* ffmpegkit.xcframework in Embed Frameworks */,
-				BB11BB22CC33DD44EE55FF22 /* libavcodec.xcframework in Embed Frameworks */,
-				BB11BB22CC33DD44EE55FF23 /* libavdevice.xcframework in Embed Frameworks */,
-				BB11BB22CC33DD44EE55FF24 /* libavfilter.xcframework in Embed Frameworks */,
-				BB11BB22CC33DD44EE55FF25 /* libavformat.xcframework in Embed Frameworks */,
-				BB11BB22CC33DD44EE55FF26 /* libavutil.xcframework in Embed Frameworks */,
-				BB11BB22CC33DD44EE55FF27 /* libswresample.xcframework in Embed Frameworks */,
-				BB11BB22CC33DD44EE55FF28 /* libswscale.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -221,8 +181,6 @@
             children = (
                 B9DBA9411C2F769120D165B0 /* WebKit.framework */,
                   59848050E347612F09813FD7 /* JavaScriptCore.framework */,
-				AA11BB22CC33DD44EE55FF01 /* Vendor */,
-				AA11BB22CC33DD44EE55FF01 /* Vendor */,
                 C591C82493CB4BA0B5125830 /* App */,                 1EE5CC4E90AD46AD84E284B2 /* Models */,                 A56FD437DEE6442B8A5604FA /* Services */,                 ECF9CF9AE044490489714400 /* State */,                 69CBAC85A6A842B8A3C969F4 /* UI */,                 07B7F45882C14BB0849DC0B7 /* Views */,                 9B3569C6E5B54AC38A5FC2DB /* Sources */,                 C3B872E7402442BEA5900710 /* Resources */,                 72071117F02B492EA7D8D08E /* Kyomiru.app */,
             );
             sourceTree = "<group>";
@@ -236,29 +194,6 @@
             path = App;
             sourceTree = "<group>";
           };
-		AA11BB22CC33DD44EE55FF01 /* Vendor */ = {
-			isa = PBXGroup;
-			children = (
-				AA11BB22CC33DD44EE55FF02 /* FFmpegKit */,
-			);
-			path = Vendor;
-			sourceTree = "<group>";
-		};
-		AA11BB22CC33DD44EE55FF02 /* FFmpegKit */ = {
-			isa = PBXGroup;
-			children = (
-				AA11BB22CC33DD44EE55FF03 /* ffmpegkit.xcframework */,
-				AA11BB22CC33DD44EE55FF04 /* libavcodec.xcframework */,
-				AA11BB22CC33DD44EE55FF05 /* libavdevice.xcframework */,
-				AA11BB22CC33DD44EE55FF06 /* libavfilter.xcframework */,
-				AA11BB22CC33DD44EE55FF07 /* libavformat.xcframework */,
-				AA11BB22CC33DD44EE55FF08 /* libavutil.xcframework */,
-				AA11BB22CC33DD44EE55FF09 /* libswresample.xcframework */,
-				AA11BB22CC33DD44EE55FF0A /* libswscale.xcframework */,
-			);
-			path = FFmpegKit;
-			sourceTree = "<group>";
-		};
         1EE5CC4E90AD46AD84E284B2 /* Models */ = {
             isa = PBXGroup;
             children = (

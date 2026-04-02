@@ -1,12 +1,10 @@
 import Foundation
 
 typealias AniListService = AniListClient
-typealias MediaRemuxer = MediaConversionManager
 
 struct DependencyContainer {
     let aniListService: AniListService
     let downloadManager: DownloadManager
-    let mediaRemuxer: MediaRemuxer
     let libraryStore: MediaTracker
 }
 
@@ -17,13 +15,11 @@ actor AppDependencyContainer {
 
     let aniListService: AniListService
     let downloadManager: DownloadManager
-    let mediaRemuxer: MediaRemuxer
     let libraryStore: MediaTracker
 
     init(
         aniListService: AniListService? = nil,
         downloadManager: DownloadManager? = nil,
-        mediaRemuxer: MediaRemuxer? = nil,
         libraryStore: MediaTracker? = nil
     ) async {
         self.aniListService = aniListService ?? AniListClient(cacheStore: CacheStore())
@@ -32,7 +28,6 @@ actor AppDependencyContainer {
         } else {
             self.downloadManager = await MainActor.run { DownloadManager.shared }
         }
-        self.mediaRemuxer = mediaRemuxer ?? .shared
         self.libraryStore = libraryStore ?? MediaTracker()
     }
 
@@ -40,7 +35,6 @@ actor AppDependencyContainer {
         DependencyContainer(
             aniListService: aniListService,
             downloadManager: downloadManager,
-            mediaRemuxer: mediaRemuxer,
             libraryStore: libraryStore
         )
     }
