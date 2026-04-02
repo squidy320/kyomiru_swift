@@ -9,6 +9,35 @@ struct SoraAnimeMatch: Identifiable, Equatable {
     let year: Int?
     let format: String?
     let episodeCount: Int?
+    let normalizedTitle: String?
+    let matchScore: Double?
+    let matchContext: String?
+
+    init(
+        id: String,
+        title: String,
+        imageURL: URL?,
+        session: String,
+        detailURL: URL?,
+        year: Int?,
+        format: String?,
+        episodeCount: Int?,
+        normalizedTitle: String? = nil,
+        matchScore: Double? = nil,
+        matchContext: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.imageURL = imageURL
+        self.session = session
+        self.detailURL = detailURL
+        self.year = year
+        self.format = format
+        self.episodeCount = episodeCount
+        self.normalizedTitle = normalizedTitle
+        self.matchScore = matchScore
+        self.matchContext = matchContext
+    }
 }
 
 struct SoraEpisode: Identifiable, Equatable {

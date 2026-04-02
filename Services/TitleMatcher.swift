@@ -1,25 +1,64 @@
 import Foundation
 
 enum TitleMatcher {
+    struct RankedCandidate {
+        let match: SoraAnimeMatch
+        let score: Double
+        let normalizedTitle: String
+        let context: String?
+    }
+
     static func bestMatch(
         target: AniListMedia,
-        candidates: [SoraAnimeMatch]
+        candidates: [SoraAnimeMatch],
+        provider: StreamingProvider = .current
     ) -> SoraAnimeMatch? {
         AppLog.debug(.matching, "best match start mediaId=\(target.id) candidates=\(candidates.count)")
-        let targetTitle = target.title.best
-        let wantedSeason = extractSeasonNumber(from: targetTitle)
-        let normalizedTarget = cleanTitle(stripSeasonMarkers(targetTitle))
-        let targetYear = target.seasonYear
-        let targetFormat = target.format ?? target.status
-
-        let best = candidates.max { a, b in
-            score(candidate: a, normalizedTarget: normalizedTarget, wantedSeason: wantedSeason,
-                  targetYear: targetYear, targetFormat: targetFormat)
-            < score(candidate: b, normalizedTarget: normalizedTarget, wantedSeason: wantedSeason,
-                    targetYear: targetYear, targetFormat: targetFormat)
-        }
+        let best = rankedCandidates(target: target, candidates: candidates, provider: provider).first
         AppLog.debug(.matching, "best match result mediaId=\(target.id) matched=\(best != nil)")
         return best
+    }
+
+    static func rankedCandidates(
+        target: AniListMedia,
+        candidates: [SoraAnimeMatch],
+        provider: StreamingProvider = .current
+    ) -> [SoraAnimeMatch] {
+        rankedCandidateEntries(target: target, candidates: candidates, provider: provider).map(\.match)
+    }
+
+    static func rankedCandidateEntries(
+        target: AniListMedia,
+        candidates: [SoraAnimeMatch],
+        provider: StreamingProvider = .current
+    ) -> [RankedCandidate] {
+        let targetTitle = target.title.best
+        let wantedSeason = extractSeasonNumber(from: targetTitle)
+        let normalizedTarget = normalizedTitle(targetTitle, provider: provider)
+        let normalizedTargetBase = stripSequenceMarkers(from: normalizedTarget, provider: provider)
+        let targetYear = target.seasonYear
+        let targetFormat = target.format ?? target.status
+        let queries = buildQueries(for: target).map { normalizedTitle($0, provider: provider) }
+
+        return candidates.map { candidate in
+            let ranked = rankedCandidate(
+                candidate: candidate,
+                normalizedTarget: normalizedTarget,
+                normalizedTargetBase: normalizedTargetBase,
+                wantedSeason: wantedSeason,
+                targetYear: targetYear,
+                targetFormat: targetFormat,
+                provider: provider,
+                normalizedQueries: queries
+            )
+            return ranked
+        }
+        .sorted { lhs, rhs in
+            if lhs.score == rhs.score {
+                return lhs.match.title.localizedCaseInsensitiveCompare(rhs.match.title) == .orderedAscending
+            }
+            return lhs.score > rhs.score
+        }
     }
 
     static func score(
@@ -27,9 +66,14 @@ enum TitleMatcher {
         normalizedTarget: String,
         wantedSeason: Int?,
         targetYear: Int?,
-        targetFormat: String?
+        targetFormat: String?,
+        provider: StreamingProvider = .current
     ) -> Double {
-        let titleScore = diceCoefficient(cleanTitle(candidate.title), normalizedTarget)
+        let titleScore = titleSimilarity(
+            candidateTitle: candidate.title,
+            normalizedTarget: normalizedTarget,
+            provider: provider
+        )
         var yearScore = 0.5
         if let targetYear, let candidateYear = candidate.year {
             if targetYear == candidateYear {
@@ -78,6 +122,32 @@ enum TitleMatcher {
             if (normalizedTarget.contains("part") && cTitle.contains("part")) ||
                (normalizedTarget.contains("cour") && cTitle.contains("cour")) {
                 score += 0.05
+            }
+        }
+
+        if provider == .animeKai {
+            let normalizedCandidate = normalizedTitle(candidate.title, provider: provider)
+            let candidateBase = stripSequenceMarkers(from: normalizedCandidate, provider: provider)
+            let targetBase = stripSequenceMarkers(from: normalizedTarget, provider: provider)
+
+            if normalizedCandidate == normalizedTarget {
+                score += 0.20
+            } else if candidateBase == targetBase {
+                score += 0.12
+            }
+
+            let baseTokens = Set(targetBase.split(separator: " ").map(String.init))
+            let candidateTokens = Set(candidateBase.split(separator: " ").map(String.init))
+            if !baseTokens.isEmpty {
+                let overlap = Double(baseTokens.intersection(candidateTokens).count) / Double(baseTokens.count)
+                score += overlap * 0.12
+            }
+
+            let targetHasFinalSeason = hasFinalSeasonMarker(normalizedTarget)
+            if targetHasFinalSeason && hasFinalSeasonMarker(candidate.title) {
+                score += 0.04
+            } else if targetHasFinalSeason {
+                score -= 0.08
             }
         }
 
@@ -203,6 +273,49 @@ enum TitleMatcher {
         return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    static func normalizedTitle(_ input: String, provider: StreamingProvider = .current) -> String {
+        switch provider {
+        case .animePahe:
+            return cleanTitle(stripSeasonMarkers(input))
+        case .animeKai:
+            return cleanAnimeKaiTitle(input)
+        }
+    }
+
+    static func dedupeCandidates(
+        _ candidates: [SoraAnimeMatch],
+        provider: StreamingProvider = .current
+    ) -> [SoraAnimeMatch] {
+        switch provider {
+        case .animePahe:
+            return Dictionary(grouping: candidates, by: { $0.session })
+                .compactMap { $0.value.first }
+        case .animeKai:
+            var bestByKey: [String: SoraAnimeMatch] = [:]
+            for candidate in candidates {
+                let normalized = candidate.normalizedTitle ?? normalizedTitle(candidate.title, provider: provider)
+                let key = normalized.isEmpty ? candidate.session : normalized
+                if let existing = bestByKey[key] {
+                    let existingScore = existing.matchScore ?? -1
+                    let candidateScore = candidate.matchScore ?? -1
+                    if candidateScore > existingScore {
+                        bestByKey[key] = candidate
+                    }
+                } else {
+                    bestByKey[key] = candidate
+                }
+            }
+            return bestByKey.values.sorted { lhs, rhs in
+                let left = lhs.matchScore ?? 0
+                let right = rhs.matchScore ?? 0
+                if left == right {
+                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                }
+                return left > right
+            }
+        }
+    }
+
     static func diceCoefficient(_ a: String, _ b: String) -> Double {
         if a == b { return 1.0 }
         guard a.count > 1, b.count > 1 else { return 0.0 }
@@ -275,6 +388,145 @@ enum TitleMatcher {
             }
         }
         return nil
+    }
+
+    private static func rankedCandidate(
+        candidate: SoraAnimeMatch,
+        normalizedTarget: String,
+        normalizedTargetBase: String,
+        wantedSeason: Int?,
+        targetYear: Int?,
+        targetFormat: String?,
+        provider: StreamingProvider,
+        normalizedQueries: [String]
+    ) -> RankedCandidate {
+        let normalizedCandidate = normalizedTitle(candidate.title, provider: provider)
+        let baseScore = score(
+            candidate: candidate,
+            normalizedTarget: normalizedTarget,
+            wantedSeason: wantedSeason,
+            targetYear: targetYear,
+            targetFormat: targetFormat,
+            provider: provider
+        )
+        let queryScore = normalizedQueries.map { normalizedQuery in
+            titleSimilarity(candidateTitle: candidate.title, normalizedTarget: normalizedQuery, provider: provider)
+        }.max() ?? 0
+        let combinedScore = min(max((baseScore * 0.78) + (queryScore * 0.22), 0), 1)
+        let candidateBase = stripSequenceMarkers(from: normalizedCandidate, provider: provider)
+
+        var contextParts: [String] = []
+        if candidateBase == normalizedTargetBase || normalizedCandidate == normalizedTarget {
+            contextParts.append("Closest title")
+        } else if combinedScore >= 0.85 {
+            contextParts.append("Strong title match")
+        } else if combinedScore >= 0.7 {
+            contextParts.append("Possible alt title")
+        }
+        if let episodeCount = candidate.episodeCount, episodeCount > 0 {
+            let label = episodeCount == 1 ? "1 episode" : "\(episodeCount) episodes"
+            contextParts.append(label)
+        }
+        if let year = candidate.year {
+            contextParts.append("\(year)")
+        }
+
+        let enriched = SoraAnimeMatch(
+            id: candidate.id,
+            title: candidate.title,
+            imageURL: candidate.imageURL,
+            session: candidate.session,
+            detailURL: candidate.detailURL,
+            year: candidate.year,
+            format: candidate.format,
+            episodeCount: candidate.episodeCount,
+            normalizedTitle: normalizedCandidate,
+            matchScore: combinedScore,
+            matchContext: contextParts.isEmpty ? nil : contextParts.joined(separator: " | ")
+        )
+        return RankedCandidate(
+            match: enriched,
+            score: combinedScore,
+            normalizedTitle: normalizedCandidate,
+            context: enriched.matchContext
+        )
+    }
+
+    private static func titleSimilarity(
+        candidateTitle: String,
+        normalizedTarget: String,
+        provider: StreamingProvider
+    ) -> Double {
+        let normalizedCandidate = normalizedTitle(candidateTitle, provider: provider)
+        let exactScore = diceCoefficient(normalizedCandidate, normalizedTarget)
+        guard provider == .animeKai else {
+            return exactScore
+        }
+
+        let candidateBase = stripSequenceMarkers(from: normalizedCandidate, provider: provider)
+        let targetBase = stripSequenceMarkers(from: normalizedTarget, provider: provider)
+        let baseScore = diceCoefficient(candidateBase, targetBase)
+        return max(exactScore, (baseScore * 0.95) + (exactScore * 0.05))
+    }
+
+    private static func cleanAnimeKaiTitle(_ input: String) -> String {
+        var out = romanToArabic(input)
+        let season = extractSeasonMarkerNumber(from: out)
+        let part = extractPartOnlyMarkerNumber(from: out)
+        let cour = extractCourMarkerNumber(from: out)
+        let hasFinalSeason = hasFinalSeasonMarker(out)
+
+        out = out.lowercased()
+        out = out.replacingOccurrences(of: #"(?i)\b\d+(st|nd|rd|th)\s*season\b"#, with: " ", options: .regularExpression)
+        out = out.replacingOccurrences(of: #"(?i)\bseason\s*\d+\b"#, with: " ", options: .regularExpression)
+        out = out.replacingOccurrences(of: #"(?i)\bs\s*\d+\b"#, with: " ", options: .regularExpression)
+        out = out.replacingOccurrences(of: #"(?i)\bpart\s*\d+\b"#, with: " ", options: .regularExpression)
+        out = out.replacingOccurrences(of: #"(?i)\bcour\s*\d+\b"#, with: " ", options: .regularExpression)
+        out = out.replacingOccurrences(of: #"(?i)\b(?:the\s+)?final\s+season\b"#, with: " ", options: .regularExpression)
+        out = out.replacingOccurrences(of: #"(?i)\b(tv|anime|subbed|dubbed|english dub|eng dub|uncensored|bd)\b"#, with: " ", options: .regularExpression)
+        out = out.replacingOccurrences(of: #"[^a-z0-9\s]"#, with: " ", options: .regularExpression)
+        out = out.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        out = out.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var suffixes: [String] = []
+        if let season {
+            suffixes.append("season \(season)")
+        }
+        if let part {
+            suffixes.append("part \(part)")
+        }
+        if let cour {
+            suffixes.append("cour \(cour)")
+        }
+        if hasFinalSeason {
+            suffixes.append("final season")
+        }
+
+        if !suffixes.isEmpty {
+            out = ([out] + suffixes).filter { !$0.isEmpty }.joined(separator: " ")
+        }
+        return out.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func stripSequenceMarkers(from normalizedTitle: String, provider: StreamingProvider) -> String {
+        var out = normalizedTitle
+        switch provider {
+        case .animePahe:
+            out = stripSeasonMarkers(out)
+        case .animeKai:
+            let patterns = [
+                #"(?i)\bseason\s*\d+\b"#,
+                #"(?i)\bpart\s*\d+\b"#,
+                #"(?i)\bcour\s*\d+\b"#,
+                #"(?i)\bfinal\s+season\b"#
+            ]
+            for pattern in patterns {
+                out = out.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
+            }
+        }
+        return out
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func stableUniqueQueries(_ queries: [String]) -> [String] {

@@ -247,9 +247,29 @@ struct DetailsView: View {
                 },
                 onSelect: { match in
                     Task {
-                        appState.services.episodeService.setManualMatch(media: media, match: match)
-                        AppLog.debug(.matching, "manual match selected mediaId=\(media.id) session=\(match.session)")
-                        await loadEpisodes()
+                        await MainActor.run {
+                            isLoadingMatch = true
+                            matchError = nil
+                        }
+                        do {
+                            _ = try await appState.services.episodeService.applyManualMatch(media: media, match: match)
+                            AppLog.debug(.matching, "manual match selected mediaId=\(media.id) session=\(match.session)")
+                            await MainActor.run {
+                                isLoadingMatch = false
+                                showMatchSheet = false
+                            }
+                            await loadEpisodes()
+                        } catch is CancellationError {
+                            await MainActor.run {
+                                isLoadingMatch = false
+                            }
+                        } catch {
+                            await MainActor.run {
+                                isLoadingMatch = false
+                                matchError = error.localizedDescription
+                            }
+                            AppLog.error(.matching, "manual match select failed mediaId=\(media.id) session=\(match.session) \(error.localizedDescription)")
+                        }
                     }
                 }
             )
@@ -964,7 +984,7 @@ struct DetailsView: View {
                 if trimmed.isEmpty {
                     candidates = try await appState.services.episodeService.searchCandidates(media: media)
                 } else {
-                    candidates = try await appState.services.episodeService.searchCandidates(query: trimmed)
+                    candidates = try await appState.services.episodeService.searchCandidates(query: trimmed, media: media)
                 }
                 await MainActor.run {
                     guard searchGeneration == matchSearchGeneration else { return }
@@ -1745,7 +1765,6 @@ private struct MatchPickerSheet: View {
     let errorMessage: String?
     let onSearch: (String) -> Void
     let onSelect: (SoraAnimeMatch) -> Void
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -1787,15 +1806,28 @@ private struct MatchPickerSheet: View {
                             VStack(alignment: .leading, spacing: UIConstants.microPadding) {
                                 Text(match.title)
                                     .font(.system(size: 16, weight: .semibold))
-                                if let year = match.year {
-                                    Text("\(year)")
+                                let metadataLine = matchMetadataLine(match)
+                                if !metadataLine.isEmpty {
+                                    Text(metadataLine)
                                         .font(.system(size: 12))
                                         .foregroundColor(.secondary)
+                                }
+                                if let context = match.matchContext, !context.isEmpty {
+                                    Text(context)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.secondary)
+                                }
+                                if let normalizedTitle = match.normalizedTitle,
+                                   !normalizedTitle.isEmpty,
+                                   normalizedTitle.caseInsensitiveCompare(match.title) != .orderedSame {
+                                    Text(normalizedTitle)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
                                 }
                             }
                             Spacer()
                             Button("Use") {
-                                dismiss()
                                 onSelect(match)
                             }
                             .buttonStyle(.borderedProminent)
@@ -1811,6 +1843,20 @@ private struct MatchPickerSheet: View {
                 }
             }
         }
+    }
+
+    private func matchMetadataLine(_ match: SoraAnimeMatch) -> String {
+        var parts: [String] = []
+        if let year = match.year {
+            parts.append("\(year)")
+        }
+        if let episodeCount = match.episodeCount, episodeCount > 0 {
+            parts.append(episodeCount == 1 ? "1 ep" : "\(episodeCount) eps")
+        }
+        if let format = match.format, !format.isEmpty {
+            parts.append(format)
+        }
+        return parts.joined(separator: " | ")
     }
 }
 

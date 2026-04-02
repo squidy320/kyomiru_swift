@@ -82,7 +82,10 @@ struct StoredMatch: Codable, Hashable {
             detailURL: detailURL.flatMap(URL.init(string:)),
             year: year,
             format: format,
-            episodeCount: episodeCount
+            episodeCount: episodeCount,
+            normalizedTitle: nil,
+            matchScore: nil,
+            matchContext: nil
         )
     }
 }

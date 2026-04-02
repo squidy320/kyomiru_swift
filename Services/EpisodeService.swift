@@ -1,5 +1,16 @@
 import Foundation
 
+enum EpisodeMatchValidationError: LocalizedError {
+    case implausibleEpisodes
+
+    var errorDescription: String? {
+        switch self {
+        case .implausibleEpisodes:
+            return "That match looks incomplete. Try a different result."
+        }
+    }
+}
+
 final class EpisodeService {
     private let matchStore = MatchStore.shared
     private let tmdbMatcher: TMDBMatchingService
@@ -25,12 +36,12 @@ final class EpisodeService {
             do {
                 let episodes = try await runtime.episodes(for: storedMatch)
                 let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
-                if !adjusted.isEmpty {
+                if isPlausibleEpisodeMatch(match: storedMatch, episodes: adjusted, media: media, provider: provider) {
                     AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
                     return MatchLoadResult(match: storedMatch, episodes: adjusted, isManual: stored.isManual)
                 }
 
-                AppLog.debug(.matching, "stored match yielded no episodes mediaId=\(media.id) session=\(storedMatch.session) manual=\(stored.isManual)")
+                AppLog.debug(.matching, "stored match rejected mediaId=\(media.id) session=\(storedMatch.session) manual=\(stored.isManual) count=\(adjusted.count)")
                 matchStore.clear(mediaId: media.id)
                 return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, provider: provider, replaceExisting: false)
             } catch is CancellationError {
@@ -58,20 +69,33 @@ final class EpisodeService {
             AppLog.debug(.matching, "stored match fallback to auto mediaId=\(media.id) provider=\(provider.title)")
         }
 
-        guard let match = try await runtime.autoMatch(media: media) else {
+        let rankedCandidates = try await autoMatchedCandidates(for: media, runtime: runtime, provider: provider)
+        guard !rankedCandidates.isEmpty else {
             AppLog.error(.network, "episodes auto match failed mediaId=\(media.id)")
             throw AniListError.invalidResponse
         }
-        matchStore.set(match: match, mediaId: media.id, isManual: false, provider: provider)
-        let episodes: [SoraEpisode]
-        do {
-            episodes = try await runtime.episodes(for: match)
-        } catch is CancellationError {
-            throw CancellationError()
+
+        let probeLimit = provider == .animeKai ? min(rankedCandidates.count, 8) : 1
+        for match in rankedCandidates.prefix(probeLimit) {
+            do {
+                let episodes = try await runtime.episodes(for: match)
+                let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
+                guard isPlausibleEpisodeMatch(match: match, episodes: adjusted, media: media, provider: provider) else {
+                    AppLog.debug(.matching, "auto match candidate rejected mediaId=\(media.id) session=\(match.session) provider=\(provider.title) count=\(adjusted.count) score=\(match.matchScore ?? 0)")
+                    continue
+                }
+                matchStore.set(match: match, mediaId: media.id, isManual: false, provider: provider)
+                AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
+                return MatchLoadResult(match: match, episodes: adjusted, isManual: false)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                AppLog.error(.network, "auto match candidate failed mediaId=\(media.id) session=\(match.session) \(error.localizedDescription)")
+            }
         }
-        let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
-        AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
-        return MatchLoadResult(match: match, episodes: adjusted, isManual: false)
+
+        AppLog.error(.network, "episodes auto match failed mediaId=\(media.id)")
+        throw AniListError.invalidResponse
     }
 
     func loadSources(for episode: SoraEpisode) async throws -> [SoraSource] {
@@ -83,7 +107,8 @@ final class EpisodeService {
     }
 
     func searchCandidates(media: AniListMedia) async throws -> [SoraAnimeMatch] {
-        let runtime = SoraRuntime(provider: .current)
+        let provider = StreamingProvider.current
+        let runtime = SoraRuntime(provider: provider)
         let queries = TitleMatcher.buildQueries(for: media)
         AppLog.debug(.matching, "manual match search start mediaId=\(media.id) queries=\(queries.count)")
         var all: [SoraAnimeMatch] = []
@@ -91,26 +116,41 @@ final class EpisodeService {
             let matches = try await runtime.searchAnime(query: q)
             all.append(contentsOf: matches)
         }
-        let deduped = Dictionary(grouping: all, by: { $0.session })
-            .compactMap { $0.value.first }
+        let ranked = rankCandidates(all, media: media, provider: provider)
+        let deduped = TitleMatcher.dedupeCandidates(ranked, provider: provider)
         AppLog.debug(.matching, "manual match search complete mediaId=\(media.id) candidates=\(deduped.count)")
         return deduped
     }
 
-    func searchCandidates(query: String) async throws -> [SoraAnimeMatch] {
-        let runtime = SoraRuntime(provider: .current)
+    func searchCandidates(query: String, media: AniListMedia? = nil) async throws -> [SoraAnimeMatch] {
+        let provider = StreamingProvider.current
+        let runtime = SoraRuntime(provider: provider)
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         AppLog.debug(.matching, "manual match search start query=\(trimmed)")
         let matches = try await runtime.searchAnime(query: trimmed)
-        let deduped = Dictionary(grouping: matches, by: { $0.session })
-            .compactMap { $0.value.first }
+        let ranked = rankCandidates(matches, media: media, provider: provider)
+        let deduped = TitleMatcher.dedupeCandidates(ranked, provider: provider)
         AppLog.debug(.matching, "manual match search complete query=\(trimmed) candidates=\(deduped.count)")
         return deduped
     }
 
     func setManualMatch(media: AniListMedia, match: SoraAnimeMatch) {
         matchStore.set(match: match, mediaId: media.id, isManual: true, provider: .current)
+    }
+
+    func applyManualMatch(media: AniListMedia, match: SoraAnimeMatch) async throws -> MatchLoadResult {
+        let provider = StreamingProvider.current
+        let runtime = SoraRuntime(provider: provider)
+        let episodes = try await runtime.episodes(for: match)
+        let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media)
+        guard isPlausibleEpisodeMatch(match: match, episodes: adjusted, media: media, provider: provider) else {
+            AppLog.debug(.matching, "manual match rejected mediaId=\(media.id) session=\(match.session) provider=\(provider.title) count=\(adjusted.count)")
+            throw EpisodeMatchValidationError.implausibleEpisodes
+        }
+        matchStore.set(match: match, mediaId: media.id, isManual: true, provider: provider)
+        AppLog.debug(.network, "manual match validated mediaId=\(media.id) session=\(match.session) count=\(adjusted.count)")
+        return MatchLoadResult(match: match, episodes: adjusted, isManual: true)
     }
 
     func clearManualMatch(media: AniListMedia) {
@@ -202,5 +242,56 @@ final class EpisodeService {
                 playURL: episode.playURL
             )
         }
+    }
+
+    private func rankCandidates(
+        _ candidates: [SoraAnimeMatch],
+        media: AniListMedia?,
+        provider: StreamingProvider
+    ) -> [SoraAnimeMatch] {
+        guard let media else {
+            return TitleMatcher.dedupeCandidates(candidates, provider: provider)
+        }
+        return TitleMatcher.rankedCandidates(target: media, candidates: candidates, provider: provider)
+    }
+
+    private func autoMatchedCandidates(
+        for media: AniListMedia,
+        runtime: SoraRuntime,
+        provider: StreamingProvider
+    ) async throws -> [SoraAnimeMatch] {
+        let queries = TitleMatcher.buildQueries(for: media)
+        var all: [SoraAnimeMatch] = []
+        for query in queries {
+            let matches = try await runtime.searchAnime(query: query)
+            all.append(contentsOf: matches)
+        }
+        let ranked = TitleMatcher.rankedCandidates(target: media, candidates: all, provider: provider)
+        return TitleMatcher.dedupeCandidates(ranked, provider: provider)
+    }
+
+    private func isPlausibleEpisodeMatch(
+        match: SoraAnimeMatch,
+        episodes: [SoraEpisode],
+        media: AniListMedia,
+        provider: StreamingProvider
+    ) -> Bool {
+        guard !episodes.isEmpty else { return false }
+        guard provider == .animeKai else { return true }
+
+        let expected = max(media.episodes ?? 0, match.episodeCount ?? 0)
+        if expected <= 1 {
+            return !episodes.isEmpty
+        }
+
+        if episodes.count == 1 {
+            return false
+        }
+
+        if expected >= 8 && episodes.count <= 2 {
+            return false
+        }
+
+        return true
     }
 }
