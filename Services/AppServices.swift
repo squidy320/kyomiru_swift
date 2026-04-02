@@ -18,6 +18,7 @@ final class AppServices {
     let downloadManager: DownloadManager
     let libraryStore: MediaTracker
     let episodeService: EpisodeService
+    let streamingExtensionManager: StreamingExtensionManager
 
     init() {
         self.aniListClient = AniListClient(cacheStore: cacheStore)
@@ -39,5 +40,6 @@ final class AppServices {
         self.downloadManager = DownloadManager.shared
         self.libraryStore = MediaTracker()
         self.episodeService = EpisodeService(tmdbMatcher: tmdbMatchingService)
+        self.streamingExtensionManager = StreamingExtensionManager()
     }
 }

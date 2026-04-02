@@ -139,6 +139,56 @@ enum StreamingProvider: String, CaseIterable, Identifiable, Codable {
             return "Luna-powered AnimeKai source with alternate search, episodes, and streams."
         }
     }
+
+    var manifestURL: URL {
+        switch self {
+        case .animePahe:
+            return URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.json")!
+        case .animeKai:
+            return URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animekai/animekai.json")!
+        }
+    }
+
+    var fallbackMetadata: ServiceMetadata {
+        switch self {
+        case .animePahe:
+            return ServiceMetadata(
+                sourceName: "AnimePahe",
+                author: .init(
+                    name: "50/50",
+                    icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3122kQwublLkZ6rf1fEpUP79BxZOFmH9BSA&s"
+                ),
+                iconUrl: "https://files.catbox.moe/fu5sq7.png",
+                version: "1.0.1",
+                language: "English",
+                baseUrl: "https://animepahe.si/",
+                streamType: "HLS",
+                quality: "1080p",
+                searchBaseUrl: "https://animepahe.si/",
+                scriptUrl: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.js",
+                softsub: true,
+                type: "anime"
+            )
+        case .animeKai:
+            return ServiceMetadata(
+                sourceName: "AnimeKai",
+                author: .init(
+                    name: "50/50",
+                    icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3122kQwublLkZ6rf1fEpUP79BxZOFmH9BSA&s"
+                ),
+                iconUrl: "https://apktodo.io/uploads/2025/5/animekai-icon.jpg",
+                version: "1.0.1",
+                language: "English",
+                baseUrl: "https://animekai.to/",
+                streamType: "HLS",
+                quality: "1080p",
+                searchBaseUrl: "https://animekai.to/",
+                scriptUrl: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animekai/animekai.js",
+                softsub: false,
+                type: "anime"
+            )
+        }
+    }
 }
 
 enum PlayerBackend: String, CaseIterable, Identifiable {

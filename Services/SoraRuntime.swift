@@ -21,30 +21,19 @@ private struct SourceProviderConfiguration {
     let logKey: String
 
     static func make(for provider: StreamingProvider) -> SourceProviderConfiguration {
+        let resolvedMetadata = StreamingExtensionManager.cachedMetadata(for: provider) ?? provider.fallbackMetadata
+        let resolvedScriptURL = URL(string: resolvedMetadata.scriptUrl)
+            ?? URL(string: provider.fallbackMetadata.scriptUrl)!
+        let resolvedBaseURL = URL(string: resolvedMetadata.baseUrl)
+            ?? URL(string: provider.fallbackMetadata.baseUrl)!
         switch provider {
         case .animePahe:
             return SourceProviderConfiguration(
                 provider: .animePahe,
-                sourceURL: URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.json")!,
-                scriptURL: URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.js")!,
-                baseURL: URL(string: "https://animepahe.si")!,
-                metadata: ServiceMetadata(
-                    sourceName: "AnimePahe",
-                    author: .init(
-                        name: "50/50",
-                        icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3122kQwublLkZ6rf1fEpUP79BxZOFmH9BSA&s"
-                    ),
-                    iconUrl: "https://files.catbox.moe/fu5sq7.png",
-                    version: "1.0.1",
-                    language: "English",
-                    baseUrl: "https://animepahe.si/",
-                    streamType: "HLS",
-                    quality: "1080p",
-                    searchBaseUrl: "https://animepahe.si/",
-                    scriptUrl: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.js",
-                    softsub: true,
-                    type: "anime"
-                ),
+                sourceURL: provider.manifestURL,
+                scriptURL: resolvedScriptURL,
+                baseURL: resolvedBaseURL,
+                metadata: resolvedMetadata,
                 supportsDirectSearch: true,
                 supportsDirectEpisodes: true,
                 scriptPatches: [
@@ -60,26 +49,10 @@ private struct SourceProviderConfiguration {
         case .animeKai:
             return SourceProviderConfiguration(
                 provider: .animeKai,
-                sourceURL: URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animekai/animekai.json")!,
-                scriptURL: URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animekai/animekai.js")!,
-                baseURL: URL(string: "https://animekai.to")!,
-                metadata: ServiceMetadata(
-                    sourceName: "AnimeKai",
-                    author: .init(
-                        name: "50/50",
-                        icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3122kQwublLkZ6rf1fEpUP79BxZOFmH9BSA&s"
-                    ),
-                    iconUrl: "https://apktodo.io/uploads/2025/5/animekai-icon.jpg",
-                    version: "1.0.1",
-                    language: "English",
-                    baseUrl: "https://animekai.to/",
-                    streamType: "HLS",
-                    quality: "1080p",
-                    searchBaseUrl: "https://animekai.to/",
-                    scriptUrl: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animekai/animekai.js",
-                    softsub: false,
-                    type: "anime"
-                ),
+                sourceURL: provider.manifestURL,
+                scriptURL: resolvedScriptURL,
+                baseURL: resolvedBaseURL,
+                metadata: resolvedMetadata,
                 supportsDirectSearch: false,
                 supportsDirectEpisodes: false,
                 scriptPatches: [],

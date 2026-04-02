@@ -29,6 +29,9 @@ final class AppState: ObservableObject {
         AppLog.debug(.ui, "app bootstrap start")
         await authState.bootstrap()
         await loadLibraryStoreIfNeeded()
+        Task {
+            await services.streamingExtensionManager.refreshIfNeeded()
+        }
         AppLog.debug(.ui, "app bootstrap complete")
     }
 

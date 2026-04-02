@@ -26,6 +26,9 @@ struct SettingsView: View {
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     @State private var cacheSizeText: String = "--"
     @State private var selectedTab: SettingsTab = .player
+    @State private var extensionRecords: [StreamingExtensionRecord] = []
+    @State private var isRefreshingExtensions = false
+    @State private var extensionStatusMessage: String?
 
     var body: some View {
         let horizontalPadding: CGFloat = appState.settings.useComfortableLayout ? 18 : 14
@@ -68,7 +71,18 @@ struct SettingsView: View {
         }
         .onAppear {
             AppLog.debug(.ui, "settings view appear")
-            Task { await refreshCacheSize() }
+            Task {
+                await refreshCacheSize()
+                await refreshExtensionsIfNeeded()
+            }
+        }
+        .alert("Streaming Extensions", isPresented: Binding(
+            get: { extensionStatusMessage != nil },
+            set: { _ in extensionStatusMessage = nil }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(extensionStatusMessage ?? "")
         }
     }
 
@@ -174,6 +188,23 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+            }
+
+            SettingsSectionCard(title: "Extensions", subtitle: "Installed Luna source manifests and script updates.") {
+                HStack {
+                    Text(isRefreshingExtensions ? "Checking for updates..." : "Installed Sources")
+                        .foregroundColor(.white)
+                    Spacer()
+                    Button(isRefreshingExtensions ? "Checking..." : "Check Updates") {
+                        Task { await refreshExtensions(force: true) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isRefreshingExtensions)
+                }
+
+                ForEach(extensionRecords) { record in
+                    streamingExtensionRow(record)
+                }
             }
         }
     }
@@ -329,6 +360,41 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private func streamingExtensionRow(_ record: StreamingExtensionRecord) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(record.provider.title)
+                            .foregroundColor(.white)
+                        if appState.settings.streamingProvider == record.provider {
+                            settingsTag("Active")
+                        }
+                        if record.hasUpdate {
+                            settingsTag("Update")
+                        }
+                    }
+                    Text("Installed \(record.installedVersion)" + (record.remoteVersion.map { " • Remote \($0)" } ?? ""))
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                Spacer()
+                Button(record.hasUpdate ? "Update" : "Reinstall") {
+                    Task { await applyExtensionUpdate(for: record.provider) }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isRefreshingExtensions)
+            }
+
+            Text(record.scriptURL.absoluteString)
+                .font(.system(size: 11))
+                .foregroundColor(Theme.textSecondary)
+                .textSelection(.enabled)
+        }
+        .padding(.vertical, 4)
+    }
+
     private func settingsPickerRow(title: String, selection: Binding<String>, options: [String]) -> some View {
         HStack {
             Text(title)
@@ -365,6 +431,31 @@ struct SettingsView: View {
         await MainActor.run {
             cacheSizeText = size
         }
+    }
+
+    private func refreshExtensionsIfNeeded() async {
+        if extensionRecords.isEmpty {
+            extensionRecords = appState.services.streamingExtensionManager.installedRecords()
+        }
+        extensionRecords = await appState.services.streamingExtensionManager.refreshAll(force: false)
+    }
+
+    private func refreshExtensions(force: Bool) async {
+        isRefreshingExtensions = true
+        extensionRecords = await appState.services.streamingExtensionManager.refreshAll(force: force)
+        isRefreshingExtensions = false
+    }
+
+    private func applyExtensionUpdate(for provider: StreamingProvider) async {
+        isRefreshingExtensions = true
+        do {
+            let updated = try await appState.services.streamingExtensionManager.update(provider: provider)
+            extensionRecords = appState.services.streamingExtensionManager.installedRecords()
+            extensionStatusMessage = "\(updated.provider.title) updated to \(updated.installedVersion)."
+        } catch {
+            extensionStatusMessage = "Failed to update \(provider.title)."
+        }
+        isRefreshingExtensions = false
     }
 }
 
