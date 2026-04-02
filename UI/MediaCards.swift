@@ -225,16 +225,15 @@ struct ContinueWatchingCard: View {
                     .lineLimit(1)
             }
             .padding(rowPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             .background(
-                RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
-                    .fill(.ultraThinMaterial.opacity(0.55))
+                LinearGradient(
+                    colors: [Color.black.opacity(0.12), Color.black.opacity(0.30)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
-            .padding(rowPadding)
+            .frame(maxWidth: .infinity, alignment: .bottomLeading)
         }
         .frame(width: cardWidth, height: cardHeight)
         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))

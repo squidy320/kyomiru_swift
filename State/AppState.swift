@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 enum AppTab: Hashable {
     case home
@@ -15,11 +16,15 @@ final class AppState: ObservableObject {
     let services: AppServices
     @Published var authState: AuthState
     private var hasBootstrapped = false
+    private var settingsObservation: AnyCancellable?
 
     init() {
         let services = AppServices()
         self.services = services
         self.authState = AuthState(services: services)
+        settingsObservation = settings.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
     }
 
     @MainActor

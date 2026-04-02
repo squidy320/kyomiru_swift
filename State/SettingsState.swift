@@ -13,6 +13,9 @@ final class SettingsState: ObservableObject {
     @AppStorage("settings.appearanceThemeMode") private var appearanceThemeModeRaw: String = AppearanceThemeMode.system.rawValue
     @AppStorage("settings.reduceMotion") private var reduceMotionRaw: Bool = false
     @AppStorage("settings.useComfortableLayout") private var useComfortableLayoutRaw: Bool = true
+    @AppStorage("settings.accentColor.red") private var accentColorRedRaw: Double = 0.47
+    @AppStorage("settings.accentColor.green") private var accentColorGreenRaw: Double = 0.72
+    @AppStorage("settings.accentColor.blue") private var accentColorBlueRaw: Double = 1.0
 
     var defaultAudio: String {
         get { defaultAudioRaw }
@@ -106,6 +109,30 @@ final class SettingsState: ObservableObject {
         get { useComfortableLayoutRaw }
         set {
             useComfortableLayoutRaw = newValue
+            objectWillChange.send()
+        }
+    }
+
+    var accentColor: Color {
+        get {
+            Color(
+                red: accentColorRedRaw,
+                green: accentColorGreenRaw,
+                blue: accentColorBlueRaw
+            )
+        }
+        set {
+            let uiColor = UIColor(newValue)
+            var red: CGFloat = 0.47
+            var green: CGFloat = 0.72
+            var blue: CGFloat = 1.0
+            var alpha: CGFloat = 1.0
+            guard uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+                return
+            }
+            accentColorRedRaw = red
+            accentColorGreenRaw = green
+            accentColorBlueRaw = blue
             objectWillChange.send()
         }
     }

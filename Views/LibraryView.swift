@@ -694,6 +694,7 @@ private struct LibraryProfileHero: View {
     private func heroBackdrop(height: CGFloat) -> some View {
         GeometryReader { proxy in
             let width = proxy.size.width
+            let topFeather = max(18.0, height * 0.12)
             let bottomFeather = max(42.0, height * 0.28)
 
             ZStack(alignment: .bottom) {
@@ -715,7 +716,15 @@ private struct LibraryProfileHero: View {
                 .clipped()
                 .mask(
                     VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [Color.clear, Color.black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: topFeather)
+
                         Color.black
+
                         LinearGradient(
                             colors: [Color.black, Color.clear],
                             startPoint: .top,
@@ -725,11 +734,23 @@ private struct LibraryProfileHero: View {
                     }
                 )
 
-                LinearGradient(
-                    colors: [Color.black.opacity(0.05), Color.black.opacity(0.24), Color.black.opacity(0.84)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.32), Color.clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: height * 0.24)
+
+                    Spacer(minLength: 0)
+
+                    LinearGradient(
+                        colors: [Color.clear, Color.black.opacity(0.24), Color.black.opacity(0.84)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: height * 0.62)
+                }
 
                 LinearGradient(
                     colors: [Color.black.opacity(0.08), Color.clear, Color.black.opacity(0.30)],

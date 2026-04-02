@@ -32,7 +32,7 @@ struct ContentView: View {
         }
         .environmentObject(appState)
         .environmentObject(appState.authState)
-        .accentColor(Theme.accent)
+        .tint(appState.settings.accentColor)
         .background(Theme.baseBackground.ignoresSafeArea())
         .task {
             AppLog.debug(.ui, "root view task start")

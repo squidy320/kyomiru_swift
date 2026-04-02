@@ -5,6 +5,10 @@ import Foundation
 import ImageIO
 
 enum Theme {
+    private static let accentRedKey = "settings.accentColor.red"
+    private static let accentGreenKey = "settings.accentColor.green"
+    private static let accentBlueKey = "settings.accentColor.blue"
+
     private static func adaptiveColor(light: UIColor, dark: UIColor) -> Color {
         Color(UIColor { traitCollection in
             traitCollection.userInterfaceStyle == .dark ? dark : light
@@ -25,7 +29,13 @@ enum Theme {
         )
     }
 
-    static let accent = Color(red: 0.47, green: 0.72, blue: 1.0)
+    static var accent: Color {
+        let defaults = UserDefaults.standard
+        let red = defaults.object(forKey: accentRedKey) as? Double ?? 0.47
+        let green = defaults.object(forKey: accentGreenKey) as? Double ?? 0.72
+        let blue = defaults.object(forKey: accentBlueKey) as? Double ?? 1.0
+        return Color(red: red, green: green, blue: blue)
+    }
     static var textPrimary: Color {
         adaptiveColor(
             light: .white,

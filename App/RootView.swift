@@ -7,7 +7,7 @@ struct RootView: View {
         NavigationShell()
         .environmentObject(appState)
         .environmentObject(appState.authState)
-        .accentColor(Theme.accent)
+        .tint(appState.settings.accentColor)
         .background(Theme.baseBackground.ignoresSafeArea())
         .preferredColorScheme(appState.settings.appearanceThemeMode.colorScheme)
         .task {
