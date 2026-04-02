@@ -49,15 +49,6 @@ struct MediaPosterCard: View {
         let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
         let textSpacing = UIConstants.tinyPadding + (useComfortableLayout ? 1 : 0)
         let resolvedURL: URL? = {
-            if let tmdbPosterURL {
-                return tmdbPosterURL
-            }
-            if enablesTMDBArtworkLookup {
-                if !tmdbLookupComplete {
-                    return imageURL
-                }
-                return imageURL
-            }
             return imageURL
         }()
         ZStack(alignment: .topTrailing) {
@@ -141,14 +132,8 @@ struct MediaPosterCard: View {
             }
         }
         .task(id: media?.id ?? 0) {
-            guard let media else { return }
-            guard enablesTMDBArtworkLookup else {
-                tmdbPosterURL = nil
-                tmdbLookupComplete = true
-                return
-            }
-            tmdbLookupComplete = false
-            tmdbPosterURL = await appState.services.metadataService.posterURL(for: media)
+            guard media != nil else { return }
+            tmdbPosterURL = nil
             tmdbLookupComplete = true
         }
     }
@@ -170,12 +155,6 @@ struct ContinueWatchingCard: View {
         let useComfortableLayout = appState.settings.useComfortableLayout
         let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
         let resolvedURL: URL? = {
-            if let tmdbImageURL {
-                return tmdbImageURL
-            }
-            if enablesTMDBArtworkLookup {
-                return imageURL
-            }
             return imageURL
         }()
         ZStack(alignment: .bottomLeading) {
@@ -244,14 +223,8 @@ struct ContinueWatchingCard: View {
             }
         }
         .task(id: media?.id ?? 0) {
-            guard let media else { return }
-            guard enablesTMDBArtworkLookup else {
-                tmdbImageURL = nil
-                tmdbLookupComplete = true
-                return
-            }
-            tmdbLookupComplete = false
-            tmdbImageURL = await appState.services.metadataService.backdropURL(for: media)
+            guard media != nil else { return }
+            tmdbImageURL = nil
             tmdbLookupComplete = true
         }
     }
