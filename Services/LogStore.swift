@@ -20,7 +20,7 @@ final class LogStore: ObservableObject {
     private init() {
         let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         fileURL = base.appendingPathComponent("KyomiruLogs.txt")
-        loadExisting()
+        resetForLaunch()
     }
 
     func append(level: String, category: LogCategory, message: String) {
@@ -42,6 +42,11 @@ final class LogStore: ObservableObject {
         try? FileManager.default.removeItem(at: fileURL)
     }
 
+    private func resetForLaunch() {
+        entries.removeAll()
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
     private func formatEntry(_ entry: LogEntry) -> String {
         let stamp = formatter.string(from: entry.timestamp)
         return "[\(stamp)] [\(entry.level)] [\(entry.category.rawValue)] \(entry.message)"
@@ -58,15 +63,6 @@ final class LogStore: ObservableObject {
             } else {
                 try? data.write(to: fileURL, options: .atomic)
             }
-        }
-    }
-
-    private func loadExisting() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let text = String(data: data, encoding: .utf8) else { return }
-        let lines = text.split(separator: "\n")
-        entries = lines.map { line in
-            LogEntry(timestamp: Date(), level: "INFO", category: .ui, message: String(line))
         }
     }
 }
