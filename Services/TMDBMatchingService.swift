@@ -996,10 +996,15 @@ final class TMDBMatchingService {
             .filter { !$0.isEmpty }
         guard !normalizedTargets.isEmpty else { return nil }
 
+        func normalized(_ value: String) -> String {
+            value.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).joined()
+        }
+
         var best: TMDBSearchResult?
         var bestScore = -1.0
         let mediaTypes = mediaTypes(for: targetKind)
         for query in queries {
+            let candidateKey = normalized(query)
             for mediaType in mediaTypes {
                 var components = URLComponents(string: "https://api.themoviedb.org/3/search/\(mediaType)")!
                 components.queryItems = [
@@ -1023,9 +1028,18 @@ final class TMDBMatchingService {
                             ? (row["title"] as? String ?? row["original_title"] as? String ?? "")
                             : (row["name"] as? String ?? row["original_name"] as? String ?? "")
                         let normalizedName = TitleMatcher.cleanTitle(name)
+                        let normalizedNameKey = normalized(name)
                         let titleScore = normalizedTargets
                             .map { TitleMatcher.diceCoefficient(normalizedName, $0) }
                             .max() ?? 0.0
+                        let exactTitleBonus: Double
+                        if normalizedNameKey == candidateKey {
+                            exactTitleBonus = 1.0
+                        } else if normalizedNameKey.contains(candidateKey) || candidateKey.contains(normalizedNameKey) {
+                            exactTitleBonus = 0.72
+                        } else {
+                            exactTitleBonus = 0.0
+                        }
 
                         let dateString = mediaType == "movie"
                             ? (row["release_date"] as? String)
@@ -1038,7 +1052,19 @@ final class TMDBMatchingService {
                         }
 
                         let typeBias = typeBias(for: mediaType, targetKind: targetKind)
-                        let score = (0.58 * titleScore) + (0.22 * yearScore) + (0.20 * typeBias)
+                        let isAnimated = (row["genre_ids"] as? [Int] ?? []).contains(16)
+                        let animationScore = isAnimated ? 1.0 : 0.0
+                        let posterScore = (row["poster_path"] as? String) == nil ? 0.0 : 1.0
+                        let popularity = row["popularity"] as? Double ?? 0
+                        let popularityScore = min(max(popularity / 100.0, 0.0), 1.0)
+                        let score =
+                            (0.34 * titleScore) +
+                            (0.20 * yearScore) +
+                            (0.16 * typeBias) +
+                            (0.15 * exactTitleBonus) +
+                            (0.08 * animationScore) +
+                            (0.04 * posterScore) +
+                            (0.03 * popularityScore)
                         if score > bestScore {
                             bestScore = score
                             best = TMDBSearchResult(
@@ -1586,6 +1612,74 @@ final class TMDBMatchingService {
         return format.contains("SPECIAL") || format.contains("OVA") || format.contains("ONA")
     }
 
+    private func isAllowedAbsoluteOrderFormat(_ media: AniListMedia) -> Bool {
+        guard let format = media.format?.uppercased(), !format.isEmpty else { return true }
+        return ["TV", "TV_SHORT", "ONA"].contains(format)
+    }
+
+    private func shouldExcludeFromAbsoluteOrderFranchise(_ media: AniListMedia, relativeTo current: AniListMedia) -> Bool {
+        if media.id == current.id {
+            return false
+        }
+
+        let title = media.title.best
+        let format = (media.format ?? "").uppercased()
+        let hasMainlineMarker =
+            TitleMatcher.extractSeasonMarkerNumber(from: title) != nil ||
+            TitleMatcher.extractPartMarkerNumber(from: title) != nil ||
+            TitleMatcher.hasFinalSeasonMarker(title)
+
+        if looksLikeRecapOrCompilation(title) {
+            return true
+        }
+
+        if format.contains("SPECIAL") || format.contains("OVA") {
+            return !hasMainlineMarker
+        }
+
+        if format.contains("ONA") && !hasMainlineMarker {
+            let currentBase = TitleMatcher.stripSeasonMarkers(current.title.best).lowercased()
+            let mediaBase = TitleMatcher.stripSeasonMarkers(title).lowercased()
+            if currentBase != mediaBase {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func isEligibleAbsoluteOrderFranchiseEntry(_ media: AniListMedia, relativeTo current: AniListMedia) -> Bool {
+        let hasCount = (media.episodes ?? 0) > 0
+        let hasMainlineMarker =
+            TitleMatcher.extractSeasonMarkerNumber(from: media.title.best) != nil ||
+            TitleMatcher.extractPartMarkerNumber(from: media.title.best) != nil ||
+            TitleMatcher.hasFinalSeasonMarker(media.title.best)
+        guard hasCount || media.id == current.id || hasMainlineMarker else {
+            return false
+        }
+        guard media.id == current.id || isAllowedAbsoluteOrderFormat(media) || hasMainlineMarker else {
+            return false
+        }
+        return !shouldExcludeFromAbsoluteOrderFranchise(media, relativeTo: current)
+    }
+
+    private func looksLikeRecapOrCompilation(_ title: String) -> Bool {
+        let normalized = title.lowercased()
+        let patterns = [
+            #"(?<!\w)recap(?!\w)"#,
+            #"(?<!\w)summary(?!\w)"#,
+            #"(?<!\w)digest(?!\w)"#,
+            #"(?<!\w)compilation(?!\w)"#,
+            #"(?<!\w)omnibus(?!\w)"#,
+            #"(?<!\w)special\s+edition(?!\w)"#,
+            #"(?<!\w)movie\s+edit(ion)?(?!\w)"#,
+            #"(?<!\w)tv\s+edit(ion)?(?!\w)"#
+        ]
+        return patterns.contains { pattern in
+            normalized.range(of: pattern, options: .regularExpression) != nil
+        }
+    }
+
     private func isLikelyAnimeMovie(_ row: [String: Any]) -> Bool {
         let genreIDs = row["genre_ids"] as? [Int] ?? []
         guard genreIDs.contains(16) else { return false }
@@ -1758,12 +1852,7 @@ final class TMDBMatchingService {
         var visited: Set<Int> = []
 
         func insert(_ item: AniListMedia, relationType: String?) {
-            let hasCount = (item.episodes ?? 0) > 0
-            let markerHint =
-                TitleMatcher.extractSeasonMarkerNumber(from: item.title.best) != nil ||
-                TitleMatcher.extractPartMarkerNumber(from: item.title.best) != nil ||
-                TitleMatcher.hasFinalSeasonMarker(item.title.best)
-            guard hasCount || item.id == media.id || markerHint else { return }
+            guard isEligibleAbsoluteOrderFranchiseEntry(item, relativeTo: media) else { return }
             discovered[item.id] = AniListSegment(
                 media: item,
                 relationType: relationType,
@@ -1786,7 +1875,7 @@ final class TMDBMatchingService {
             let relations = (try? await aniListClient.relationsGraph(mediaId: current.id)) ?? []
             for edge in relations {
                 let relation = edge.relationType.uppercased()
-                guard ["PREQUEL", "SEQUEL"].contains(relation) else { continue }
+                guard ["PREQUEL", "SEQUEL", "SEASON"].contains(relation) else { continue }
                 insert(edge.media, relationType: relation)
                 if !visited.contains(edge.media.id) {
                     queue.append(edge.media)
@@ -1807,7 +1896,11 @@ final class TMDBMatchingService {
             insert(item, relationType: "ORPHAN")
         }
 
-        let ordered = discovered.values.sorted(by: compareSegments)
+        let ordered = pruneFranchiseToTMDBBudget(
+            discovered.values.sorted(by: compareSegments),
+            rootMediaId: media.id,
+            targetEpisodeTotal: tmdbEpisodeTotal
+        )
         return ordered.isEmpty ? nil : ordered
     }
 
@@ -1819,7 +1912,10 @@ final class TMDBMatchingService {
         guard let aniListClient else { return [] }
 
         let knownTotal = known.compactMap(\.episodes).reduce(0, +)
-        guard targetEpisodeTotal > 0, knownTotal > 0, knownTotal + 2 < targetEpisodeTotal else {
+        guard targetEpisodeTotal > 0, knownTotal > 0 else {
+            return []
+        }
+        guard knownTotal < Int(Double(targetEpisodeTotal) * 0.75) else {
             return []
         }
 
@@ -1832,18 +1928,23 @@ final class TMDBMatchingService {
         var seenIds = Set(known.map(\.id))
         var recovered: [AniListMedia] = []
         let currentYear = media.startDate?.year ?? media.seasonYear
+        let rootTitle = media.title.best.lowercased()
+        let rootWords = rootTitle.split(separator: " ").prefix(3).joined(separator: " ")
+        let spinoffKeywords = ["alternative", "movie", "special", "ova", "recap", "summary", "picture drama", "pilot"]
 
         for query in baseTitles.prefix(4) {
             let results = (try? await aniListClient.searchAnime(query: query)) ?? []
             let ranked = results
                 .filter { candidate in
-                    let hasEpisodes = (candidate.episodes ?? 0) > 0
-                    let hasMarker =
-                        TitleMatcher.extractSeasonMarkerNumber(from: candidate.title.best) != nil ||
-                        TitleMatcher.extractPartMarkerNumber(from: candidate.title.best) != nil ||
-                        TitleMatcher.hasFinalSeasonMarker(candidate.title.best)
-                    guard hasEpisodes || hasMarker else { return false }
                     guard !seenIds.contains(candidate.id) else { return false }
+                    guard isEligibleAbsoluteOrderFranchiseEntry(candidate, relativeTo: media) else { return false }
+                    let candidateTitle = candidate.title.best.lowercased()
+                    let candidateRomaji = candidate.title.romaji?.lowercased() ?? ""
+                    guard candidateTitle.contains(rootWords) || candidateRomaji.contains(rootWords) else { return false }
+                    let checkTitle = candidateTitle + " " + candidateRomaji
+                    if spinoffKeywords.contains(where: { checkTitle.contains($0) }) {
+                        return false
+                    }
                     return true
                 }
                 .map { candidate -> (AniListMedia, Double) in
@@ -1887,6 +1988,53 @@ final class TMDBMatchingService {
         }
 
         return recovered
+    }
+
+    private func pruneFranchiseToTMDBBudget(
+        _ franchise: [AniListSegment],
+        rootMediaId: Int,
+        targetEpisodeTotal: Int
+    ) -> [AniListSegment] {
+        guard targetEpisodeTotal > 0 else { return franchise }
+
+        let aniListTotal = franchise.reduce(0) { $0 + max($1.media.episodes ?? 0, 0) }
+        let budget = Int(Double(targetEpisodeTotal) * 1.25)
+        guard aniListTotal > budget else { return franchise }
+        guard let rootIndex = franchise.firstIndex(where: { $0.media.id == rootMediaId }) else { return franchise }
+
+        var keepStart = rootIndex
+        var keepEnd = rootIndex
+        var total = max(franchise[rootIndex].media.episodes ?? 0, 0)
+        var canExpandLeft = true
+        var canExpandRight = true
+
+        while canExpandLeft || canExpandRight {
+            if canExpandLeft && keepStart > 0 {
+                let episodes = max(franchise[keepStart - 1].media.episodes ?? 0, 0)
+                if total + episodes <= budget {
+                    keepStart -= 1
+                    total += episodes
+                } else {
+                    canExpandLeft = false
+                }
+            } else {
+                canExpandLeft = false
+            }
+
+            if canExpandRight && keepEnd < franchise.count - 1 {
+                let episodes = max(franchise[keepEnd + 1].media.episodes ?? 0, 0)
+                if total + episodes <= budget {
+                    keepEnd += 1
+                    total += episodes
+                } else {
+                    canExpandRight = false
+                }
+            } else {
+                canExpandRight = false
+            }
+        }
+
+        return Array(franchise[keepStart...keepEnd])
     }
 
     private func mapFranchise(
@@ -2180,7 +2328,7 @@ final class TMDBMatchingService {
         var deduped: [Int: AniListSegment] = [:]
 
         func insert(_ item: AniListMedia, relationType: String?) {
-            guard let episodeCount = item.episodes, episodeCount > 0 else { return }
+            guard isEligibleAbsoluteOrderFranchiseEntry(item, relativeTo: media) else { return }
             deduped[item.id] = AniListSegment(
                 media: item,
                 relationType: relationType,
@@ -2194,7 +2342,7 @@ final class TMDBMatchingService {
         insert(media, relationType: "CURRENT")
         for edge in relations {
             let relation = edge.relationType.uppercased()
-            guard ["PREQUEL", "SEQUEL"].contains(relation) else { continue }
+            guard ["PREQUEL", "SEQUEL", "SEASON"].contains(relation) else { continue }
             insert(edge.media, relationType: relation)
         }
 
