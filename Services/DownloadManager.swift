@@ -1025,8 +1025,9 @@ final class DownloadManager: NSObject, ObservableObject {
         updateProgress(id: item.id, progress: 0)
         if item.isHls {
             setState(id: item.id, state: .downloadingHLS)
-            let task = Task { @MainActor [weak self] in
-                await self?.downloadHLS(id: item.id, url: item.url, headers: item.headers ?? [:])
+            let task = Task<Void, Never> { @MainActor [weak self] in
+                guard let self else { return }
+                await self.downloadHLS(id: item.id, url: item.url, headers: item.headers ?? [:])
             }
             hlsTasks[item.id] = task
         } else {
@@ -1184,8 +1185,9 @@ final class DownloadManager: NSObject, ObservableObject {
         guard let item = items.first(where: { $0.id == itemId }),
               let local = playableURL(for: item) ?? item.localFile else { return }
         setState(id: itemId, state: .remuxing, localFile: local)
-        let task = Task { @MainActor [weak self] in
-            await self?.remuxIfNeeded(id: itemId, localFile: local)
+        let task = Task<Void, Never> { @MainActor [weak self] in
+            guard let self else { return }
+            await self.remuxIfNeeded(id: itemId, localFile: local)
         }
         hlsTasks[itemId] = task
     }
