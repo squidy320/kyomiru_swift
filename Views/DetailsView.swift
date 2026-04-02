@@ -1765,6 +1765,7 @@ private struct MatchPickerSheet: View {
     let errorMessage: String?
     let onSearch: (String) -> Void
     let onSelect: (SoraAnimeMatch) -> Void
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
