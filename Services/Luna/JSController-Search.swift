@@ -29,91 +29,74 @@ extension JSController {
         }
         
         let promiseValue = searchResultsFunction.call(withArguments: [keyword])
-        guard let promise = promiseValue else {
+        guard let promise = promiseValue, !promise.isUndefined && !promise.isNull else {
             LunaLogger.shared.log("Search function returned invalid response", type: "Error")
             completion([])
             return
         }
 
         var hasCompleted = false
-        let completionQueue = DispatchQueue(label: "search.completion")
+        let lock = NSLock()
 
         let timeoutWorkItem = DispatchWorkItem {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !hasCompleted else { return }
+            hasCompleted = true
             LunaLogger.shared.log("Timeout for searchResults", type: "Warning")
-            completionQueue.sync {
-                guard !hasCompleted else {
-                    LunaLogger.shared.log("searchResults: timeout called but already completed", type: "Debug")
-                    return
-                }
-                hasCompleted = true
-                DispatchQueue.main.async {
-                    completion([])
-                }
+            DispatchQueue.main.async {
+                completion([])
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutWorkItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0, execute: timeoutWorkItem)
         
         let thenBlock: @convention(block) (JSValue) -> Void = { result in
             timeoutWorkItem.cancel()
-            completionQueue.sync {
-                guard !hasCompleted else {
-                    LunaLogger.shared.log("searchResults: thenBlock called but already completed", type: "Debug")
-                    return
-                }
-                hasCompleted = true
+            lock.lock()
+            guard !hasCompleted else {
+                lock.unlock()
+                return
+            }
+            hasCompleted = true
+            lock.unlock()
 
-                LunaLogger.shared.log(result.toString(), type: "HTMLStrings")
-                if let jsonString = result.toString(),
-                   let data = jsonString.data(using: .utf8) {
-                    do {
-                        if let array = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
-                            let resultItems = array.compactMap { item -> SearchItem? in
-                                guard let title = item["title"] as? String,
-                                      let imageUrl = item["image"] as? String,
-                                      let href = item["href"] as? String else {
-                                    LunaLogger.shared.log("Invalid search result data format", type: "Error")
-                                    return nil
-                                }
-                                return SearchItem(title: title, imageUrl: imageUrl, href: href)
+            if let jsonString = result.toString(),
+               let data = jsonString.data(using: .utf8) {
+                do {
+                    if let array = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] {
+                        let resultItems = array.compactMap { item -> SearchItem? in
+                            guard let title = item["title"] as? String,
+                                  let imageUrl = (item["image"] as? String) ?? (item["imageUrl"] as? String) ?? "",
+                                  let href = item["href"] as? String else {
+                                return nil
                             }
-
-                            DispatchQueue.main.async {
-                                completion(resultItems)
-                            }
-
-                        } else {
-                            LunaLogger.shared.log("Could not parse JSON response", type: "Error")
-                            DispatchQueue.main.async {
-                                completion([])
-                            }
+                            return SearchItem(title: title, imageUrl: imageUrl, href: href)
                         }
-                    } catch {
-                        LunaLogger.shared.log("JSON parsing error: \(error)", type: "Error")
-                        DispatchQueue.main.async {
-                            completion([])
-                        }
+                        DispatchQueue.main.async { completion(resultItems) }
+                    } else {
+                        DispatchQueue.main.async { completion([]) }
                     }
-                } else {
-                    LunaLogger.shared.log("Invalid search result format", type: "Error")
-                    DispatchQueue.main.async {
-                        completion([])
-                    }
+                } catch {
+                    DispatchQueue.main.async { completion([]) }
                 }
+            } else {
+                DispatchQueue.main.async { completion([]) }
             }
         }
         
         let catchBlock: @convention(block) (JSValue) -> Void = { error in
             timeoutWorkItem.cancel()
-            completionQueue.sync {
-                guard !hasCompleted else {
-                    LunaLogger.shared.log("searchResults: catchBlock called but already completed", type: "Debug")
-                    return
-                }
-                hasCompleted = true
-                LunaLogger.shared.log("Search operation failed: \(String(describing: error.toString()))", type: "Error")
-                DispatchQueue.main.async {
-                    completion([])
-                }
+            lock.lock()
+            guard !hasCompleted else {
+                lock.unlock()
+                return
+            }
+            hasCompleted = true
+            lock.unlock()
+            
+            LunaLogger.shared.log("Search operation failed: \(error.toString() ?? "unknown")", type: "Error")
+            DispatchQueue.main.async {
+                completion([])
             }
         }
         

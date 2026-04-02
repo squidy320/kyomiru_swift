@@ -112,7 +112,18 @@ final class EpisodeService {
         }
 
         // Attempt to get accurate offset from TMDB mapping
-        if let tmdbMatch = await tmdbMatcher.matchShowAndSeason(media: media) {
+        let tmdbMatch = await withThrowingTaskGroup(of: TMDBResolvedMatch?.self) { group in
+            group.addTask {
+                await self.tmdbMatcher.matchShowAndSeason(media: media)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 3 * 1_000_000_000)
+                return nil
+            }
+            return (try? await group.next()!) ?? nil
+        }
+
+        if let tmdbMatch {
             let offset = tmdbMatch.absoluteOffset
             // Sora/Provider usually follows TMDB absolute numbering if it's a single entry.
             let absoluteStart = 1 + offset

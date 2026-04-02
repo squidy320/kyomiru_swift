@@ -503,46 +503,61 @@ final class SoraRuntime {
     }
 
     private func get(url: URL, referer: URL? = nil) async throws -> Data {
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
-        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
-        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
-        request.setValue(baseURL.absoluteString, forHTTPHeaderField: "Origin")
-        if let referer {
-            request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
-        } else {
-            request.setValue(baseURL.absoluteString, forHTTPHeaderField: "Referer")
-        }
-        if let cookieHeader {
-            request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
-        }
-        AppLog.debug(.network, "http get \(url.absoluteString)")
-        let (data, response) = try await fetch(request, label: "animepahe-get")
-        mergeCookies(from: response)
+        try await withThrowingTaskGroup(of: Data.self) { group in
+            group.addTask {
+                var request = URLRequest(url: url)
+                request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+                request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+                request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+                request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+                request.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Origin")
+                if let referer {
+                    request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
+                } else {
+                    request.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Referer")
+                }
+                if let cookieHeader = self.cookieHeader {
+                    request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+                }
+                
+                AppLog.debug(.network, "http get start \(url.absoluteString)")
+                let (data, response) = try await self.fetch(request, label: "animepahe-get")
+                self.mergeCookies(from: response)
 
-        if shouldBypassDdos(response: response, data: data) {
-            try await performDdosBypass(targetURL: url)
-            var retry = URLRequest(url: url)
-            retry.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
-            retry.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-            retry.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
-            retry.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
-            retry.setValue(baseURL.absoluteString, forHTTPHeaderField: "Origin")
-            if let referer {
-                retry.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
-            } else {
-                retry.setValue(baseURL.absoluteString, forHTTPHeaderField: "Referer")
+                if self.shouldBypassDdos(response: response, data: data) {
+                    AppLog.debug(.network, "ddos bypass triggered for \(url.host ?? "")")
+                    try await self.performDdosBypass(targetURL: url)
+                    var retry = URLRequest(url: url)
+                    retry.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+                    retry.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+                    retry.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+                    retry.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+                    retry.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Origin")
+                    if let referer {
+                        retry.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
+                    } else {
+                        retry.setValue(self.baseURL.absoluteString, forHTTPHeaderField: "Referer")
+                    }
+                    if let cookieHeader = self.cookieHeader {
+                        retry.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+                    }
+                    let (retryData, retryResponse) = try await self.fetch(retry, label: "animepahe-get-retry")
+                    self.mergeCookies(from: retryResponse)
+                    return retryData
+                }
+                return data
             }
-            if let cookieHeader {
-                retry.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+            
+            group.addTask {
+                try await Task.sleep(nanoseconds: 15 * 1_000_000_000)
+                AppLog.error(.network, "http get timeout \(url.absoluteString)")
+                throw URLError(.timedOut)
             }
-            let (retryData, retryResponse) = try await fetch(retry, label: "animepahe-get-retry")
-            mergeCookies(from: retryResponse)
-            return retryData
+            
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
-
-        return data
     }
 
     private func fetch(_ request: URLRequest, label: String) async throws -> (Data, URLResponse) {

@@ -129,7 +129,9 @@ extension JSContext {
     }
     
     func setupFetchV2() {
-        let fetchV2NativeFunction: @convention(block) (String, Any?, String?, String?, ObjCBool, String?, JSValue, JSValue) -> Void = { urlString, headersAny, method, body, redirect, encoding, resolve, reject in
+        typealias FetchV2Block = @convention(block) (String, Any?, String?, String?, ObjCBool, String?, JSValue, JSValue) -> Void
+        
+        let fetchV2NativeFunction: FetchV2Block = { urlString, headersAny, method, body, redirect, encoding, resolve, reject in
             guard let url = URL(string: urlString) else {
                 LunaLogger.shared.log("Invalid URL", type: "Error")
                 DispatchQueue.main.async {
@@ -163,7 +165,6 @@ extension JSContext {
                     var safeHeaders: [String: String] = [:]
                     for (key, value) in headersDict {
                         let stringKey = String(describing: key)
-                        
                         let stringValue: String
                         if let str = value as? String {
                             stringValue = str
@@ -191,20 +192,13 @@ extension JSContext {
                 guard let encodingString = encodingString?.lowercased() else {
                     return .utf8
                 }
-                
                 switch encodingString {
-                case "utf-8", "utf8":
-                    return .utf8
-                case "windows-1251", "cp1251":
-                    return .windowsCP1251
-                case "windows-1252", "cp1252":
-                    return .windowsCP1252
-                case "iso-8859-1", "latin1":
-                    return .isoLatin1
-                case "ascii":
-                    return .ascii
-                case "utf-16", "utf16":
-                    return .utf16
+                case "utf-8", "utf8": return .utf8
+                case "windows-1251", "cp1251": return .windowsCP1251
+                case "windows-1252", "cp1252": return .windowsCP1252
+                case "iso-8859-1", "latin1": return .isoLatin1
+                case "ascii": return .ascii
+                case "utf-16", "utf16": return .utf16
                 default:
                     LunaLogger.shared.log("Unknown encoding '\(encodingString)', defaulting to UTF-8", type: "Warning")
                     return .utf8
@@ -212,7 +206,6 @@ extension JSContext {
             }
             
             let textEncoding = getEncoding(from: encoding)
-            
             let bodyIsEmpty = body == nil || (body)?.isEmpty == true || body == "null" || body == "undefined"
             
             if httpMethod == "GET" && !bodyIsEmpty {
@@ -225,9 +218,6 @@ extension JSContext {
             
             if httpMethod != "GET" && !bodyIsEmpty {
                 if let bodyString = body {
-                    request.httpBody = bodyString.data(using: .utf8)
-                } else {
-                    let bodyString = String(describing: body!)
                     request.httpBody = bodyString.data(using: .utf8)
                 }
             }
@@ -293,7 +283,6 @@ extension JSContext {
                 
                 do {
                     let data = try Data(contentsOf: tempFileURL)
-                    
                     if data.count > 10_000_000 {
                         LunaLogger.shared.log("Response exceeds maximum size", type: "Error")
                         callResolve(["error": "Response exceeds maximum size"])
@@ -313,7 +302,6 @@ extension JSContext {
                             callResolve(responseDict)
                         }
                     }
-                    
                 } catch {
                     LunaLogger.shared.log("Error reading downloaded file: \(error.localizedDescription)", type: "Error")
                     callResolve(["error": "Error reading downloaded file"])
@@ -326,29 +314,22 @@ extension JSContext {
         
         let fetchv2Definition = """
             function fetchv2(url, headers = {}, method = "GET", body = null, redirect = true, encoding) {
-                
                 var processedBody = null;
                 if(method != "GET") {
                     processedBody = (body && (typeof body === 'object')) ? JSON.stringify(body) : (body || null)
                 }
-                
                 var finalEncoding = encoding || "utf-8";
-                
-                // Ensure headers is an object and not null/undefined
                 var processedHeaders = {};
                 if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
                     processedHeaders = headers;
                 }
-            
                 return new Promise(function(resolve, reject) {
                     fetchV2Native(url, processedHeaders, method, processedBody, redirect, finalEncoding, function(rawText) {
                         const responseObj = {
                             headers: rawText.headers,
                             status: rawText.status,
                             _data: rawText.body,
-                            text: function() {
-                                return Promise.resolve(this._data);
-                            },
+                            text: function() { return Promise.resolve(this._data); },
                             json: function() {
                                 try {
                                     return Promise.resolve(JSON.parse(this._data));
@@ -373,16 +354,13 @@ extension JSContext {
             }
             return data.base64EncodedString()
         }
-        
         let atobFunction: @convention(block) (String) -> String? = { base64String in
             guard let data = Data(base64Encoded: base64String) else {
                 LunaLogger.shared.log("atob: Invalid base64 input", type: "Error")
                 return nil
             }
-            
             return String(data: data, encoding: .utf8)
         }
-        
         self.setObject(btoaFunction, forKeyedSubscript: "btoa" as NSString)
         self.setObject(atobFunction, forKeyedSubscript: "atob" as NSString)
     }
@@ -393,9 +371,7 @@ extension JSContext {
             const regex = new RegExp(`<${tag}[^>]*>([\\\\s\\\\S]*?)<\\\\/${tag}>`, 'gi');
             let result = [];
             let match;
-            while ((match = regex.exec(html)) !== null) {
-                result.push(match[1]);
-            }
+            while ((match = regex.exec(html)) !== null) { result.push(match[1]); }
             return result;
         }
         function getAttribute(html, tag, attr) {
@@ -413,27 +389,17 @@ extension JSContext {
             if (e === -1) return '';
             return str.substring(s + start.length, e);
         }
-        function stripHtml(html) {
-            return html.replace(/<[^>]+>/g, '');
-        }
-        function normalizeWhitespace(str) {
-            return str.replace(/\\s+/g, ' ').trim();
-        }
-        function urlEncode(str) {
-            return encodeURIComponent(str);
-        }
-        function urlDecode(str) {
-            try { return decodeURIComponent(str); } catch (e) { return str; }
-        }
+        function stripHtml(html) { return html.replace(/<[^>]+>/g, ''); }
+        function normalizeWhitespace(str) { return str.replace(/\\s+/g, ' ').trim(); }
+        function urlEncode(str) { return encodeURIComponent(str); }
+        function urlDecode(str) { try { return decodeURIComponent(str); } catch (e) { return str; } }
         function htmlEntityDecode(str) {
             return str.replace(/&([a-zA-Z]+);/g, function(_, entity) {
                 const entities = { quot: '"', apos: "'", amp: '&', lt: '<', gt: '>' };
                 return entities[entity] || _;
             });
         }
-        function transformResponse(response, fn) {
-            try { return fn(response); } catch (e) { return response; }
-        }
+        function transformResponse(response, fn) { try { return fn(response); } catch (e) { return response; } }
         """
         self.evaluateScript(scrapingUtils)
     }
