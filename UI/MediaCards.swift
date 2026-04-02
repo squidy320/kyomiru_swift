@@ -151,56 +151,69 @@ struct ContinueWatchingCard: View {
     @EnvironmentObject private var appState: AppState
     @State private var tmdbImageURL: URL?
     @State private var tmdbLookupComplete = false
+
     var body: some View {
         let useComfortableLayout = appState.settings.useComfortableLayout
         let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
         let cardWidth = UIConstants.continueCardWidth
         let cardHeight = UIConstants.continueCardHeight
-        let thumbWidth = max(112, min(148, cardWidth * 0.42))
         let resolvedURL: URL? = {
             return imageURL
         }()
-        HStack(spacing: 0) {
+        ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .fill(Color.white.opacity(0.06))
-                .overlay {
-                    if let resolved = resolvedURL {
-                        CachedImage(
-                            url: resolved,
-                            targetSize: CGSize(width: thumbWidth, height: cardHeight)
-                        ) { img in
-                            img.resizable().scaledToFill()
-                        } placeholder: {
-                            Color.white.opacity(0.08)
-                        }
-                        .frame(width: thumbWidth, height: cardHeight)
-                        .clipped()
-                    }
+
+            if let resolved = resolvedURL {
+                CachedImage(
+                    url: resolved,
+                    targetSize: CGSize(width: cardWidth, height: cardHeight)
+                ) { img in
+                    img.resizable().scaledToFill()
+                } placeholder: {
+                    Color.white.opacity(0.08)
                 }
-                .frame(width: thumbWidth, height: cardHeight)
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: UIConstants.cardCornerRadius,
-                        bottomLeadingRadius: UIConstants.cardCornerRadius,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: 0
-                    )
-                )
+                .frame(width: cardWidth, height: cardHeight)
+                .clipped()
+            }
+
+            LinearGradient(
+                colors: [Color.clear, Color.black.opacity(0.18), Color.black.opacity(0.62)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
 
             VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
-                Text(title)
-                    .font(.system(size: useComfortableLayout ? 15 : 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+                HStack(alignment: .top, spacing: UIConstants.smallPadding) {
+                    VStack(alignment: .leading, spacing: UIConstants.microPadding) {
+                        Text(title)
+                            .font(.system(size: useComfortableLayout ? 15 : 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
 
-                Text(episodeText)
-                    .font(.system(size: useComfortableLayout ? 13 : 12, weight: .regular))
-                    .foregroundColor(Theme.textSecondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+                        Text(episodeText)
+                            .font(.system(size: useComfortableLayout ? 13 : 12, weight: .regular))
+                            .foregroundColor(Theme.textSecondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
 
-                Spacer(minLength: 0)
+                    Spacer(minLength: 0)
+
+                    if let episodeBadge {
+                        Text(episodeBadge)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, UIConstants.microPadding)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(Color.black.opacity(0.42))
+                            )
+                    }
+                }
 
                 ProgressView(value: progress)
                     .tint(Theme.accent)
@@ -212,28 +225,23 @@ struct ContinueWatchingCard: View {
                     .lineLimit(1)
             }
             .padding(rowPadding)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .background(
-            RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-        )
-        .overlay(alignment: .topTrailing) {
-            if let episodeBadge {
-                Text(episodeBadge)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, UIConstants.microPadding)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(Color.black.opacity(0.6))
-                    )
-                    .padding(UIConstants.mediumPadding + (useComfortableLayout ? 1 : 0))
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
+                    .fill(.ultraThinMaterial.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+            .padding(rowPadding)
         }
         .frame(width: cardWidth, height: cardHeight)
         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        }
         .transaction { transaction in
             if appState.settings.reduceMotion {
                 transaction.animation = nil

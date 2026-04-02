@@ -45,6 +45,7 @@ struct LibraryView: View {
                                 }
                             }
                         )
+                        .padding(.horizontal, -screenPadding)
 
                         LibraryTopBar(
                             title: "Library",
@@ -737,8 +738,7 @@ private struct LibraryProfileHero: View {
                 )
             }
             .frame(width: width, height: height)
-            .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
+            .contentShape(Rectangle())
         }
         .frame(height: height)
     }
