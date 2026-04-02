@@ -906,7 +906,7 @@ final class EpisodeMetadataService {
     init(
         cacheStore: CacheStore,
         aniListClient: AniListClient,
-        provider: Provider = .kitsu,
+        provider: Provider = .tmdb,
         session: URLSession = .custom,
         tmdbMatcher: TMDBMatchingService? = nil,
         preferenceStore: EpisodeMetadataPreferenceStore = .shared
@@ -924,15 +924,11 @@ final class EpisodeMetadataService {
     }
 
     func preferredProvider(for media: AniListMedia) -> Provider {
-        if let raw = preferenceStore.providerRawValue(for: media.id),
-           let stored = Provider(rawValue: raw) {
-            return stored
-        }
-        return provider
+        .tmdb
     }
 
     func setPreferredProvider(_ provider: Provider, for media: AniListMedia) {
-        preferenceStore.save(providerRawValue: provider.rawValue, for: media.id)
+        preferenceStore.clear(aniListId: media.id)
     }
 
     func cachedEpisodes(for media: AniListMedia, episodes: [SoraEpisode]) -> [Int: EpisodeMetadata]? {

@@ -150,7 +150,13 @@ final class EpisodeService {
         let runtime = SoraRuntime(provider: provider)
         let episodes = try await runtime.episodes(for: match)
         let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media, provider: provider)
-        guard isPlausibleEpisodeMatch(match: match, episodes: adjusted, media: media, provider: provider) else {
+        guard isPlausibleEpisodeMatch(
+            match: match,
+            episodes: adjusted,
+            media: media,
+            provider: provider,
+            allowPartialManualMatch: true
+        ) else {
             AppLog.debug(.matching, "manual match rejected mediaId=\(media.id) session=\(match.session) provider=\(provider.title) count=\(adjusted.count)")
             throw EpisodeMatchValidationError.implausibleEpisodes
         }
@@ -296,10 +302,15 @@ final class EpisodeService {
         match: SoraAnimeMatch,
         episodes: [SoraEpisode],
         media: AniListMedia,
-        provider: StreamingProvider
+        provider: StreamingProvider,
+        allowPartialManualMatch: Bool = false
     ) -> Bool {
         guard !episodes.isEmpty else { return false }
         guard provider == .animeKai else { return true }
+
+        if allowPartialManualMatch {
+            return true
+        }
 
         let expected = max(media.episodes ?? 0, match.episodeCount ?? 0)
         if expected <= 1 {

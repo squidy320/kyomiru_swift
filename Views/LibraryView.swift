@@ -11,6 +11,7 @@ struct LibraryView: View {
     @State private var errorMessage: String?
     @State private var filterText: String = ""
     @State private var continueThumbs: [Int: URL] = [:]
+    @State private var continueEpisodeTitles: [Int: String] = [:]
     @State private var continueEpisodes: [Int: [SoraEpisode]] = [:]
     @State private var continueLoading = false
     @State private var continueError: String?
@@ -20,6 +21,7 @@ struct LibraryView: View {
     @State private var continuePlayerStartAt: Double?
     @State private var showContinuePlayer = false
     @State private var showContinueSourceSheet = false
+    @State private var showAlertsSheet = false
     @State private var libraryLoadGeneration = 0
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
@@ -32,18 +34,22 @@ struct LibraryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
-                        if UIDevice.current.userInterfaceIdiom != .pad {
-                            LibraryTopBar(
-                                title: "Library",
-                                subtitle: "Currently watching and synced lists",
-                                avatarURL: appState.authState.user?.avatarURL,
-                                onAvatarTap: {
-                                    if !appState.authState.isSignedIn {
-                                        Task { await appState.authState.signIn() }
-                                    }
+                        LibraryProfileHero(
+                            bannerURL: appState.authState.user?.bannerURL,
+                            avatarURL: appState.authState.user?.avatarURL,
+                            onAvatarTap: {
+                                if appState.authState.isSignedIn {
+                                    showAlertsSheet = true
+                                } else {
+                                    Task { await appState.authState.signIn() }
                                 }
-                            )
-                        }
+                            }
+                        )
+
+                        LibraryTopBar(
+                            title: "Library",
+                            subtitle: "Currently watching and synced lists"
+                        )
 
                         SearchField(placeholder: "Search in library...", text: $filterText)
 
@@ -172,6 +178,9 @@ struct LibraryView: View {
             LibrarySettingsSheet(manager: librarySettings)
                 .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showAlertsSheet) {
+            AlertsView()
+        }
         .fullScreenCover(isPresented: $showContinuePlayer) {
             if let episode = selectedContinueEpisode,
                let media = selectedContinueMedia,
@@ -245,6 +254,7 @@ struct LibraryView: View {
                 sections = []
                 availabilityById = [:]
                 continueThumbs = [:]
+                continueEpisodeTitles = [:]
                 continueEpisodes = [:]
                 selectedContinueEpisode = nil
                 selectedContinueMedia = nil
@@ -331,10 +341,18 @@ struct LibraryView: View {
             let remaining = max(duration - position, 0)
             let episodeNumber = PlaybackHistoryStore.shared.lastEpisodeNumber(for: entry.media.id) ?? (entry.progress + 1)
             let thumb = continueThumbs[entry.media.id]
+            let episodeTitle = continueEpisodeTitles[entry.media.id]
+            let episodeLabel = episodeTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedEpisodeText: String
+            if let episodeLabel, !episodeLabel.isEmpty {
+                resolvedEpisodeText = "Episode \(episodeNumber) • \(episodeLabel)"
+            } else {
+                resolvedEpisodeText = "Episode \(episodeNumber)"
+            }
             return ContinueItem(
                 id: entry.media.id,
                 title: entry.media.title.best,
-                episodeText: "Episode \(episodeNumber)",
+                episodeText: resolvedEpisodeText,
                 progressFraction: progress,
                 timeRemainingText: formatRemaining(remaining),
                 imageURL: thumb ?? entry.media.bannerURL ?? entry.media.coverURL,
@@ -382,7 +400,56 @@ struct LibraryView: View {
 
     private func runLibraryBackgroundWork(sections: [AniListLibrarySection], generation: Int? = nil) async {
         guard generation == nil || generation == libraryLoadGeneration else { return }
+        await prefetchContinueWatchingMetadata(sections: sections, generation: generation)
         await prefetchLibraryImages(sections: sections)
+    }
+
+    private func prefetchContinueWatchingMetadata(sections: [AniListLibrarySection], generation: Int? = nil) async {
+        let watchingItems = Array(continueWatchingItems().prefix(6))
+        guard !watchingItems.isEmpty else { return }
+
+        var thumbMap = continueThumbs
+        var titleMap = continueEpisodeTitles
+
+        for item in watchingItems {
+            if let generation, generation != libraryLoadGeneration { return }
+            guard let media = item.media else { continue }
+
+            do {
+                let episodes: [SoraEpisode]
+                if let cached = continueEpisodes[item.id] {
+                    episodes = cached
+                } else {
+                    let result = try await appState.services.episodeService.loadEpisodes(media: media)
+                    episodes = result.episodes
+                    await MainActor.run {
+                        continueEpisodes[item.id] = result.episodes
+                    }
+                }
+
+                let target = episodes.first(where: { $0.id == item.lastEpisodeId })
+                    ?? episodes.first(where: { $0.number == item.episodeNumber })
+                    ?? episodes.last
+
+                guard let episode = target else { continue }
+                let metadata = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: episodes)
+                if let thumb = metadata[episode.number]?.thumbnailURL {
+                    thumbMap[item.id] = thumb
+                }
+                if let episodeTitle = metadata[episode.number]?.title,
+                   !episodeTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    titleMap[item.id] = episodeTitle
+                }
+            } catch {
+                continue
+            }
+        }
+
+        if let generation, generation != libraryLoadGeneration { return }
+        await MainActor.run {
+            continueThumbs = thumbMap
+            continueEpisodeTitles = titleMap
+        }
     }
 
     private func prefetchAvailability(sections: [AniListLibrarySection], generation: Int? = nil) async {
@@ -586,45 +653,159 @@ private enum LibraryFilter: String, CaseIterable, Identifiable {
 private struct LibraryTopBar: View {
     let title: String
     let subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UIConstants.microPadding) {
+            Text(title)
+                .font(.system(size: 28, weight: .heavy))
+                .foregroundColor(Theme.textPrimary)
+            Text(subtitle)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Theme.textSecondary)
+        }
+    }
+}
+
+private struct LibraryProfileHero: View {
+    let bannerURL: URL?
     let avatarURL: URL?
     let onAvatarTap: () -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: UIConstants.interCardSpacing) {
-            VStack(alignment: .leading, spacing: UIConstants.microPadding) {
-                Text(title)
-                    .font(.system(size: 28, weight: .heavy))
-                    .foregroundColor(Theme.textPrimary)
-                Text(subtitle)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Theme.textSecondary)
-            }
-            Spacer()
+        let heroHeight = UIConstants.libraryProfileHeroHeight
+        let avatarSize = UIConstants.libraryProfileAvatarSize
+        let avatarOverlap = UIConstants.libraryProfileAvatarOverlap
+
+        ZStack(alignment: .bottom) {
+            heroBackdrop(height: heroHeight)
+
             Button(action: onAvatarTap) {
-                ZStack {
-                    Circle()
-                        .fill(Color.white.opacity(0.08))
-                        .frame(width: UIConstants.avatarSize, height: UIConstants.avatarSize)
-                    if let url = avatarURL {
+                avatarView(size: avatarSize)
+            }
+            .buttonStyle(.plain)
+            .offset(y: avatarOverlap)
+            .zIndex(1)
+        }
+        .padding(.bottom, avatarOverlap)
+    }
+
+    @ViewBuilder
+    private func heroBackdrop(height: CGFloat) -> some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let bottomFeather = max(42.0, height * 0.28)
+
+            ZStack(alignment: .bottom) {
+                Group {
+                    if let bannerURL {
                         CachedImage(
-                            url: url,
-                            targetSize: CGSize(width: UIConstants.posterCardWidth, height: UIConstants.posterCardHeight)
+                            url: bannerURL,
+                            targetSize: CGSize(width: width, height: height)
                         ) { image in
                             image.resizable().scaledToFill()
                         } placeholder: {
-                            ProgressView()
+                            profileHeroFallback
                         }
-                        .frame(width: UIConstants.avatarSize, height: UIConstants.avatarSize)
-                        .clipShape(Circle())
                     } else {
-                        Image(systemName: "person.fill")
-                            .foregroundColor(.white)
-                            .font(.system(size: 16, weight: .semibold))
+                        profileHeroFallback
                     }
                 }
+                .frame(width: width, height: height)
+                .clipped()
+                .mask(
+                    VStack(spacing: 0) {
+                        Color.black
+                        LinearGradient(
+                            colors: [Color.black, Color.clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: bottomFeather)
+                    }
+                )
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.05), Color.black.opacity(0.24), Color.black.opacity(0.84)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.08), Color.clear, Color.black.opacity(0.30)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
             }
-            .buttonStyle(.plain)
+            .frame(width: width, height: height)
+            .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
         }
+        .frame(height: height)
+    }
+
+    private var profileHeroFallback: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Theme.surface.opacity(0.95),
+                    Theme.baseBackground.opacity(0.9),
+                    Theme.surface.opacity(0.82)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            LinearGradient(
+                colors: [
+                    Color.white.opacity(0.06),
+                    Color.clear,
+                    Color.black.opacity(0.24)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func avatarView(size: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color.white)
+                .frame(width: size, height: size)
+
+            Circle()
+                .fill(Color.black)
+                .frame(width: size - 6, height: size - 6)
+
+            if let avatarURL {
+                CachedImage(
+                    url: avatarURL,
+                    targetSize: CGSize(width: size, height: size)
+                ) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    avatarFallback(size: size)
+                }
+                .frame(width: size - 6, height: size - 6)
+                .clipShape(Circle())
+            } else {
+                avatarFallback(size: size)
+                    .frame(width: size - 6, height: size - 6)
+                    .clipShape(Circle())
+            }
+        }
+        .shadow(color: Color.black.opacity(0.35), radius: 16, x: 0, y: 10)
+    }
+
+    private func avatarFallback(size: CGFloat) -> some View {
+        Circle()
+            .fill(Color.white.opacity(0.08))
+            .overlay(
+                Image(systemName: "person.fill")
+                    .foregroundColor(.white)
+                    .font(.system(size: size * 0.28, weight: .semibold))
+            )
     }
 }
 

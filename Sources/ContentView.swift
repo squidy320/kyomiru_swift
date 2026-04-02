@@ -17,12 +17,6 @@ struct ContentView: View {
                     Text("Library")
                 }
                 .tag(AppTab.library)
-            AlertsView()
-                .tabItem {
-                    Image(systemName: "bell")
-                    Text("Alerts")
-                }
-                .tag(AppTab.notifications)
             DownloadsView()
                 .tabItem {
                     Image(systemName: "arrow.down.circle")

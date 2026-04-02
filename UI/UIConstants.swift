@@ -21,6 +21,19 @@ public struct UIConstants {
         if width <= 414 { return 240 }
         return 260
     }
+    static var libraryProfileHeroHeight: CGFloat {
+        let width = UIScreen.main.bounds.width
+        if UIDevice.current.userInterfaceIdiom == .pad { return 260 }
+        if width <= 375 { return 170 }
+        if width <= 414 { return 188 }
+        return 204
+    }
+    static var libraryProfileAvatarSize: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 112 : 94
+    }
+    static var libraryProfileAvatarOverlap: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 54 : 46
+    }
     static let smallPadding: CGFloat = 8
     static let tinyPadding: CGFloat = 6
     static let microPadding: CGFloat = 4

@@ -143,6 +143,17 @@ enum TitleMatcher {
                 score += overlap * 0.12
             }
 
+            let targetCoreTokens = coreAnimeKaiTokens(from: targetBase)
+            let candidateCoreTokens = coreAnimeKaiTokens(from: candidateBase)
+            if !targetCoreTokens.isEmpty {
+                let missingCoreCount = targetCoreTokens.subtracting(candidateCoreTokens).count
+                let missingCoreRatio = Double(missingCoreCount) / Double(targetCoreTokens.count)
+                score -= missingCoreRatio * 0.22
+                if missingCoreCount == 0 {
+                    score += 0.05
+                }
+            }
+
             let targetHasFinalSeason = hasFinalSeasonMarker(normalizedTarget)
             if targetHasFinalSeason && hasFinalSeasonMarker(candidate.title) {
                 score += 0.04
@@ -541,6 +552,20 @@ enum TitleMatcher {
             out.append(trimmed)
         }
         return out
+    }
+
+    private static func coreAnimeKaiTokens(from normalizedTitle: String) -> Set<String> {
+        let ignored: Set<String> = [
+            "the", "a", "an", "of", "to", "no", "and", "or",
+            "season", "part", "cour", "final", "movie", "special", "tv"
+        ]
+        let tokens = normalizedTitle
+            .split(separator: " ")
+            .map(String.init)
+            .filter { token in
+                token.count > 2 && !ignored.contains(token)
+            }
+        return Set(tokens)
     }
 }
 

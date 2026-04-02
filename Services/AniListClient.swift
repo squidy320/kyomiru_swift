@@ -736,17 +736,17 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
         let q = """
         query Notifications {
           Page(page: 1, perPage: 30) {
-            notifications(type_in: [AIRING, RELATED_MEDIA_ADDITION, MEDIA_DATA_CHANGE, MEDIA_MERGE]) {
-              __typename
+            notifications(type_in: [AIRING]) {
               ... on AiringNotification {
                 id
                 type
                 createdAt
+                episode
                 contexts
                 media {
                   id
-              idMal
-              title { romaji english native }
+                  idMal
+                  title { romaji english native }
                   coverImage { extraLarge large }
                   bannerImage
                   averageScore
@@ -772,10 +772,18 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
             let id = row["id"] as? Int ?? 0
             let type = row["type"] as? String ?? ""
             let createdAt = row["createdAt"] as? Int ?? 0
+            let episode = row["episode"] as? Int
             let contexts = row["contexts"] as? [String] ?? []
             let context = contexts.isEmpty ? nil : contexts.joined(separator: "\n")
             let media = (row["media"] as? [String: Any]).flatMap(decodeMedia)
-            return AniListNotificationItem(id: id, type: type, createdAt: createdAt, context: context, media: media)
+            return AniListNotificationItem(
+                id: id,
+                type: type,
+                createdAt: createdAt,
+                episode: episode,
+                context: context,
+                media: media
+            )
         }
         AppLog.debug(.network, "notifications request success count=\(items.count)")
         return items

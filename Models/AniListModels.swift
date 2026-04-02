@@ -168,6 +168,7 @@ struct AniListNotificationItem: Identifiable, Equatable {
     let id: Int
     let type: String
     let createdAt: Int
+    let episode: Int?
     let context: String?
     let media: AniListMedia?
 }
