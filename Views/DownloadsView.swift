@@ -39,7 +39,7 @@ struct DownloadsView: View {
                         .pickerStyle(.segmented)
 
                         if selectedTab == .queue {
-                            DownloadsQueueView(items: manager.items.filter { $0.status != "Completed" })
+                            DownloadsQueueView()
                         } else {
                             downloadsSummary
                             SearchField(placeholder: "Search downloads...", text: $filterText)
@@ -144,7 +144,7 @@ private extension DownloadsView {
     }
 
     func filteredGroups() -> [DownloadGroup] {
-        let completed = manager.items.filter { $0.status == "Completed" }
+        let completed = manager.items.filter { $0.state == .completed }
         var groups = groupedDownloads(completed)
         let trimmed = filterText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if !trimmed.isEmpty {
@@ -211,7 +211,7 @@ private extension DownloadsView {
     }
 
     func backfillDownloadMetadata() {
-        let completed = manager.items.filter { $0.status == "Completed" }
+        let completed = manager.items.filter { $0.state == .completed }
         for group in groupedDownloads(completed) {
             if let media = mediaItem(forTitle: group.title) {
                 manager.updateMediaInfo(title: group.title, media: media)
@@ -253,14 +253,14 @@ private extension DownloadsView {
     }
 
     var downloadsSummary: some View {
-        let completed = manager.items.filter { $0.status == "Completed" }
+        let completed = manager.items.filter { $0.state == .completed }
         let totalBytes = totalSize(for: completed)
         return GlassCard {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Downloaded")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.white)
-                HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("\(groupedDownloads(completed).count) titles")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(Theme.textSecondary)
@@ -294,7 +294,7 @@ private extension DownloadsView {
 
             if isEditing && !selectedTitles.isEmpty {
                 Button("Delete Selected") {
-                    let completed = manager.items.filter { $0.status == "Completed" }
+                    let completed = manager.items.filter { $0.state == .completed }
                     let groups = groupedDownloads(completed)
                     for group in groups where selectedTitles.contains(group.title) {
                         for item in group.items {
@@ -316,7 +316,11 @@ private extension DownloadsView {
 }
 
 private struct DownloadsQueueView: View {
-    let items: [DownloadItem]
+    @ObservedObject private var manager = DownloadManager.shared
+
+    private var items: [DownloadItem] {
+        manager.items.filter { $0.state != .completed }
+    }
 
     var body: some View {
         if items.isEmpty {
@@ -326,30 +330,48 @@ private struct DownloadsQueueView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
-            queueSummary(items)
+            queueSummary
             ForEach(items) { item in
                 queueRow(item)
             }
         }
     }
 
-    @ViewBuilder
-    private func queueSummary(_ items: [DownloadItem]) -> some View {
-        let totalBytes = items.compactMap { $0.totalBytes }.reduce(0, +)
-        GlassCard {
+    private var queueSummary: some View {
+        let summary = manager.queueSummary()
+        let totalBytes = summary.totalBytesKnown
+        return GlassCard {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Download Queue")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.white)
                 HStack(spacing: 8) {
-                    Text("\(items.count) active")
+                    Text("\(summary.activeCount) active")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(Theme.textSecondary)
                     if totalBytes > 0 {
                         Text("• \(formatBytes(totalBytes)) total")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(Theme.textSecondary)
-                    }
+                        }
+                }
+                if summary.failedCount > 0 {
+                    Text("\(summary.failedCount) failed")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                Text("\(formatBytes(summary.downloadedBytes)) downloaded")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Theme.textSecondary)
+                if summary.combinedSpeedBytesPerSec > 0 {
+                    Text("\(formatSpeed(summary.combinedSpeedBytesPerSec)) combined")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                if summary.totalBytesUnknownCount > 0 {
+                    Text("\(summary.totalBytesUnknownCount) items have unknown total size")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Theme.textSecondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -367,13 +389,17 @@ private struct DownloadsQueueView: View {
                     Spacer()
                     Text(displayStatus(for: item))
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Theme.textSecondary)
+                        .foregroundColor(statusColor(for: item))
                 }
                 ProgressView(value: item.progress)
                     .tint(.white)
                 HStack(spacing: 8) {
                     if let downloaded = item.downloadedBytes, let total = item.totalBytes, total > 0 {
                         Text("\(formatBytes(downloaded)) / \(formatBytes(total))")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                    } else if let downloaded = item.downloadedBytes, downloaded > 0 {
+                        Text("\(formatBytes(downloaded)) downloaded")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(Theme.textSecondary)
                     } else {
@@ -387,15 +413,73 @@ private struct DownloadsQueueView: View {
                             .foregroundColor(Theme.textSecondary)
                     }
                 }
+                actionRow(for: item)
             }
         }
     }
 
     private func displayStatus(for item: DownloadItem) -> String {
-        if item.status.lowercased().contains("fail") {
+        switch item.state {
+        case .queued:
+            return "Queued"
+        case .downloading:
+            return "Downloading"
+        case .downloadingHLS:
+            return "Downloading HLS"
+        case .remuxing:
+            return "Remuxing"
+        case .completed:
+            return "Completed"
+        case .failed:
             return "Failed"
+        case .cancelled:
+            return "Cancelled"
         }
-        return "Downloading"
+    }
+
+    @ViewBuilder
+    private func actionRow(for item: DownloadItem) -> some View {
+        HStack(spacing: 10) {
+            switch item.state {
+            case .queued, .downloading, .downloadingHLS, .remuxing:
+                actionButton("Cancel", tint: Color.orange.opacity(0.85)) {
+                    DownloadManager.shared.cancel(itemId: item.id)
+                }
+            case .failed, .cancelled:
+                actionButton("Retry", tint: Theme.accent.opacity(0.85)) {
+                    DownloadManager.shared.retry(itemId: item.id)
+                }
+                actionButton("Delete", tint: Color.red.opacity(0.85)) {
+                    DownloadManager.shared.delete(itemId: item.id)
+                }
+            case .completed:
+                EmptyView()
+            }
+            Spacer()
+        }
+    }
+
+    private func actionButton(_ title: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(tint))
+            .buttonStyle(.plain)
+    }
+
+    private func statusColor(for item: DownloadItem) -> Color {
+        switch item.state {
+        case .failed:
+            return Color.red.opacity(0.85)
+        case .cancelled:
+            return Color.orange.opacity(0.9)
+        case .completed:
+            return Color.green.opacity(0.85)
+        case .queued, .downloading, .downloadingHLS, .remuxing:
+            return Theme.textSecondary
+        }
     }
 
     private func formatBytes(_ bytes: Int64) -> String {
@@ -664,7 +748,7 @@ private struct DownloadsDetailView: View {
         }
         let key = normalizedTitle(title)
         let fallbackMatches = manager.items.filter {
-            normalizedTitle($0.title) == key && $0.status == "Completed"
+            normalizedTitle($0.title) == key && $0.state == .completed
         }
         return fallbackMatches.isEmpty ? items : fallbackMatches
     }

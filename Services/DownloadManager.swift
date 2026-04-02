@@ -107,6 +107,7 @@ actor OfflineDownloadManager {
         progress: ProgressHandler?,
         preferLocalHLS: Bool
     ) async throws -> URL {
+        try Task.checkCancellation()
         let playlistData = try await fetchData(url: playlistURL, headers: headers)
         let resolved = try await resolveSegments(from: playlistData, baseURL: playlistURL, headers: headers)
         let segmentURLs = resolved.segments.map { $0.url }
@@ -128,6 +129,7 @@ actor OfflineDownloadManager {
     }
 
     private func fetchData(url: URL, headers: [String: String]) async throws -> Data {
+        try Task.checkCancellation()
         var request = URLRequest(url: url)
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         let (data, response) = try await session.data(for: request)
@@ -173,6 +175,7 @@ actor OfflineDownloadManager {
         var sequence = mediaSequence
 
         for line in lines {
+            try Task.checkCancellation()
             if line.hasPrefix("#EXT-X-KEY:") {
                 currentKey = parseKeySpec(from: line, baseURL: baseURL)
                 continue
@@ -225,6 +228,7 @@ actor OfflineDownloadManager {
         }
 
         for line in resolved.lines {
+            try Task.checkCancellation()
             if line.hasPrefix("#EXT-X-KEY:"),
                let keyURL = extractKeyURL(from: line, baseURL: resolved.baseURL) {
                 if let localName = keyMap[keyURL] {
@@ -309,6 +313,7 @@ actor OfflineDownloadManager {
         }
 
         for (index, segment) in segments.enumerated() {
+            try Task.checkCancellation()
             var data = try await fetchData(url: segment.url, headers: headers)
             if let keySpec = segment.key {
                 let keyData: Data
@@ -492,6 +497,89 @@ struct DownloadItem: Identifiable, Equatable {
     var bannerURL: URL?
     var totalEpisodes: Int?
     var isRemuxedToMp4: Bool
+
+    var state: DownloadState {
+        get { DownloadState(status: status, isHls: isHls) }
+        set { status = newValue.defaultStatus(isHls: isHls) }
+    }
+
+    var isActiveState: Bool {
+        state.isActive
+    }
+}
+
+enum DownloadState: String, Codable {
+    case queued
+    case downloading
+    case downloadingHLS
+    case remuxing
+    case completed
+    case failed
+    case cancelled
+
+    init(status: String, isHls: Bool) {
+        let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalized {
+        case "queued":
+            self = .queued
+        case "downloading":
+            self = .downloading
+        case "downloading hls":
+            self = .downloadingHLS
+        case "remuxing":
+            self = .remuxing
+        case "completed":
+            self = .completed
+        case "cancelled":
+            self = .cancelled
+        default:
+            if normalized.contains("remux") {
+                self = normalized.contains("fail") ? .failed : .remuxing
+            } else if normalized.contains("fail") {
+                self = .failed
+            } else if normalized.contains("cancel") {
+                self = .cancelled
+            } else if normalized.contains("queue") {
+                self = .queued
+            } else if normalized.contains("downloading hls") {
+                self = .downloadingHLS
+            } else if normalized.contains("download") {
+                self = isHls ? .downloadingHLS : .downloading
+            } else if normalized.contains("complete") {
+                self = .completed
+            } else {
+                self = isHls ? .downloadingHLS : .downloading
+            }
+        }
+    }
+
+    var isActive: Bool {
+        switch self {
+        case .queued, .downloading, .downloadingHLS, .remuxing:
+            return true
+        case .completed, .failed, .cancelled:
+            return false
+        }
+    }
+
+    func defaultStatus(isHls: Bool) -> String {
+        switch self {
+        case .queued:
+            return "Queued"
+        case .downloading:
+            return "Downloading"
+        case .downloadingHLS:
+            return "Downloading HLS"
+        case .remuxing:
+            return "Remuxing"
+        case .completed:
+            return "Completed"
+        case .failed:
+            return isHls ? "HLS Failed" : "Failed"
+        case .cancelled:
+            return "Cancelled"
+        }
+    }
 }
 
 @MainActor
@@ -510,14 +598,26 @@ final class DownloadManager: NSObject, ObservableObject {
     private let fm = FileManager.default
     private let indexKey = "downloads_index.json"
     private let offlineManager = OfflineDownloadManager()
+    private var directTasks: [String: URLSessionDownloadTask] = [:]
+    private var hlsTasks: [String: Task<Void, Never>] = [:]
 
     override init() {
         super.init()
         loadIndex()
         loadAniSkipCache()
+        normalizeRecoveredItems()
         Task { @MainActor in
             resumePendingRemuxes()
         }
+    }
+
+    struct QueueSummary {
+        let activeCount: Int
+        let failedCount: Int
+        let downloadedBytes: Int64
+        let totalBytesKnown: Int64
+        let totalBytesUnknownCount: Int
+        let combinedSpeedBytesPerSec: Double
     }
 
     func cachedSkipSegments(malId: Int, episode: Int) -> [AniSkipSegment]? {
@@ -784,10 +884,7 @@ final class DownloadManager: NSObject, ObservableObject {
         items.append(item)
         saveIndex()
         AppLog.debug(.downloads, "download enqueue id=\(id)")
-        let task = session.downloadTask(with: url)
-        task.taskDescription = id
-        task.resume()
-        updateStatus(id: id, status: "Downloading")
+        startDownload(for: item)
     }
 
     func enqueueHLS(title: String, episode: Int, url: URL, headers: [String: String], media: MediaItem? = nil) {
@@ -818,9 +915,8 @@ final class DownloadManager: NSObject, ObservableObject {
         )
         items.append(item)
         saveIndex()
-        updateStatus(id: id, status: "Downloading HLS")
         AppLog.debug(.downloads, "hls enqueue id=\(id)")
-        Task { await downloadHLS(id: id, url: url, headers: headers) }
+        startDownload(for: item)
     }
 
     func localFileURL(for title: String, episode: Int) -> URL {
@@ -880,6 +976,29 @@ final class DownloadManager: NSObject, ObservableObject {
         items[idx].speedBytesPerSec = speed
     }
 
+    private func updateTransferStats(id: String, written: Int64?, expected: Int64?) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        objectWillChange.send()
+        let now = Date().timeIntervalSince1970
+        if let written {
+            let previous = speedSamples[id]
+            var speed: Double? = items[idx].speedBytesPerSec
+            if let previous {
+                let deltaBytes = written - previous.bytes
+                let deltaTime = now - previous.time
+                if deltaBytes > 0, deltaTime > 0.2 {
+                    speed = Double(deltaBytes) / deltaTime
+                }
+            }
+            speedSamples[id] = (written, now)
+            items[idx].downloadedBytes = written
+            items[idx].speedBytesPerSec = speed
+        }
+        if let expected, expected > 0 {
+            items[idx].totalBytes = expected
+        }
+    }
+
     private func updateStatus(id: String, status: String, localFile: URL? = nil) {
         if let idx = items.firstIndex(where: { $0.id == id }) {
             objectWillChange.send()
@@ -893,6 +1012,59 @@ final class DownloadManager: NSObject, ObservableObject {
         }
     }
 
+    private func setState(id: String, state: DownloadState, localFile: URL? = nil) {
+        updateStatus(id: id, status: state.defaultStatus(isHls: item(for: id)?.isHls ?? false), localFile: localFile)
+    }
+
+    private func item(for id: String) -> DownloadItem? {
+        items.first(where: { $0.id == id })
+    }
+
+    private func startDownload(for item: DownloadItem) {
+        clearTransientTransferState(id: item.id, preserveProgress: false)
+        updateProgress(id: item.id, progress: 0)
+        if item.isHls {
+            setState(id: item.id, state: .downloadingHLS)
+            let task = Task { @MainActor [weak self] in
+                await self?.downloadHLS(id: item.id, url: item.url, headers: item.headers ?? [:])
+            }
+            hlsTasks[item.id] = task
+        } else {
+            setState(id: item.id, state: .downloading)
+            var request = URLRequest(url: item.url)
+            item.headers?.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+            let task = session.downloadTask(with: request)
+            task.taskDescription = item.id
+            directTasks[item.id] = task
+            task.resume()
+        }
+    }
+
+    private func clearTransientTransferState(id: String, preserveProgress: Bool) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        objectWillChange.send()
+        speedSamples[id] = nil
+        items[idx].speedBytesPerSec = nil
+        if !preserveProgress {
+            items[idx].progress = 0
+            items[idx].downloadedBytes = nil
+            items[idx].totalBytes = nil
+        }
+    }
+
+    private func cleanupActiveWork(id: String) {
+        speedSamples[id] = nil
+        directTasks[id] = nil
+        hlsTasks[id] = nil
+    }
+
+    private func markCancelled(id: String) {
+        clearTransientTransferState(id: id, preserveProgress: true)
+        setState(id: id, state: .cancelled)
+        cleanupPartialFiles(for: id, keepMetadata: true)
+        cleanupActiveWork(id: id)
+    }
+
     private func downloadHLS(id: String, url: URL, headers: [String: String]) async {
         do {
             guard let item = items.first(where: { $0.id == id }) else { return }
@@ -902,25 +1074,28 @@ final class DownloadManager: NSObject, ObservableObject {
             let remuxedMp4 = localRemuxedFileURL(for: item.title, episode: item.episode)
             if fm.fileExists(atPath: remuxedMp4.path) {
                 AppLog.debug(.downloads, "hls remuxed mp4 exists id=\(id) path=\(remuxedMp4.path)")
-                updateStatus(id: id, status: "Completed", localFile: remuxedMp4)
+                setState(id: id, state: .completed, localFile: remuxedMp4)
+                cleanupActiveWork(id: id)
                 return
             }
             let mergedTs = localMergedHLSFileURL(for: item.title, episode: item.episode)
             if fm.fileExists(atPath: mergedTs.path) {
                 AppLog.debug(.downloads, "hls merged ts exists id=\(id) path=\(mergedTs.path)")
-                updateStatus(id: id, status: "Completed", localFile: mergedTs)
+                setState(id: id, state: .completed, localFile: mergedTs)
+                cleanupActiveWork(id: id)
                 return
             }
             let hlsFolder = localHLSFolder(title: item.title, episode: item.episode)
             if let playlist = ensurePlaylist(forFolder: hlsFolder, prefix: nil),
                fm.fileExists(atPath: playlist.path) {
                 AppLog.debug(.downloads, "hls local playlist exists id=\(id) path=\(playlist.path)")
-                updateStatus(id: id, status: "Completed", localFile: playlist)
+                setState(id: id, state: .completed, localFile: playlist)
+                cleanupActiveWork(id: id)
                 return
             }
 
             AppLog.debug(.downloads, "hls offline compile start id=\(id)")
-            updateStatus(id: id, status: "Downloading HLS", localFile: nil)
+            setState(id: id, state: .downloadingHLS)
             let output = try await offlineManager.downloadAndMerge(
                 playlistURL: url,
                 headers: headerPayload,
@@ -929,15 +1104,23 @@ final class DownloadManager: NSObject, ObservableObject {
                 progress: { [weak self] value in
                     Task { @MainActor in
                         self?.updateProgress(id: id, progress: value)
+                        self?.refreshHLSMetrics(id: id)
                     }
                 },
                 preferLocalHLS: false
             )
             updateProgress(id: id, progress: 1)
-            updateStatus(id: id, status: "Completed", localFile: output)
+            refreshHLSMetrics(id: id)
+            setState(id: id, state: .completed, localFile: output)
+            cleanupActiveWork(id: id)
             AppLog.debug(.downloads, "hls offline compile complete id=\(id) output=\(output.path)")
+        } catch is CancellationError {
+            AppLog.debug(.downloads, "hls download cancelled id=\(id)")
+            markCancelled(id: id)
         } catch {
-            updateStatus(id: id, status: "Failed")
+            clearTransientTransferState(id: id, preserveProgress: true)
+            setState(id: id, state: .failed)
+            cleanupActiveWork(id: id)
             AppLog.error(.downloads, "hls download failed id=\(id) error=\(error.localizedDescription)")
         }
     }
@@ -947,17 +1130,20 @@ final class DownloadManager: NSObject, ObservableObject {
         let ext = localFile.pathExtension.lowercased()
         guard ext == "ts" || ext == "m3u8" else {
             AppLog.debug(.downloads, "remux skipped id=\(id) reason=unsupported ext=\(localFile.pathExtension)")
-            updateStatus(id: id, status: "Completed", localFile: localFile)
+            setState(id: id, state: .completed, localFile: localFile)
+            cleanupActiveWork(id: id)
             return
         }
         let mp4URL = localRemuxedFileURL(for: item.title, episode: item.episode)
         if fm.fileExists(atPath: mp4URL.path) {
             AppLog.debug(.downloads, "remux skipped id=\(id) reason=mp4-exists path=\(mp4URL.path)")
-            updateStatus(id: id, status: "Completed", localFile: mp4URL)
+            setState(id: id, state: .completed, localFile: mp4URL)
+            cleanupActiveWork(id: id)
             return
         }
         do {
             updateProgress(id: id, progress: 0)
+            setState(id: id, state: .remuxing, localFile: localFile)
             let output: URL
             if ext == "m3u8" {
                 output = try await MediaConversionManager.shared.convertHlsToMp4(
@@ -977,10 +1163,16 @@ final class DownloadManager: NSObject, ObservableObject {
                 }
             }
             updateProgress(id: id, progress: 1)
-            updateStatus(id: id, status: "Completed", localFile: output)
+            setState(id: id, state: .completed, localFile: output)
+            cleanupActiveWork(id: id)
             AppLog.debug(.downloads, "remux complete id=\(id)")
+        } catch is CancellationError {
+            clearTransientTransferState(id: id, preserveProgress: false)
+            setState(id: id, state: .completed, localFile: localFile)
+            cleanupActiveWork(id: id)
         } catch {
-            updateStatus(id: id, status: "Remux Failed", localFile: localFile)
+            setState(id: id, state: .failed, localFile: localFile)
+            cleanupActiveWork(id: id)
             AppLog.error(.downloads, "remux failed id=\(id) error=\(error.localizedDescription)")
         }
     }
@@ -991,10 +1183,11 @@ final class DownloadManager: NSObject, ObservableObject {
     func retryRemux(itemId: String) {
         guard let item = items.first(where: { $0.id == itemId }),
               let local = playableURL(for: item) ?? item.localFile else { return }
-        updateStatus(id: itemId, status: "Remuxing", localFile: local)
-        Task { @MainActor in
-            await remuxIfNeeded(id: itemId, localFile: local)
+        setState(id: itemId, state: .remuxing, localFile: local)
+        let task = Task { @MainActor [weak self] in
+            await self?.remuxIfNeeded(id: itemId, localFile: local)
         }
+        hlsTasks[itemId] = task
     }
 
     private func handleDidFinishDownload(task: URLSessionDownloadTask, location: URL) {
@@ -1011,11 +1204,14 @@ final class DownloadManager: NSObject, ObservableObject {
                 items[idx].totalBytes = size > 0 ? size : items[idx].totalBytes
                 items[idx].speedBytesPerSec = nil
             }
-            updateStatus(id: id, status: "Completed", localFile: target)
+            setState(id: id, state: .completed, localFile: target)
+            cleanupActiveWork(id: id)
             AppLog.debug(.downloads, "download complete id=\(id)")
             // download completion no longer marks watched
         } catch {
-            updateStatus(id: id, status: "Failed")
+            clearTransientTransferState(id: id, preserveProgress: true)
+            setState(id: id, state: .failed)
+            cleanupActiveWork(id: id)
             AppLog.error(.downloads, "download failed id=\(id) error=\(error.localizedDescription)")
         }
     }
@@ -1030,7 +1226,63 @@ final class DownloadManager: NSObject, ObservableObject {
         updateProgress(id: id, progress: progress)
     }
 
+    func cancel(itemId: String) {
+        guard let item = item(for: itemId) else { return }
+        switch item.state {
+        case .downloading, .queued:
+            if let task = directTasks[itemId] {
+                task.cancel()
+            } else {
+                Task { @MainActor in
+                    let tasks = await fetchDirectTasks()
+                    if let task = tasks.first(where: { $0.taskDescription == itemId }) {
+                        task.cancel()
+                    } else {
+                        markCancelled(id: itemId)
+                    }
+                }
+            }
+        case .downloadingHLS, .remuxing:
+            hlsTasks[itemId]?.cancel()
+            if item.state == .remuxing {
+                clearTransientTransferState(id: itemId, preserveProgress: false)
+                setState(id: itemId, state: .completed, localFile: item.localFile)
+                cleanupActiveWork(id: itemId)
+            }
+        case .failed, .cancelled, .completed:
+            break
+        }
+    }
+
+    func retry(itemId: String) {
+        guard let item = item(for: itemId) else { return }
+        switch item.state {
+        case .failed, .cancelled, .queued:
+            cleanupPartialFiles(for: itemId, keepMetadata: true)
+            startDownload(for: item)
+        case .downloading, .downloadingHLS, .remuxing, .completed:
+            break
+        }
+    }
+
+    func deleteAllCompleted() {
+        for item in items.filter({ $0.state == .completed }) {
+            delete(itemId: item.id)
+        }
+    }
+
     func delete(itemId: String) {
+        cancel(itemId: itemId)
+        cleanupPartialFiles(for: itemId, keepMetadata: false)
+        if let idx = items.firstIndex(where: { $0.id == itemId }) {
+            items.remove(at: idx)
+            cleanupActiveWork(id: itemId)
+            saveIndex()
+            AppLog.debug(.downloads, "download delete id=\(itemId)")
+        }
+    }
+
+    private func cleanupPartialFiles(for itemId: String, keepMetadata: Bool) {
         if let idx = items.firstIndex(where: { $0.id == itemId }) {
             if let localFile = items[idx].localFile {
                 try? fm.removeItem(at: localFile)
@@ -1047,9 +1299,11 @@ final class DownloadManager: NSObject, ObservableObject {
             if fm.fileExists(atPath: remuxed.path) {
                 try? fm.removeItem(at: remuxed)
             }
-            items.remove(at: idx)
-            saveIndex()
-            AppLog.debug(.downloads, "download delete id=\(itemId)")
+            if keepMetadata {
+                objectWillChange.send()
+                items[idx].localFile = nil
+                items[idx].isRemuxedToMp4 = false
+            }
         }
     }
 
@@ -1072,18 +1326,33 @@ final class DownloadManager: NSObject, ObservableObject {
     func downloadedItem(title: String, episode: Int) -> DownloadItem? {
         let key = normalizeTitle(title)
         return items.first(where: {
-            $0.status == "Completed" &&
+            $0.state == .completed &&
             $0.episode == episode &&
             normalizeTitle($0.title) == key
         })
     }
 
     func shouldOfferRemux(for item: DownloadItem) -> Bool {
-        guard item.status == "Completed" else { return false }
+        guard item.state == .completed else { return false }
         if item.isRemuxedToMp4 { return false }
         guard let resolved = playableURL(for: item) ?? item.localFile else { return false }
         let ext = resolved.pathExtension.lowercased()
         return ext == "ts" || ext == "m3u8"
+    }
+
+    func queueSummary() -> QueueSummary {
+        let queueItems = items.filter { $0.state != .completed }
+        let knownTotalBytes = queueItems.compactMap(\.totalBytes).reduce(0, +)
+        let downloadedBytes = queueItems.compactMap(\.downloadedBytes).reduce(0, +)
+        let combinedSpeed = queueItems.compactMap(\.speedBytesPerSec).reduce(0, +)
+        return QueueSummary(
+            activeCount: queueItems.filter(\.isActiveState).count,
+            failedCount: queueItems.filter { $0.state == .failed }.count,
+            downloadedBytes: downloadedBytes,
+            totalBytesKnown: knownTotalBytes,
+            totalBytesUnknownCount: queueItems.filter { $0.totalBytes == nil }.count,
+            combinedSpeedBytesPerSec: combinedSpeed
+        )
     }
 
     func updateMediaInfo(title: String, media: MediaItem) {
@@ -1145,6 +1414,20 @@ final class DownloadManager: NSObject, ObservableObject {
         }
     }
 
+    private func normalizeRecoveredItems() {
+        var didChange = false
+        for idx in items.indices {
+            if items[idx].state.isActive {
+                items[idx].state = .cancelled
+                items[idx].speedBytesPerSec = nil
+                didChange = true
+            }
+        }
+        if didChange {
+            saveIndex()
+        }
+    }
+
     private func aniSkipIndexURL() -> URL {
         let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         return base.appendingPathComponent(aniSkipIndexKey)
@@ -1157,6 +1440,44 @@ final class DownloadManager: NSObject, ObservableObject {
     private func indexURL() -> URL {
         let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         return base.appendingPathComponent(indexKey)
+    }
+
+    private func refreshHLSMetrics(id: String) {
+        guard let item = item(for: id) else { return }
+        let hlsFolder = localHLSFolder(title: item.title, episode: item.episode)
+        let mergedTs = localMergedHLSFileURL(for: item.title, episode: item.episode)
+        let remuxed = localRemuxedFileURL(for: item.title, episode: item.episode)
+        let downloaded = totalBytesOnDisk(at: hlsFolder) + fileSize(at: mergedTs) + fileSize(at: remuxed)
+        updateTransferStats(id: id, written: downloaded > 0 ? downloaded : nil, expected: item.totalBytes)
+    }
+
+    private func totalBytesOnDisk(at root: URL) -> Int64 {
+        guard fm.fileExists(atPath: root.path),
+              let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey], options: [.skipsHiddenFiles]) else {
+            return 0
+        }
+        var total: Int64 = 0
+        for case let url as URL in enumerator {
+            guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                  values.isRegularFile == true else { continue }
+            total += Int64(values.fileSize ?? 0)
+        }
+        return total
+    }
+
+    private func fileSize(at url: URL) -> Int64 {
+        guard let attrs = try? fm.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? NSNumber else { return 0 }
+        return size.int64Value
+    }
+
+    private func fetchDirectTasks() async -> [URLSessionDownloadTask] {
+        await withCheckedContinuation { continuation in
+            session.getAllTasks { tasks in
+                let downloadTasks = tasks.compactMap { $0 as? URLSessionDownloadTask }
+                continuation.resume(returning: downloadTasks)
+            }
+        }
     }
 
     private func resolvePlayableURL(localFile: URL, item: DownloadItem) -> URL {
@@ -1486,6 +1807,8 @@ private struct PersistedDownload: Codable {
     let localFile: String?
     let status: String
     let isHls: Bool
+    let downloadedBytes: Int64?
+    let totalBytes: Int64?
     let headers: [String: String]?
     let mediaId: Int?
     let malId: Int?
@@ -1503,6 +1826,8 @@ private struct PersistedDownload: Codable {
         localFile = item.localFile?.absoluteString
         status = item.status
         isHls = item.isHls
+        downloadedBytes = item.downloadedBytes
+        totalBytes = item.totalBytes
         headers = item.headers
         mediaId = item.mediaId
         malId = item.malId
@@ -1523,8 +1848,8 @@ private struct PersistedDownload: Codable {
             localFile: localFile.flatMap(URL.init(string:)),
             status: status,
             isHls: isHls,
-            downloadedBytes: nil,
-            totalBytes: nil,
+            downloadedBytes: downloadedBytes,
+            totalBytes: totalBytes,
             speedBytesPerSec: nil,
             mediaId: mediaId,
             malId: malId,
@@ -1551,6 +1876,24 @@ extension DownloadManager: @preconcurrency URLSessionDownloadDelegate {
             self.handleDidWriteData(task: downloadTask,
                                     totalBytesWritten: totalBytesWritten,
                                     totalBytesExpectedToWrite: totalBytesExpectedToWrite)
+        }
+    }
+
+    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        Task { @MainActor in
+            guard let id = task.taskDescription else { return }
+            directTasks[id] = nil
+            guard let error else { return }
+            let nsError = error as NSError
+            if nsError.domain == NSURLErrorDomain, nsError.code == URLError.cancelled.rawValue {
+                markCancelled(id: id)
+                return
+            }
+            guard let item = item(for: id), item.state != .completed else { return }
+            clearTransientTransferState(id: id, preserveProgress: true)
+            setState(id: id, state: .failed)
+            cleanupActiveWork(id: id)
+            AppLog.error(.downloads, "download task failed id=\(id) error=\(error.localizedDescription)")
         }
     }
 }
