@@ -251,6 +251,14 @@ final class MetadataService {
             )
         }
 
+        if let structured = await tmdbMatcher.resolveAnimeStructure(media: media) {
+            return ResolvedArtworkContext(
+                showId: structured.showId,
+                mediaType: structured.mediaType,
+                posterSeasonNumber: structured.mediaType == "tv" ? structured.currentSegment.posterSeasonNumber : nil
+            )
+        }
+
         if let resolved = await tmdbMatcher.resolveShowAndSeason(
             media: media,
             preferredSeasonNumber: TitleMatcher.extractSeasonNumber(from: media.title.best),
@@ -455,9 +463,9 @@ final class MetadataService {
 
     private func metadataCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:media:v11:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
+            return "tmdb:media:v12:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
         }
-        return "tmdb:media:v11:\(mediaId)"
+        return "tmdb:media:v12:\(mediaId)"
     }
 
     private func logoCacheKey(for mediaId: Int) -> String {
@@ -504,6 +512,8 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:media:v10:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v11:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v11:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v12:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v12:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v2:\(mediaId)")
@@ -528,6 +538,7 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v4:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v5:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v6:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:structure:v7:\(mediaId)")
     }
 }
 
@@ -931,7 +942,7 @@ final class EpisodeMetadataService {
             let maxEpisodeNumber = episodes.map(\.number).max() ?? 0
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
-            let structureKey = "tmdb:structure:v6:\(media.id)"
+            let structureKey = "tmdb:structure:v7:\(media.id)"
             guard let cachedStructure = cacheStore.readJSON(forKey: structureKey),
                   let structured = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cachedStructure) else {
                 return nil

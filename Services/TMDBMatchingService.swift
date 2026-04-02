@@ -442,7 +442,7 @@ final class TMDBMatchingService {
     }
 
     func resolveAnimeStructure(media: AniListMedia) async -> TMDBAnimeStructureMatch? {
-        let requestKey = "tmdb:structure:v6:\(media.id)"
+        let requestKey = "tmdb:structure:v7:\(media.id)"
         if let cached = cacheStore.readJSON(forKey: requestKey, maxAge: Self.structureCacheTTL),
            let decoded = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cached) {
             return decoded
@@ -1409,7 +1409,6 @@ final class TMDBMatchingService {
         explicitSeasonNumber: Int? = nil
     ) -> SelectedSeason? {
         if let explicitSeasonNumber {
-            let season = seasons.first { $0.seasonNumber == explicitSeasonNumber }
             if let rangeMatch, rangeMatch.seasonNumber == explicitSeasonNumber {
                 return SelectedSeason(
                     seasonNumber: explicitSeasonNumber,
@@ -1417,6 +1416,9 @@ final class TMDBMatchingService {
                     confidence: 0.96,
                     reason: "part-cour-with-season-range"
                 )
+            }
+            if partMarker > 1 {
+                return nil
             }
             if let dateMatch, dateMatch.seasonNumber == explicitSeasonNumber {
                 return SelectedSeason(
@@ -2153,6 +2155,7 @@ final class TMDBMatchingService {
         var candidates: [(start: Int, score: Double, reason: String)] = []
 
         if let explicitSeason,
+           (explicitPart == nil || explicitPart == 1),
            let start = startIndexForSeason(
                 explicitSeason,
                 in: absoluteEpisodes,
@@ -2296,11 +2299,31 @@ final class TMDBMatchingService {
         let seasons = show.seasons.filter { !$0.isSpecial && $0.episodeCount > 0 }
         guard !seasons.isEmpty else { return [] }
 
+        let seasonDetailsByNumber: [Int: TMDBSeasonDetails] = await withTaskGroup(of: (Int, TMDBSeasonDetails?).self) { group in
+            for season in seasons {
+                group.addTask { [self] in
+                    let details = await fetchSeasonDetails(showId: show.showId, seasonNumber: season.seasonNumber)
+                    return (season.seasonNumber, details)
+                }
+            }
+
+            var collected: [Int: TMDBSeasonDetails] = [:]
+            for await (seasonNumber, details) in group {
+                guard let details else { continue }
+                collected[seasonNumber] = details
+            }
+            return collected
+        }
+
+        guard seasonDetailsByNumber.count == seasons.count else {
+            return []
+        }
+
         var flattened: [AbsoluteTMDBEpisode] = []
         var absoluteNumber = 1
 
         for season in seasons {
-            guard let details = await fetchSeasonDetails(showId: show.showId, seasonNumber: season.seasonNumber) else {
+            guard let details = seasonDetailsByNumber[season.seasonNumber] else {
                 return []
             }
             for episode in details.episodes.sorted(by: { $0.number < $1.number }) {
