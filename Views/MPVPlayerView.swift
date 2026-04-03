@@ -703,39 +703,34 @@ struct MPVPlayerScreen: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                Color.black.ignoresSafeArea()
-                if let source {
-                    MPVPlayerRepresentable(
-                        source: source,
-                        controller: playbackController
-                    )
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .clipped()
-                    .contentShape(Rectangle())
-                    .overlay(alignment: .center) {
-                        if playbackController.isBuffering {
-                            ProgressView()
-                                .scaleEffect(1.2)
-                                .tint(.white)
-                        }
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if let source {
+                MPVPlayerRepresentable(
+                    source: source,
+                    controller: playbackController
+                )
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .overlay(alignment: .center) {
+                    if playbackController.isBuffering {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                            .tint(.white)
                     }
-                    .overlay { interactionLayer }
-
-                    overlayChrome(in: geometry)
-                } else {
-                    ProgressView("Loading player...")
-                        .tint(.white)
-                        .foregroundColor(.white)
-                        .task {
-                            onFallbackToAVPlayer("No playable source was available for mpv, so this session was switched back to AVPlayer.")
-                        }
                 }
+                .overlay { interactionLayer }
+                .overlay { overlayChromeLayer }
+            } else {
+                ProgressView("Loading player...")
+                    .tint(.white)
+                    .foregroundColor(.white)
+                    .task {
+                        onFallbackToAVPlayer("No playable source was available for mpv, so this session was switched back to AVPlayer.")
+                    }
             }
-            .frame(width: geometry.size.width, height: geometry.size.height)
-            .ignoresSafeArea()
         }
+        .ignoresSafeArea()
         .onAppear {
             guard let source else { return }
             playbackController.configure(
@@ -765,6 +760,12 @@ struct MPVPlayerScreen: View {
             Text(playbackController.errorMessage ?? "")
         }
         .statusBar(hidden: true)
+    }
+
+    private var overlayChromeLayer: some View {
+        GeometryReader { geometry in
+            overlayChrome(in: geometry)
+        }
     }
 
     private func overlayChrome(in geometry: GeometryProxy) -> some View {
@@ -1127,6 +1128,7 @@ private final class MPVSampleBufferPiPBridge: NSObject, AVPictureInPictureContro
 private final class MPVViewController: UIViewController {
     weak var delegate: MPVViewControllerDelegate?
 
+    private let videoHostView = UIView()
     private let renderLayer = MPVMetalLayer()
     private let pipBridge = MPVSampleBufferPiPBridge()
     private var mpvHandle: OpaquePointer?
@@ -1146,8 +1148,15 @@ private final class MPVViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        updateRenderLayerLayout()
-        view.layer.addSublayer(renderLayer)
+        view.clipsToBounds = true
+
+        videoHostView.backgroundColor = .black
+        videoHostView.clipsToBounds = true
+        videoHostView.frame = view.bounds
+        videoHostView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(videoHostView)
+        videoHostView.layer.addSublayer(renderLayer)
+
         pipBridge.configure(in: view)
         pipBridge.isPaused = { [weak self] in self?.getPauseState() ?? true }
         pipBridge.setPaused = { [weak self] paused in self?.setFlagProperty(name: "pause", value: paused) }
@@ -1158,6 +1167,7 @@ private final class MPVViewController: UIViewController {
             let base = self.getCurrentTime()
             self.sendCommand(["seek", "\(base + delta)", "absolute+exact"])
         }
+        updateRenderLayerLayout()
         initializeMPV()
     }
 
@@ -1461,19 +1471,22 @@ private final class MPVViewController: UIViewController {
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        renderLayer.frame = bounds
-        renderLayer.bounds = bounds
-        renderLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        videoHostView.frame = bounds
+        renderLayer.frame = videoHostView.bounds
+        renderLayer.bounds = videoHostView.bounds
+        renderLayer.position = CGPoint(x: videoHostView.bounds.midX, y: videoHostView.bounds.midY)
         let scale = view.window?.screen.scale ?? view.contentScaleFactor
         renderLayer.contentsScale = scale
         renderLayer.drawableSize = CGSize(
-            width: max(bounds.width * scale, 1),
-            height: max(bounds.height * scale, 1)
+            width: max(videoHostView.bounds.width * scale, 1),
+            height: max(videoHostView.bounds.height * scale, 1)
         )
         CATransaction.commit()
 
         if layoutChanged {
-            forceRefreshCurrentFrameIfNeeded()
+            DispatchQueue.main.async { [weak self] in
+                self?.forceRefreshCurrentFrameIfNeeded()
+            }
         }
     }
 
