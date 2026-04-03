@@ -372,7 +372,7 @@ final class SoraRuntime {
                 URLQueryItem(name: "sort", value: "episode_asc"),
                 URLQueryItem(name: "page", value: "\(page)")
             ]
-            let data = try await get(url: comps.url!)
+            let data = try await self.get(url: comps.url!)
             guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 AppLog.error(.network, "episodes list decode failed session=\(session) page=\(page)")
                 return (page, [])
@@ -384,7 +384,7 @@ final class SoraRuntime {
                 let episode2 = row["episode2"] as? Int ?? 0
                 let episodeSession = row["session"] as? String ?? ""
                 if epNumber <= 0 || episode2 != 0 || episodeSession.isEmpty { return nil }
-                let playURL = baseURL.appendingPathComponent("play/\(session)/\(episodeSession)")
+                let playURL = self.baseURL.appendingPathComponent("play/\(session)/\(episodeSession)")
                 return SoraEpisode(id: episodeSession, number: epNumber, playURL: playURL)
             }
             return (lastPage, episodes)
