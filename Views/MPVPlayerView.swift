@@ -768,7 +768,7 @@ struct MPVPlayerScreen: View {
         let safeTop = geometry.safeAreaInsets.top
         let safeBottom = geometry.safeAreaInsets.bottom
         let isLandscape = geometry.size.width > geometry.size.height
-        ZStack {
+        return ZStack {
             Color.clear
                 .ignoresSafeArea()
                 .overlay(alignment: .top) { topGradient(isLandscape: isLandscape) }
