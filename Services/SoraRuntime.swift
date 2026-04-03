@@ -364,10 +364,7 @@ final class SoraRuntime {
     private func directEpisodes(session: String) async throws -> [SoraEpisode] {
         AppLog.debug(.network, "episodes fallback to direct api session=\(session)")
         let url = baseURL.appendingPathComponent("api")
-        var page = 1
-        var out: [SoraEpisode] = []
-        var lastPage = 1
-        repeat {
+        let fetchPage: @Sendable (Int) async throws -> (lastPage: Int, episodes: [SoraEpisode]) = { page in
             var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)!
             comps.queryItems = [
                 URLQueryItem(name: "m", value: "release"),
@@ -377,12 +374,12 @@ final class SoraRuntime {
             ]
             let data = try await get(url: comps.url!)
             guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                AppLog.error(.network, "episodes list decode failed session=\(session)")
-                break
+                AppLog.error(.network, "episodes list decode failed session=\(session) page=\(page)")
+                return (page, [])
             }
-            lastPage = root["last_page"] as? Int ?? lastPage
+            let lastPage = root["last_page"] as? Int ?? page
             let rows = (root["data"] as? [[String: Any]] ?? [])
-            let eps: [SoraEpisode] = rows.compactMap { row in
+            let episodes: [SoraEpisode] = rows.compactMap { row in
                 let epNumber = row["episode"] as? Int ?? 0
                 let episode2 = row["episode2"] as? Int ?? 0
                 let episodeSession = row["session"] as? String ?? ""
@@ -390,10 +387,34 @@ final class SoraRuntime {
                 let playURL = baseURL.appendingPathComponent("play/\(session)/\(episodeSession)")
                 return SoraEpisode(id: episodeSession, number: epNumber, playURL: playURL)
             }
-            out.append(contentsOf: eps)
-            page += 1
-        } while page <= lastPage
-        return out
+            return (lastPage, episodes)
+        }
+
+        let firstPage = try await fetchPage(1)
+        var collected = firstPage.episodes
+        let finalPage = max(firstPage.lastPage, 1)
+        guard finalPage > 1 else { return collected }
+
+        let remainingPages = Array(2...finalPage)
+        let remainingResults = try await withThrowingTaskGroup(of: [SoraEpisode].self) { group in
+            for page in remainingPages {
+                group.addTask {
+                    let result = try await fetchPage(page)
+                    return result.episodes
+                }
+            }
+
+            var pages: [[SoraEpisode]] = []
+            for try await episodes in group {
+                pages.append(episodes)
+            }
+            return pages
+        }
+
+        for pageEpisodes in remainingResults {
+            collected.append(contentsOf: pageEpisodes)
+        }
+        return collected
     }
 
     func sources(for episode: SoraEpisode) async throws -> [SoraSource] {

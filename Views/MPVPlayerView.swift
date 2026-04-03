@@ -81,6 +81,7 @@ private final class MPVPlaybackController: ObservableObject {
     @Published var isPictureInPictureActive = false
     @Published var isPictureInPicturePossible = AVPictureInPictureController.isPictureInPictureSupported()
     @Published var playbackSpeed: Double = 1.0
+    @Published var isLongPressSpeedActive = false
     @Published private(set) var commandToken = 0
     @Published private(set) var pendingCommands: [MPVQueuedPlaybackCommand] = []
 
@@ -94,7 +95,6 @@ private final class MPVPlaybackController: ObservableObject {
     private var didMarkWatched = false
     private var autoHideTask: Task<Void, Never>?
     private var autoHideGeneration = 0
-    private var isLongPressSpeedActive = false
     private var onRestoreAfterPictureInPicture: (() -> Void)?
     private var onDismissForPictureInPicture: (() -> Void)?
     private var currentSource: MPVResolvedSource?
@@ -170,25 +170,11 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func handleDoubleTapLeft() {
-        sendCommand(.commandString("seek -10 relative"))
-        let baseTime = pendingSeekTime ?? currentTime
-        let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime - 10))
-        pendingSeekTime = target
-        pendingSeekIssuedAt = Date()
-        displayedTime = target
-        updateActiveSkip(at: target)
-        noteInteraction()
+        skip(by: -10)
     }
 
     func handleDoubleTapRight() {
-        sendCommand(.commandString("seek 10 relative"))
-        let baseTime = pendingSeekTime ?? currentTime
-        let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime + 10))
-        pendingSeekTime = target
-        pendingSeekIssuedAt = Date()
-        displayedTime = target
-        updateActiveSkip(at: target)
-        noteInteraction()
+        skip(by: 10)
     }
 
     var shouldShowSkipIntro: Bool {
@@ -201,14 +187,7 @@ private final class MPVPlaybackController: ObservableObject {
     }
 
     func skip85Relative() {
-        sendCommand(.commandString("seek 85 relative"))
-        let baseTime = pendingSeekTime ?? currentTime
-        let target = max(0, min(duration > 0 ? duration : .greatestFiniteMagnitude, baseTime + 85))
-        pendingSeekTime = target
-        pendingSeekIssuedAt = Date()
-        displayedTime = target
-        updateActiveSkip(at: target)
-        noteInteraction()
+        skip(by: 85)
     }
 
     var introProgressRange: ClosedRange<Double>? {
@@ -224,8 +203,10 @@ private final class MPVPlaybackController: ObservableObject {
         guard !isLongPressSpeedActive else { return }
         guard !isPaused else { return }
         isLongPressSpeedActive = true
+        autoHideTask?.cancel()
+        autoHideGeneration += 1
+        showControls = false
         sendCommand(.setSpeedProperty("2.0"))
-        noteInteraction()
     }
 
     func endHoldSpeed() {
@@ -511,6 +492,16 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
         self.didMarkWatched = false
         self.didAttemptStart = false
 
+#if !targetEnvironment(macCatalyst)
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .moviePlayback, options: [])
+            try session.setActive(true)
+        } catch {
+            AppLog.error(.player, "mpv pip audio session setup failed: \(error.localizedDescription)")
+        }
+#endif
+
         let asset: AVURLAsset
         if source.headers.isEmpty {
             asset = AVURLAsset(url: source.url)
@@ -538,10 +529,12 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
         hostController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         hostWindow.rootViewController = hostController
         hostWindow.isHidden = false
+        hostController.view.layoutIfNeeded()
         self.hostWindow = hostWindow
 
         let playerLayer = AVPlayerLayer(player: player)
         playerLayer.frame = hostController.view.bounds
+        playerLayer.needsDisplayOnBoundsChange = true
         playerLayer.videoGravity = .resizeAspect
         hostController.view.layer.addSublayer(playerLayer)
         self.playerLayer = playerLayer
@@ -567,7 +560,9 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
                 player.seek(to: CMTime(seconds: startTime, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
                 player.play()
                 self.installTimeObserver(mediaId: mediaId, episodeId: episodeId, episodeNumber: episodeNumber)
-                pip.startPictureInPicture()
+                DispatchQueue.main.async {
+                    pip.startPictureInPicture()
+                }
             case .failed:
                 self.onError?(observed.error?.localizedDescription ?? "Picture in Picture failed to prepare.")
                 self.stopInternal()
@@ -708,32 +703,34 @@ struct MPVPlayerScreen: View {
     }
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            if let source {
-                MPVPlayerRepresentable(
-                    source: source,
-                    controller: playbackController
-                )
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .overlay(alignment: .center) {
-                    if playbackController.isBuffering {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                            .tint(.white)
+        GeometryReader { geometry in
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if let source {
+                    MPVPlayerRepresentable(
+                        source: source,
+                        controller: playbackController
+                    )
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .overlay(alignment: .center) {
+                        if playbackController.isBuffering {
+                            ProgressView()
+                                .scaleEffect(1.2)
+                                .tint(.white)
+                        }
                     }
-                }
-                .overlay { interactionLayer }
+                    .overlay { interactionLayer }
 
-                overlayChrome
-            } else {
-                ProgressView("Loading player...")
-                    .tint(.white)
-                    .foregroundColor(.white)
-                    .task {
-                        onFallbackToAVPlayer("No playable source was available for mpv, so this session was switched back to AVPlayer.")
-                    }
+                    overlayChrome(in: geometry)
+                } else {
+                    ProgressView("Loading player...")
+                        .tint(.white)
+                        .foregroundColor(.white)
+                        .task {
+                            onFallbackToAVPlayer("No playable source was available for mpv, so this session was switched back to AVPlayer.")
+                        }
+                }
             }
         }
         .onAppear {
@@ -767,43 +764,46 @@ struct MPVPlayerScreen: View {
         .statusBar(hidden: true)
     }
 
-    private var overlayChrome: some View {
+    private func overlayChrome(in geometry: GeometryProxy) -> some View {
+        let safeTop = geometry.safeAreaInsets.top
+        let safeBottom = geometry.safeAreaInsets.bottom
+        let isLandscape = geometry.size.width > geometry.size.height
         ZStack {
             Color.clear
                 .ignoresSafeArea()
-                .overlay(alignment: .top) { topGradient }
-                .overlay(alignment: .bottom) { bottomGradient }
-                .overlay(alignment: .top) { topBar }
-                .overlay(alignment: .center) { centerControls }
-                .overlay(alignment: .bottom) { bottomBar }
-                .overlay(alignment: .bottomTrailing) { skip85Button }
+                .overlay(alignment: .top) { topGradient(isLandscape: isLandscape) }
+                .overlay(alignment: .bottom) { bottomGradient(isLandscape: isLandscape) }
+                .overlay(alignment: .top) { topBar(safeTop: safeTop, isLandscape: isLandscape) }
+                .overlay(alignment: .center) { centerControls(isLandscape: isLandscape) }
+                .overlay(alignment: .bottom) { bottomBar(safeBottom: safeBottom, isLandscape: isLandscape) }
+                .overlay(alignment: .bottomTrailing) { skip85Button(safeBottom: safeBottom, isLandscape: isLandscape) }
         }
-        .opacity(playbackController.showControls ? 1 : 0)
-        .allowsHitTesting(playbackController.showControls)
+        .opacity(playbackController.showControls && !playbackController.isLongPressSpeedActive ? 1 : 0)
+        .allowsHitTesting(playbackController.showControls && !playbackController.isLongPressSpeedActive)
         .animation(.easeInOut(duration: 0.2), value: playbackController.showControls)
     }
 
-    private var topGradient: some View {
+    private func topGradient(isLandscape: Bool) -> some View {
         LinearGradient(
             colors: [Color.black.opacity(0.82), Color.black.opacity(0.35), .clear],
             startPoint: .top,
             endPoint: .bottom
         )
-        .frame(height: 150)
+        .frame(height: isLandscape ? 110 : 150)
         .allowsHitTesting(false)
     }
 
-    private var bottomGradient: some View {
+    private func bottomGradient(isLandscape: Bool) -> some View {
         LinearGradient(
             colors: [.clear, Color.black.opacity(0.45), Color.black.opacity(0.82)],
             startPoint: .top,
             endPoint: .bottom
         )
-        .frame(height: 210)
+        .frame(height: isLandscape ? 150 : 210)
         .allowsHitTesting(false)
     }
 
-    private var topBar: some View {
+    private func topBar(safeTop: CGFloat, isLandscape: Bool) -> some View {
         HStack {
             Button {
                 dismiss()
@@ -841,18 +841,18 @@ struct MPVPlayerScreen: View {
                 Color.clear.frame(width: 44, height: 44)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 6)
+        .padding(.horizontal, isLandscape ? 18 : 10)
+        .padding(.top, max(safeTop, 6))
         .padding(.bottom, 4)
     }
 
-    private var centerControls: some View {
-        HStack(spacing: 46) {
+    private func centerControls(isLandscape: Bool) -> some View {
+        HStack(spacing: isLandscape ? 58 : 46) {
             Button {
                 playbackController.handleDoubleTapLeft()
             } label: {
                 Image(systemName: "gobackward.10")
-                    .font(.system(size: 34, weight: .semibold))
+                    .font(.system(size: isLandscape ? 38 : 34, weight: .semibold))
                     .foregroundStyle(.white)
             }
 
@@ -860,7 +860,7 @@ struct MPVPlayerScreen: View {
                 playbackController.togglePaused()
             } label: {
                 Image(systemName: playbackController.isPaused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 56, weight: .bold))
+                    .font(.system(size: isLandscape ? 62 : 56, weight: .bold))
                     .foregroundStyle(.white)
             }
 
@@ -868,14 +868,14 @@ struct MPVPlayerScreen: View {
                 playbackController.handleDoubleTapRight()
             } label: {
                 Image(systemName: "goforward.10")
-                    .font(.system(size: 34, weight: .semibold))
+                    .font(.system(size: isLandscape ? 38 : 34, weight: .semibold))
                     .foregroundStyle(.white)
             }
         }
-        .padding(.bottom, 24)
+        .padding(.bottom, isLandscape ? 6 : 24)
     }
 
-    private var bottomBar: some View {
+    private func bottomBar(safeBottom: CGFloat, isLandscape: Bool) -> some View {
         VStack(spacing: 8) {
             Slider(
                 value: Binding(
@@ -913,11 +913,11 @@ struct MPVPlayerScreen: View {
             .font(.system(size: 14, weight: .regular, design: .rounded).monospacedDigit())
             .foregroundStyle(.white.opacity(0.95))
         }
-        .padding(.horizontal, 18)
-        .padding(.bottom, 14)
+        .padding(.horizontal, isLandscape ? 28 : 18)
+        .padding(.bottom, max(safeBottom, isLandscape ? 10 : 14))
     }
 
-    private var skip85Button: some View {
+    private func skip85Button(safeBottom: CGFloat, isLandscape: Bool) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             playbackController.skip85Relative()
@@ -935,7 +935,7 @@ struct MPVPlayerScreen: View {
                 .clipShape(Capsule())
         }
         .padding(.trailing, 16)
-        .padding(.bottom, 78)
+        .padding(.bottom, max(safeBottom, isLandscape ? 64 : 78))
     }
 
     private func handleScrubbingChanged(_ editing: Bool) {
@@ -999,7 +999,7 @@ struct MPVPlayerScreen: View {
     private func scheduleHoldSpeedActivation() {
         guard holdSpeedActivationTask == nil else { return }
         holdSpeedActivationTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
             guard !Task.isCancelled else { return }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             playbackController.beginHoldSpeed()
@@ -1194,7 +1194,7 @@ private final class MPVViewController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if self.isBeingDismissed || self.view.window == nil {
+        if isBeingDismissed || isMovingFromParent {
             teardownMPV()
         }
     }

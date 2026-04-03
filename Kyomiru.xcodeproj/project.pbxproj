@@ -493,6 +493,7 @@
             buildSettings = {
                 PRODUCT_BUNDLE_IDENTIFIER = com.samysamy.kyomiru;
                 PRODUCT_NAME = Kyomiru;
+                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
                 INFOPLIST_FILE = Resources/Info.plist;
                 IPHONEOS_DEPLOYMENT_TARGET = 17.0;
                 SWIFT_VERSION = 5.0;
@@ -511,6 +512,7 @@
             buildSettings = {
                 PRODUCT_BUNDLE_IDENTIFIER = com.samysamy.kyomiru;
                 PRODUCT_NAME = Kyomiru;
+                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
                 INFOPLIST_FILE = Resources/Info.plist;
                 IPHONEOS_DEPLOYMENT_TARGET = 17.0;
                 SWIFT_VERSION = 5.0;

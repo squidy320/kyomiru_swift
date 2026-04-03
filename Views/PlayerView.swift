@@ -642,6 +642,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         private weak var blurView: SkipOverlayView?
         private weak var progressSlider: UISlider?
         private weak var holdRecognizer: UILongPressGestureRecognizer?
+        private weak var hostingController: AVPlayerViewController?
         private var syncTask: Task<Void, Never>?
         private var placementConstraints: [NSLayoutConstraint] = []
         private var isSkipButtonEnabled = false
@@ -667,6 +668,7 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         }
 
         func installSkipButtonIfNeeded(in controller: AVPlayerViewController) {
+            hostingController = controller
             if skipButton != nil, blurView != nil {
                 attachButtonNearProgressBarIfNeeded(in: controller)
                 ensureSyncTask(for: controller)
@@ -714,9 +716,10 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         }
 
         func installHoldSpeedRecognizerIfNeeded(in controller: AVPlayerViewController) {
+            hostingController = controller
             if holdRecognizer != nil { return }
             let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleHoldSpeed(_:)))
-            recognizer.minimumPressDuration = 0.25
+            recognizer.minimumPressDuration = 1.5
             recognizer.cancelsTouchesInView = false
             recognizer.delegate = self
             controller.view.addGestureRecognizer(recognizer)
@@ -827,8 +830,10 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         private func handleHoldSpeed(_ recognizer: UILongPressGestureRecognizer) {
             switch recognizer.state {
             case .began:
+                hostingController?.showsPlaybackControls = false
                 onHoldSpeedChanged(true)
             case .ended, .cancelled, .failed:
+                hostingController?.showsPlaybackControls = true
                 onHoldSpeedChanged(false)
             default:
                 break

@@ -79,6 +79,9 @@ final class EpisodeService {
         if provider == .animeKai {
             let topScore = rankedCandidates.first?.matchScore ?? 0
             probeLimit = topScore >= 0.94 ? min(rankedCandidates.count, 2) : min(rankedCandidates.count, 4)
+        } else if provider == .animePahe {
+            let topScore = rankedCandidates.first?.matchScore ?? 0
+            probeLimit = topScore >= 0.95 ? 1 : min(rankedCandidates.count, 2)
         } else {
             probeLimit = 1
         }
@@ -193,7 +196,7 @@ final class EpisodeService {
             !hasPartMarker &&
             (expected == 0 || (sorted.count >= expected && rawMax <= max(expected, rawMin)))
 
-        if provider == .animeKai && looksSeasonLocal {
+        if looksSeasonLocal {
             AppLog.debug(.matching, "TMDB shaping skipped mediaId=\(media.id) provider=\(provider.title) reason=season-local")
             return sorted.map {
                 SoraEpisode(id: $0.id, sourceNumber: $0.sourceNumber, displayNumber: $0.sourceNumber, playURL: $0.playURL)
