@@ -334,14 +334,26 @@ private final class MPVPlaybackController: ObservableObject {
                 self.pendingSeekTime = restoredPosition
                 self.displayedTime = restoredPosition
             },
-            onRestore: { [weak self] in
-                self?.onRestoreAfterPictureInPicture?()
+            onRestore: { [weak self] restoredPosition in
+                guard let self else { return }
+                self.pendingResumeTime = restoredPosition
+                self.didApplyResume = false
+                self.pendingSeekTime = restoredPosition
+                self.displayedTime = restoredPosition
+                self.onRestoreAfterPictureInPicture?()
             },
             onError: { [weak self] message in
                 self?.isPictureInPictureActive = false
                 self?.errorMessage = message
             }
         )
+    }
+
+    func startPictureInPictureIfPossible() {
+        guard !isPaused else { return }
+        guard currentSource != nil else { return }
+        guard !isPictureInPictureActive else { return }
+        startPictureInPicture()
     }
 
     private func preparePlayback() {
@@ -464,7 +476,7 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
     private var itemStatusObserver: NSKeyValueObservation?
     private var onStart: (() -> Void)?
     private var onStop: ((Double) -> Void)?
-    private var onRestore: (() -> Void)?
+    private var onRestore: ((Double) -> Void)?
     private var onError: ((String) -> Void)?
     private weak var appState: AppState?
     private var didMarkWatched = false
@@ -479,7 +491,7 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
         appState: AppState?,
         onStart: @escaping () -> Void,
         onStop: @escaping (Double) -> Void,
-        onRestore: @escaping () -> Void,
+        onRestore: @escaping (Double) -> Void,
         onError: @escaping (String) -> Void
     ) {
         stopInternal()
@@ -615,7 +627,7 @@ private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureCont
         _ pictureInPictureController: AVPictureInPictureController,
         restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
     ) {
-        onRestore?()
+        onRestore?(currentPlaybackTime())
         completionHandler(true)
     }
 
@@ -662,6 +674,7 @@ struct MPVPlayerScreen: View {
 
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var playbackController: MPVPlaybackController
     @State private var isScrubbing = false
     @State private var wasPausedBeforeScrubbing = false
@@ -745,6 +758,10 @@ struct MPVPlayerScreen: View {
             holdSpeedActivationTask = nil
             playbackController.endHoldSpeed()
             playbackController.cleanup()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .background else { return }
+            playbackController.startPictureInPictureIfPossible()
         }
         .alert("Playback Error", isPresented: Binding(
             get: { playbackController.errorMessage != nil },
@@ -1128,8 +1145,7 @@ private final class MPVSampleBufferPiPBridge: NSObject, AVPictureInPictureContro
 private final class MPVViewController: UIViewController {
     weak var delegate: MPVViewControllerDelegate?
 
-    private let videoHostView = UIView()
-    private let renderLayer = MPVMetalLayer()
+    private let videoHostView = MPVRenderHostView()
     private let pipBridge = MPVSampleBufferPiPBridge()
     private var mpvHandle: OpaquePointer?
     private var eventsQueue = DispatchQueue(label: "kyomiru.mpv.events", qos: .userInitiated)
@@ -1155,7 +1171,6 @@ private final class MPVViewController: UIViewController {
         videoHostView.frame = view.bounds
         videoHostView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(videoHostView)
-        videoHostView.layer.addSublayer(renderLayer)
 
         pipBridge.configure(in: view)
         pipBridge.isPaused = { [weak self] in self?.getPauseState() ?? true }
@@ -1262,7 +1277,7 @@ private final class MPVViewController: UIViewController {
         mpv_set_option_string(handle, "sub-auto", "fuzzy")
         mpv_set_option_string(handle, "video-sync", "audio")
 
-        var wid = Int64(bitPattern: UInt64(UInt(bitPattern: Unmanaged.passUnretained(renderLayer).toOpaque())))
+        var wid = Int64(bitPattern: UInt64(UInt(bitPattern: Unmanaged.passUnretained(videoHostView).toOpaque())))
         withUnsafeMutablePointer(to: &wid) { ptr in
             _ = mpv_set_option(handle, "wid", MPV_FORMAT_INT64, ptr)
         }
@@ -1472,6 +1487,7 @@ private final class MPVViewController: UIViewController {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         videoHostView.frame = bounds
+        let renderLayer = videoHostView.renderLayer
         renderLayer.frame = videoHostView.bounds
         renderLayer.bounds = videoHostView.bounds
         renderLayer.position = CGPoint(x: videoHostView.bounds.midX, y: videoHostView.bounds.midY)
@@ -1497,6 +1513,19 @@ private final class MPVViewController: UIViewController {
         let currentTime = getCurrentTime()
         guard currentTime.isFinite, currentTime >= 0 else { return }
         sendCommand(["seek", "\(currentTime)", "absolute+exact"])
+    }
+}
+
+private final class MPVRenderHostView: UIView {
+    override class var layerClass: AnyClass {
+        MPVMetalLayer.self
+    }
+
+    var renderLayer: MPVMetalLayer {
+        guard let renderLayer = layer as? MPVMetalLayer else {
+            fatalError("Expected MPVMetalLayer backing layer")
+        }
+        return renderLayer
     }
 }
 
