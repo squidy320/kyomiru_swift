@@ -711,7 +711,8 @@ struct MPVPlayerScreen: View {
                         source: source,
                         controller: playbackController
                     )
-                    .ignoresSafeArea()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
                     .contentShape(Rectangle())
                     .overlay(alignment: .center) {
                         if playbackController.isBuffering {
@@ -732,6 +733,8 @@ struct MPVPlayerScreen: View {
                         }
                 }
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .ignoresSafeArea()
         }
         .onAppear {
             guard let source else { return }
@@ -771,8 +774,6 @@ struct MPVPlayerScreen: View {
         return ZStack {
             Color.clear
                 .ignoresSafeArea()
-                .overlay(alignment: .top) { topGradient(isLandscape: isLandscape) }
-                .overlay(alignment: .bottom) { bottomGradient(isLandscape: isLandscape) }
                 .overlay(alignment: .top) { topBar(safeTop: safeTop, isLandscape: isLandscape) }
                 .overlay(alignment: .center) { centerControls(isLandscape: isLandscape) }
                 .overlay(alignment: .bottom) { bottomBar(safeBottom: safeBottom, isLandscape: isLandscape) }
@@ -781,26 +782,6 @@ struct MPVPlayerScreen: View {
         .opacity(playbackController.showControls && !playbackController.isLongPressSpeedActive ? 1 : 0)
         .allowsHitTesting(playbackController.showControls && !playbackController.isLongPressSpeedActive)
         .animation(.easeInOut(duration: 0.2), value: playbackController.showControls)
-    }
-
-    private func topGradient(isLandscape: Bool) -> some View {
-        LinearGradient(
-            colors: [Color.black.opacity(0.82), Color.black.opacity(0.35), .clear],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .frame(height: isLandscape ? 110 : 150)
-        .allowsHitTesting(false)
-    }
-
-    private func bottomGradient(isLandscape: Bool) -> some View {
-        LinearGradient(
-            colors: [.clear, Color.black.opacity(0.45), Color.black.opacity(0.82)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .frame(height: isLandscape ? 150 : 210)
-        .allowsHitTesting(false)
     }
 
     private func topBar(safeTop: CGFloat, isLandscape: Bool) -> some View {
@@ -1159,6 +1140,8 @@ private final class MPVViewController: UIViewController {
     private var lastReportedPause: Bool?
     private var lastReportedBuffering: Bool?
     private var didReportEOF = false
+    private var lastLayoutBounds: CGRect = .zero
+    private var hasScheduledInitialRedraw = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -1183,12 +1166,24 @@ private final class MPVViewController: UIViewController {
         updateRenderLayerLayout()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        updateRenderLayerLayout()
+        forceRefreshCurrentFrameIfNeeded()
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        updateRenderLayerLayout()
+    }
+
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
         coordinator.animate(alongsideTransition: { [weak self] _ in
             self?.updateRenderLayerLayout()
         }, completion: { [weak self] _ in
             self?.updateRenderLayerLayout()
+            self?.forceRefreshCurrentFrameIfNeeded()
         })
     }
 
@@ -1288,6 +1283,7 @@ private final class MPVViewController: UIViewController {
         guard let handle = mpvHandle, let source = currentSource else { return }
         isReady = false
         didReportEOF = false
+        hasScheduledInitialRedraw = false
         lastReportedTime = nil
         lastReportedDuration = nil
         lastReportedPause = nil
@@ -1328,6 +1324,12 @@ private final class MPVViewController: UIViewController {
         if duration > 0, !isReady {
             isReady = true
             delegate?.mpvViewControllerDidBecomeReady(self)
+            if !hasScheduledInitialRedraw {
+                hasScheduledInitialRedraw = true
+                DispatchQueue.main.async { [weak self] in
+                    self?.forceRefreshCurrentFrameIfNeeded()
+                }
+            }
         }
 
         if lastReportedDuration == nil || abs((lastReportedDuration ?? 0) - duration) >= 0.5 {
@@ -1452,13 +1454,36 @@ private final class MPVViewController: UIViewController {
     }
 
     private func updateRenderLayerLayout() {
-        renderLayer.frame = view.bounds
+        let bounds = view.bounds.integral
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let layoutChanged = bounds != lastLayoutBounds
+        lastLayoutBounds = bounds
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        renderLayer.frame = bounds
+        renderLayer.bounds = bounds
+        renderLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
         let scale = view.window?.screen.scale ?? view.contentScaleFactor
         renderLayer.contentsScale = scale
         renderLayer.drawableSize = CGSize(
-            width: max(view.bounds.width * scale, 1),
-            height: max(view.bounds.height * scale, 1)
+            width: max(bounds.width * scale, 1),
+            height: max(bounds.height * scale, 1)
         )
+        CATransaction.commit()
+
+        if layoutChanged {
+            forceRefreshCurrentFrameIfNeeded()
+        }
+    }
+
+    private func forceRefreshCurrentFrameIfNeeded() {
+        guard isViewLoaded else { return }
+        guard view.window != nil else { return }
+        guard isReady else { return }
+        let currentTime = getCurrentTime()
+        guard currentTime.isFinite, currentTime >= 0 else { return }
+        sendCommand(["seek", "\(currentTime)", "absolute+exact"])
     }
 }
 
