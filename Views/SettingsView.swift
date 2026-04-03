@@ -20,7 +20,7 @@ private struct SettingsRowItem: Identifiable {
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
-    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var isPad: Bool { PlatformSupport.prefersTabletLayout }
     @State private var cacheSizeText: String = "--"
     @State private var extensionRecords: [StreamingExtensionRecord] = []
     @State private var isRefreshingExtensions = false
@@ -281,7 +281,7 @@ struct SettingsView: View {
     }
 
     private var tabBarInset: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
+        PlatformSupport.prefersTabletLayout ? 12 : 80
     }
 
     private func refreshCacheSize() async {
@@ -690,6 +690,7 @@ private struct LunaSettingsRow: View {
     let iconColor: Color
     let title: String
     let value: String?
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         HStack(spacing: 12) {
@@ -720,6 +721,7 @@ private struct LunaSettingsRow: View {
                 .foregroundColor(.white.opacity(0.28))
         }
         .contentShape(Rectangle())
+        .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
     }
 }
 
@@ -736,6 +738,7 @@ private struct StreamingExtensionCard: View {
     let isRefreshingExtensions: Bool
     let isActive: Bool
     let onApply: () -> Void
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -769,6 +772,7 @@ private struct StreamingExtensionCard: View {
                 .textSelection(.enabled)
         }
         .padding(.vertical, 4)
+        .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
     }
 
     private func statusTag(_ text: String) -> some View {

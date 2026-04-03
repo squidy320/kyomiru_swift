@@ -174,7 +174,7 @@ struct DetailsView: View {
     @State private var importMessage: String?
     @State private var downloadMessage: String?
     @State private var initialLoadTask: Task<Void, Never>?
-    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var isPad: Bool { PlatformSupport.prefersTabletLayout }
 
     var body: some View {
         let useComfortableLayout = appState.settings.useComfortableLayout

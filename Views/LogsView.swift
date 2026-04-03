@@ -57,7 +57,7 @@ struct LogsView: View {
     }
 
     private var tabBarInset: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
+        PlatformSupport.prefersTabletLayout ? 12 : 80
     }
 }
 

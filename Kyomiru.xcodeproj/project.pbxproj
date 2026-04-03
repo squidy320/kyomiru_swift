@@ -53,6 +53,7 @@
         23C4D5E6F708192A3B4C5D6E /* HeroHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */; };
         34D5E6F708192A3B4C5D6E7F /* Chips.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D4E5F60718293A4B5C6D7E8 /* Chips.swift */; };
         45E6F708192A3B4C5D6E7F80 /* MediaCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E5F60718293A4B5C6D7E8F9 /* MediaCards.swift */; };
+        77A1B2C3D4E5F60718293A4B /* PlatformSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A1B2C3D4E5F60718293A4A /* PlatformSupport.swift */; };
         B8F1C2D3E4F5061728394B5C /* UIConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F1C2D3E4F5061728394B5C /* UIConstants.swift */; };
         67D14034D0CE4A10A7EE55F4 /* AlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 322049D9007F477FAF8D125F /* AlertsView.swift */; };
         F08F4932645347648FEC250D /* DetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EF67EDF5267442199B09036 /* DetailsView.swift */; };
@@ -124,6 +125,7 @@
         2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroHeader.swift; sourceTree = "<group>"; };
         3D4E5F60718293A4B5C6D7E8 /* Chips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Chips.swift; sourceTree = "<group>"; };
 		4E5F60718293A4B5C6D7E8F9 /* MediaCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaCards.swift; sourceTree = "<group>"; };
+		77A1B2C3D4E5F60718293A4A /* PlatformSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformSupport.swift; sourceTree = "<group>"; };
 		A8F1C2D3E4F5061728394B5C /* UIConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIConstants.swift; sourceTree = "<group>"; };
 		F1C2A3B4D5F60718293A4B5D /* EpisodeImportUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeImportUI.swift; sourceTree = "<group>"; };
         322049D9007F477FAF8D125F /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
@@ -260,6 +262,7 @@
                 2C3D4E5F60718293A4B5C6D7 /* HeroHeader.swift */,
                 3D4E5F60718293A4B5C6D7E8 /* Chips.swift */,
                 4E5F60718293A4B5C6D7E8F9 /* MediaCards.swift */,
+                77A1B2C3D4E5F60718293A4A /* PlatformSupport.swift */,
                 A8F1C2D3E4F5061728394B5C /* UIConstants.swift */,
                 F1C2A3B4D5F60718293A4B5D /* EpisodeImportUI.swift */,
             );
@@ -431,6 +434,7 @@
                 23C4D5E6F708192A3B4C5D6E /* HeroHeader.swift in Sources */,
                 34D5E6F708192A3B4C5D6E7F /* Chips.swift in Sources */,
                 45E6F708192A3B4C5D6E7F80 /* MediaCards.swift in Sources */,
+                77A1B2C3D4E5F60718293A4B /* PlatformSupport.swift in Sources */,
                 B8F1C2D3E4F5061728394B5C /* UIConstants.swift in Sources */,
                 67D14034D0CE4A10A7EE55F4 /* AlertsView.swift in Sources */,
                 F08F4932645347648FEC250D /* DetailsView.swift in Sources */,
@@ -498,7 +502,7 @@
                 IPHONEOS_DEPLOYMENT_TARGET = 17.0;
                 SWIFT_VERSION = 5.0;
                 TARGETED_DEVICE_FAMILY = "1,2";
-                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+                SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator";
                 SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = YES;
                 LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -517,7 +521,7 @@
                 IPHONEOS_DEPLOYMENT_TARGET = 17.0;
                 SWIFT_VERSION = 5.0;
                 TARGETED_DEVICE_FAMILY = "1,2";
-                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+                SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator";
                 SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = YES;
                 LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -533,7 +537,7 @@
                 CODE_SIGNING_ALLOWED = NO;
                 CODE_SIGNING_REQUIRED = NO;
                 IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+                SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator";
                 SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = YES;
                 LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -547,7 +551,7 @@
                 CODE_SIGNING_ALLOWED = NO;
                 CODE_SIGNING_REQUIRED = NO;
                 IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-                SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+                SUPPORTED_PLATFORMS = "macosx iphoneos iphonesimulator";
                 SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = YES;
                 LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";

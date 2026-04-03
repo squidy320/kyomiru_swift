@@ -23,7 +23,7 @@ struct LibraryView: View {
     @State private var showContinueSourceSheet = false
     @State private var showAlertsSheet = false
     @State private var libraryLoadGeneration = 0
-    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var isPad: Bool { PlatformSupport.prefersTabletLayout }
 
     var body: some View {
         let useComfortableLayout = appState.settings.useComfortableLayout

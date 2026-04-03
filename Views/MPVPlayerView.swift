@@ -720,7 +720,8 @@ struct MPVPlayerScreen: View {
             if let source {
                 MPVPlayerRepresentable(
                     source: source,
-                    controller: playbackController
+                    controller: playbackController,
+                    onRequestDismiss: { dismiss() }
                 )
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
@@ -808,6 +809,8 @@ struct MPVPlayerScreen: View {
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
             }
+            .buttonStyle(.plain)
+            .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
 
             Spacer()
 
@@ -832,6 +835,8 @@ struct MPVPlayerScreen: View {
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                 }
+                .buttonStyle(.plain)
+                .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
             } else {
                 Color.clear.frame(width: 44, height: 44)
             }
@@ -850,6 +855,8 @@ struct MPVPlayerScreen: View {
                     .font(.system(size: isLandscape ? 38 : 34, weight: .semibold))
                     .foregroundStyle(.white)
             }
+            .buttonStyle(.plain)
+            .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
 
             Button {
                 playbackController.togglePaused()
@@ -858,6 +865,8 @@ struct MPVPlayerScreen: View {
                     .font(.system(size: isLandscape ? 62 : 56, weight: .bold))
                     .foregroundStyle(.white)
             }
+            .buttonStyle(.plain)
+            .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
 
             Button {
                 playbackController.handleDoubleTapRight()
@@ -866,6 +875,8 @@ struct MPVPlayerScreen: View {
                     .font(.system(size: isLandscape ? 38 : 34, weight: .semibold))
                     .foregroundStyle(.white)
             }
+            .buttonStyle(.plain)
+            .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
         }
         .padding(.bottom, isLandscape ? 6 : 24)
     }
@@ -904,6 +915,8 @@ struct MPVPlayerScreen: View {
                         )
                         .clipShape(Capsule())
                 }
+                .buttonStyle(.plain)
+                .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
             }
             .font(.system(size: 14, weight: .regular, design: .rounded).monospacedDigit())
             .foregroundStyle(.white.opacity(0.95))
@@ -929,6 +942,8 @@ struct MPVPlayerScreen: View {
                 )
                 .clipShape(Capsule())
         }
+        .buttonStyle(.plain)
+        .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
         .padding(.trailing, 16)
         .padding(.bottom, max(safeBottom, isLandscape ? 64 : 78))
     }
@@ -1052,10 +1067,12 @@ extension MPVPlaybackController: MPVViewControllerDelegate {
 private struct MPVPlayerRepresentable: UIViewControllerRepresentable {
     let source: MPVResolvedSource
     @ObservedObject var controller: MPVPlaybackController
+    let onRequestDismiss: () -> Void
 
     func makeUIViewController(context: Context) -> MPVViewController {
         let viewController = MPVViewController()
         viewController.delegate = controller
+        viewController.onRequestDismiss = onRequestDismiss
         viewController.load(source: source)
         viewController.updateStopToken(controller.stopToken)
         return viewController
@@ -1063,6 +1080,7 @@ private struct MPVPlayerRepresentable: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: MPVViewController, context: Context) {
         uiViewController.delegate = controller
+        uiViewController.onRequestDismiss = onRequestDismiss
         uiViewController.updateSourceIfNeeded(source)
         uiViewController.updateStopToken(controller.stopToken)
         if !controller.pendingCommands.isEmpty {
@@ -1146,6 +1164,7 @@ private final class MPVSampleBufferPiPBridge: NSObject, AVPictureInPictureContro
 
 private final class MPVViewController: UIViewController {
     weak var delegate: MPVViewControllerDelegate?
+    var onRequestDismiss: (() -> Void)?
 
     private let videoHostView = MPVRenderHostView()
     private let pipBridge = MPVSampleBufferPiPBridge()
@@ -1163,6 +1182,26 @@ private final class MPVViewController: UIViewController {
     private var didReportEOF = false
     private var lastLayoutBounds: CGRect = .zero
     private var hasScheduledInitialRedraw = false
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override var keyCommands: [UIKeyCommand]? {
+        var commands: [UIKeyCommand] = [
+            UIKeyCommand(input: " ", modifierFlags: [], action: #selector(togglePlayPause), discoverabilityTitle: "Play/Pause"),
+            UIKeyCommand(input: UIKeyCommand.inputLeftArrow, modifierFlags: [], action: #selector(seekBackward), discoverabilityTitle: "Back 10 Seconds"),
+            UIKeyCommand(input: UIKeyCommand.inputRightArrow, modifierFlags: [], action: #selector(seekForward), discoverabilityTitle: "Forward 10 Seconds"),
+            UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(closePlayer), discoverabilityTitle: "Close Player")
+        ]
+#if targetEnvironment(macCatalyst)
+        commands.append(
+            UIKeyCommand(input: "f", modifierFlags: .command, action: #selector(toggleFullScreen), discoverabilityTitle: "Toggle Full Screen")
+        )
+        commands.append(
+            UIKeyCommand(input: "p", modifierFlags: .command, action: #selector(startPictureInPictureFromKeyboard), discoverabilityTitle: "Picture in Picture")
+        )
+#endif
+        return commands
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -1196,6 +1235,7 @@ private final class MPVViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        becomeFirstResponder()
         updateRenderLayerLayout()
         forceRefreshCurrentFrameIfNeeded()
     }
@@ -1217,6 +1257,7 @@ private final class MPVViewController: UIViewController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        resignFirstResponder()
         if isBeingDismissed || isMovingFromParent {
             teardownMPV()
         }
@@ -1540,6 +1581,41 @@ private final class MPVViewController: UIViewController {
         let currentTime = getCurrentTime()
         guard currentTime.isFinite, currentTime >= 0 else { return }
         sendCommand(["seek", "\(currentTime)", "absolute+exact"])
+    }
+
+    @objc
+    private func togglePlayPause() {
+        let paused = getPauseState()
+        setFlagProperty(name: "pause", value: !paused)
+    }
+
+    @objc
+    private func seekBackward() {
+        let currentTime = getCurrentTime()
+        sendCommand(["seek", "\(max(currentTime - 10, 0))", "absolute+exact"])
+    }
+
+    @objc
+    private func seekForward() {
+        let currentTime = getCurrentTime()
+        let duration = getDurationValue()
+        let target = duration > 0 ? min(currentTime + 10, duration) : (currentTime + 10)
+        sendCommand(["seek", "\(target)", "absolute+exact"])
+    }
+
+    @objc
+    private func closePlayer() {
+        onRequestDismiss?()
+    }
+
+    @objc
+    private func startPictureInPictureFromKeyboard() {
+        pipBridge.start()
+    }
+
+    @objc
+    private func toggleFullScreen() {
+        UIApplication.shared.sendAction(Selector(("toggleFullScreen:")), to: nil, from: nil, for: nil)
     }
 }
 

@@ -126,6 +126,7 @@ struct MediaPosterCard: View {
         }
         .frame(width: cardWidth, height: cardHeight)
         .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
+        .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
         .transaction { transaction in
             if appState.settings.reduceMotion {
                 transaction.animation = nil
@@ -241,6 +242,7 @@ struct ContinueWatchingCard: View {
             RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous)
                 .stroke(Color.white.opacity(0.06), lineWidth: 1)
         }
+        .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
         .transaction { transaction in
             if appState.settings.reduceMotion {
                 transaction.animation = nil
@@ -270,7 +272,7 @@ struct EpisodeRowView: View {
 
     var body: some View {
         let useComfortableLayout = appState.settings.useComfortableLayout
-        let isiPad = UIDevice.current.userInterfaceIdiom == .pad
+        let isiPad = PlatformSupport.prefersTabletLayout
         let thumbWidth = UIConstants.episodeThumbWidth + (useComfortableLayout ? 12 : 0)
         let thumbHeight = thumbWidth * 0.57
         let rowPadding = UIConstants.rowPadding + (useComfortableLayout ? 2 : 0)
@@ -362,6 +364,7 @@ struct EpisodeRowView: View {
             )
         }
         .buttonStyle(.plain)
+        .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
         .transaction { transaction in
             if appState.settings.reduceMotion {
                 transaction.animation = nil

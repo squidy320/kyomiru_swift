@@ -12,7 +12,7 @@ struct BrowseView: View {
     @State private var showFilters = false
     @State private var heroTrending: TrendingItem?
     @State private var navigateMedia: AniListMedia?
-    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var isPad: Bool { PlatformSupport.prefersTabletLayout }
 
     var body: some View {
         ZStack {

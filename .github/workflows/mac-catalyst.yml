@@ -1,0 +1,84 @@
+name: "Kyomiru Mac Catalyst"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-mac-catalyst:
+    runs-on: macos-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "latest-stable"
+
+      - name: Inject AniList Secrets
+        env:
+          ANILIST_CLIENT_ID: ${{ secrets.ANILIST_CLIENT_ID }}
+          ANILIST_CLIENT_SECRET: ${{ secrets.ANILIST_CLIENT_SECRET }}
+        run: |
+          if [ -z "$ANILIST_CLIENT_ID" ] || [ -z "$ANILIST_CLIENT_SECRET" ]; then
+            echo "AniList secrets missing. Using placeholders to keep the Mac build green."
+            ANILIST_CLIENT_ID="0"
+            ANILIST_CLIENT_SECRET="placeholder"
+          fi
+          /usr/libexec/PlistBuddy -c "Set :ANILIST_CLIENT_ID $ANILIST_CLIENT_ID" Resources/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :ANILIST_CLIENT_SECRET $ANILIST_CLIENT_SECRET" Resources/Info.plist
+
+      - name: Inject OMDb API Key
+        env:
+          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+        run: |
+          if [ -z "$OMDB_API_KEY" ]; then
+            echo "OMDb API key missing. Using placeholder to keep the Mac build green."
+            OMDB_API_KEY="CHANGE_ME"
+          fi
+          /usr/libexec/PlistBuddy -c "Set :OMDB_API_KEY $OMDB_API_KEY" Resources/Info.plist
+
+      - name: Lint String Interpolation
+        run: |
+          python3 scripts/lint_interpolation.py
+
+      - name: Build Mac Catalyst App
+        run: |
+          set -e
+          xcodebuild build \
+            -project Kyomiru.xcodeproj \
+            -scheme Kyomiru \
+            -configuration Release \
+            -destination 'generic/platform=macOS,variant=Mac Catalyst' \
+            -derivedDataPath $RUNNER_TEMP/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            ONLY_ACTIVE_ARCH=NO
+
+      - name: Package Mac App
+        run: |
+          set -e
+          APP_PATH="$RUNNER_TEMP/DerivedData/Build/Products/Release-maccatalyst/Kyomiru.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Expected app bundle not found at $APP_PATH"
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" Kyomiru-Mac-Catalyst.zip
+
+      - name: Upload Mac Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kyomiru-Mac-Catalyst
+          path: Kyomiru-Mac-Catalyst.zip
+          if-no-files-found: error

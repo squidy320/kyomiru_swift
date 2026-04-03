@@ -11,10 +11,10 @@ struct DownloadsView: View {
     @State private var isEditing = false
     @State private var selectedTitles: Set<String> = []
     @State private var inFlightMetadata: Set<String> = []
-    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var isPad: Bool { PlatformSupport.prefersTabletLayout }
 
     private var tabBarInset: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 12 : 80
+        PlatformSupport.prefersTabletLayout ? 12 : 80
     }
 
     var body: some View {
@@ -26,7 +26,7 @@ struct DownloadsView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
-                        if UIDevice.current.userInterfaceIdiom != .pad {
+                        if !PlatformSupport.prefersTabletLayout {
                             Text("Downloads")
                                 .font(.system(size: 28, weight: .heavy))
                                 .foregroundColor(.white)
@@ -617,7 +617,7 @@ private struct DownloadsDetailView: View {
     @State private var showImportReview = false
     @State private var importCandidates: [EpisodeImportCandidate] = []
     @State private var importMessage: String?
-    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var isPad: Bool { PlatformSupport.prefersTabletLayout }
 
     var body: some View {
         ZStack {

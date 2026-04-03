@@ -9,30 +9,30 @@ public struct UIConstants {
     static let bottomBarHeight: CGFloat = 72
     static var heroHeight: CGFloat {
         let width = UIScreen.main.bounds.width
-        if UIDevice.current.userInterfaceIdiom == .pad { return 420 }
+        if PlatformSupport.prefersTabletLayout { return 420 }
         if width <= 375 { return 300 }
         if width <= 414 { return 330 }
         return 350
     }
     static var heroHeightCompact: CGFloat {
         let width = UIScreen.main.bounds.width
-        if UIDevice.current.userInterfaceIdiom == .pad { return 320 }
+        if PlatformSupport.prefersTabletLayout { return 320 }
         if width <= 375 { return 220 }
         if width <= 414 { return 240 }
         return 260
     }
     static var libraryProfileHeroHeight: CGFloat {
         let width = UIScreen.main.bounds.width
-        if UIDevice.current.userInterfaceIdiom == .pad { return 260 }
+        if PlatformSupport.prefersTabletLayout { return 260 }
         if width <= 375 { return 170 }
         if width <= 414 { return 188 }
         return 204
     }
     static var libraryProfileAvatarSize: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 112 : 94
+        PlatformSupport.prefersTabletLayout ? 112 : 94
     }
     static var libraryProfileAvatarOverlap: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 54 : 46
+        PlatformSupport.prefersTabletLayout ? 54 : 46
     }
     static let smallPadding: CGFloat = 8
     static let tinyPadding: CGFloat = 6
@@ -40,7 +40,7 @@ public struct UIConstants {
     static let heroTopPadding: CGFloat = 2
     static var posterCardWidth: CGFloat {
         let width = UIScreen.main.bounds.width
-        if UIDevice.current.userInterfaceIdiom == .pad { return 200 }
+        if PlatformSupport.prefersTabletLayout { return 200 }
         if width <= 375 { return 140 }
         if width <= 414 { return 150 }
         return 160
@@ -50,7 +50,7 @@ public struct UIConstants {
     }
     static var continueCardWidth: CGFloat {
         let width = UIScreen.main.bounds.width
-        if UIDevice.current.userInterfaceIdiom == .pad { return 340 }
+        if PlatformSupport.prefersTabletLayout { return 340 }
         return max(240, min(300, width * 0.7))
     }
     static var continueCardHeight: CGFloat {
@@ -58,7 +58,7 @@ public struct UIConstants {
     }
     static var episodeThumbWidth: CGFloat {
         let width = UIScreen.main.bounds.width
-        if UIDevice.current.userInterfaceIdiom == .pad { return 180 }
+        if PlatformSupport.prefersTabletLayout { return 180 }
         if width <= 375 { return 120 }
         return 140
     }

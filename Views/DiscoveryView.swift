@@ -22,7 +22,7 @@ struct DiscoveryView: View {
     @State private var discoveryLoadGeneration = 0
     @StateObject private var networkMonitor = NetworkMonitor.shared
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
-    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var isPad: Bool { PlatformSupport.prefersTabletLayout }
     private var coreSections: [AniListDiscoverySection] {
         let order = ["trending", "hotNow", "upcoming", "allTime"]
         let lookup = Dictionary(uniqueKeysWithValues: sections.map { ($0.id, $0) })
@@ -764,7 +764,7 @@ private struct DiscoverySectionView: View {
     @State private var isLoading = false
     @State private var hasMore = true
     @State private var errorMessage: String?
-    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var isPad: Bool { PlatformSupport.prefersTabletLayout }
 
     var body: some View {
         ScrollView {
