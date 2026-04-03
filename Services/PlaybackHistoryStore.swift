@@ -18,9 +18,7 @@ final class PlaybackHistoryStore {
 
     func position(for episodeId: String) -> Double? {
         let map = defaults.dictionary(forKey: key) as? [String: Double]
-        let value = map?[episodeId]
-        AppLog.debug(.player, "playback lookup episode=\(episodeId) found=\(value != nil)")
-        return value
+        return map?[episodeId]
     }
 
     func saveDuration(_ duration: Double, for episodeId: String) {
