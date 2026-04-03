@@ -1071,6 +1071,10 @@ private struct MPVPlayerRepresentable: UIViewControllerRepresentable {
             uiViewController.handle(commands: controller.pendingCommands)
         }
     }
+
+    static func dismantleUIViewController(_ uiViewController: MPVViewController, coordinator: ()) {
+        uiViewController.stopPlayback()
+    }
 }
 
 private final class MPVSampleBufferPiPBridge: NSObject, AVPictureInPictureControllerDelegate, AVPictureInPictureSampleBufferPlaybackDelegate {
@@ -1217,6 +1221,10 @@ private final class MPVViewController: UIViewController {
         if isBeingDismissed || isMovingFromParent {
             teardownMPV()
         }
+    }
+
+    func stopPlayback() {
+        teardownMPV()
     }
 
     func load(source: MPVResolvedSource) {
@@ -1488,9 +1496,6 @@ private final class MPVViewController: UIViewController {
         CATransaction.setDisableActions(true)
         videoHostView.frame = bounds
         let renderLayer = videoHostView.renderLayer
-        renderLayer.frame = videoHostView.bounds
-        renderLayer.bounds = videoHostView.bounds
-        renderLayer.position = CGPoint(x: videoHostView.bounds.midX, y: videoHostView.bounds.midY)
         let scale = view.window?.screen.scale ?? view.contentScaleFactor
         renderLayer.contentsScale = scale
         renderLayer.drawableSize = CGSize(

@@ -125,22 +125,27 @@ enum TitleMatcher {
             }
         }
 
-        if provider == .animeKai {
+        if provider == .animeKai || provider == .animePahe {
             let normalizedCandidate = normalizedTitle(candidate.title, provider: provider)
             let candidateBase = stripSequenceMarkers(from: normalizedCandidate, provider: provider)
             let targetBase = stripSequenceMarkers(from: normalizedTarget, provider: provider)
+            let exactBonus = provider == .animePahe ? 0.16 : 0.20
+            let baseBonus = provider == .animePahe ? 0.10 : 0.12
+            let overlapWeight = provider == .animePahe ? 0.10 : 0.12
+            let missingPenalty = provider == .animePahe ? 0.18 : 0.22
+            let noMissingBonus = provider == .animePahe ? 0.04 : 0.05
 
             if normalizedCandidate == normalizedTarget {
-                score += 0.20
+                score += exactBonus
             } else if candidateBase == targetBase {
-                score += 0.12
+                score += baseBonus
             }
 
             let baseTokens = Set(targetBase.split(separator: " ").map(String.init))
             let candidateTokens = Set(candidateBase.split(separator: " ").map(String.init))
             if !baseTokens.isEmpty {
                 let overlap = Double(baseTokens.intersection(candidateTokens).count) / Double(baseTokens.count)
-                score += overlap * 0.12
+                score += overlap * overlapWeight
             }
 
             let targetCoreTokens = coreAnimeKaiTokens(from: targetBase)
@@ -148,9 +153,9 @@ enum TitleMatcher {
             if !targetCoreTokens.isEmpty {
                 let missingCoreCount = targetCoreTokens.subtracting(candidateCoreTokens).count
                 let missingCoreRatio = Double(missingCoreCount) / Double(targetCoreTokens.count)
-                score -= missingCoreRatio * 0.22
+                score -= missingCoreRatio * missingPenalty
                 if missingCoreCount == 0 {
-                    score += 0.05
+                    score += noMissingBonus
                 }
             }
 

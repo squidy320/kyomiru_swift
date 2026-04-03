@@ -76,12 +76,17 @@ final class EpisodeService {
         }
 
         let probeLimit: Int
+        let isReleasing = (media.status ?? "").uppercased() == "RELEASING"
         if provider == .animeKai {
             let topScore = rankedCandidates.first?.matchScore ?? 0
             probeLimit = topScore >= 0.94 ? min(rankedCandidates.count, 2) : min(rankedCandidates.count, 4)
         } else if provider == .animePahe {
             let topScore = rankedCandidates.first?.matchScore ?? 0
-            probeLimit = topScore >= 0.95 ? 1 : min(rankedCandidates.count, 2)
+            if isReleasing {
+                probeLimit = topScore >= 0.97 ? min(rankedCandidates.count, 3) : min(rankedCandidates.count, 5)
+            } else {
+                probeLimit = topScore >= 0.95 ? 1 : min(rankedCandidates.count, 3)
+            }
         } else {
             probeLimit = 1
         }
