@@ -1277,7 +1277,7 @@ private final class MPVViewController: UIViewController {
         mpv_set_option_string(handle, "sub-auto", "fuzzy")
         mpv_set_option_string(handle, "video-sync", "audio")
 
-        var wid = Int64(bitPattern: UInt64(UInt(bitPattern: Unmanaged.passUnretained(videoHostView).toOpaque())))
+        var wid = Int64(bitPattern: UInt64(UInt(bitPattern: Unmanaged.passUnretained(videoHostView.renderLayer).toOpaque())))
         withUnsafeMutablePointer(to: &wid) { ptr in
             _ = mpv_set_option(handle, "wid", MPV_FORMAT_INT64, ptr)
         }
