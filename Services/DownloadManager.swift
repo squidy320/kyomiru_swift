@@ -21,7 +21,7 @@ final class AniSkipService {
         let types = [
             "op", "ed", "mixed-op", "mixed-ed", "recap", "preview"
         ]
-        let query = types.map { "types=\($0)" }.joined(separator: "&") + "&episodeLength=0"
+        let query = types.map { "types=\($0)" }.joined(separator: "&")
         guard let url = URL(string: "\(base)?\(query)") else {
             return []
         }

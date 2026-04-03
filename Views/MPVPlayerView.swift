@@ -84,6 +84,7 @@ private final class MPVPlaybackController: ObservableObject {
     @Published var isLongPressSpeedActive = false
     @Published private(set) var commandToken = 0
     @Published private(set) var pendingCommands: [MPVQueuedPlaybackCommand] = []
+    @Published private(set) var stopToken = 0
 
     let context: Context
 
@@ -125,6 +126,12 @@ private final class MPVPlaybackController: ObservableObject {
     func cleanup() {
         autoHideTask?.cancel()
         setIdleTimerDisabled(false)
+    }
+
+    func requestStopPlayback() {
+        guard !isPictureInPictureActive else { return }
+        sendCommand(.setPaused(true))
+        stopToken += 1
     }
 
     func toggleControlsVisibility() {
@@ -757,6 +764,7 @@ struct MPVPlayerScreen: View {
             holdSpeedActivationTask?.cancel()
             holdSpeedActivationTask = nil
             playbackController.endHoldSpeed()
+            playbackController.requestStopPlayback()
             playbackController.cleanup()
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -1061,12 +1069,14 @@ private struct MPVPlayerRepresentable: UIViewControllerRepresentable {
         let viewController = MPVViewController()
         viewController.delegate = controller
         viewController.load(source: source)
+        viewController.updateStopToken(controller.stopToken)
         return viewController
     }
 
     func updateUIViewController(_ uiViewController: MPVViewController, context: Context) {
         uiViewController.delegate = controller
         uiViewController.updateSourceIfNeeded(source)
+        uiViewController.updateStopToken(controller.stopToken)
         if !controller.pendingCommands.isEmpty {
             uiViewController.handle(commands: controller.pendingCommands)
         }
@@ -1156,6 +1166,7 @@ private final class MPVViewController: UIViewController {
     private var observationTimer: Timer?
     private var currentSource: MPVResolvedSource?
     private var lastCommandToken = -1
+    private var lastStopToken = 0
     private var isReady = false
     private var lastReportedTime: Double?
     private var lastReportedDuration: Double?
@@ -1224,6 +1235,7 @@ private final class MPVViewController: UIViewController {
     }
 
     func stopPlayback() {
+        currentSource = nil
         teardownMPV()
     }
 
@@ -1238,6 +1250,12 @@ private final class MPVViewController: UIViewController {
     func updateSourceIfNeeded(_ source: MPVResolvedSource) {
         guard currentSource != source else { return }
         load(source: source)
+    }
+
+    func updateStopToken(_ stopToken: Int) {
+        guard stopToken != lastStopToken else { return }
+        lastStopToken = stopToken
+        stopPlayback()
     }
 
     func handle(commands: [MPVQueuedPlaybackCommand]) {
