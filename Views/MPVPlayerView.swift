@@ -356,13 +356,6 @@ private final class MPVPlaybackController: ObservableObject {
         )
     }
 
-    func startPictureInPictureIfPossible() {
-        guard !isPaused else { return }
-        guard currentSource != nil else { return }
-        guard !isPictureInPictureActive else { return }
-        startPictureInPicture()
-    }
-
     private func preparePlayback() {
 #if !targetEnvironment(macCatalyst)
         do {
@@ -681,7 +674,6 @@ struct MPVPlayerScreen: View {
 
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var playbackController: MPVPlaybackController
     @State private var isScrubbing = false
     @State private var wasPausedBeforeScrubbing = false
@@ -766,10 +758,6 @@ struct MPVPlayerScreen: View {
             playbackController.endHoldSpeed()
             playbackController.requestStopPlayback()
             playbackController.cleanup()
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .background else { return }
-            playbackController.startPictureInPictureIfPossible()
         }
         .alert("Playback Error", isPresented: Binding(
             get: { playbackController.errorMessage != nil },
@@ -1235,6 +1223,15 @@ private final class MPVViewController: UIViewController {
     }
 
     func stopPlayback() {
+        if let handle = mpvHandle {
+            sendCommand(["stop"])
+            var paused: Int32 = 1
+            withUnsafeMutablePointer(to: &paused) { ptr in
+                "pause".withCString { cName in
+                    _ = mpv_set_property(handle, cName, MPV_FORMAT_FLAG, ptr)
+                }
+            }
+        }
         currentSource = nil
         teardownMPV()
     }
@@ -1498,6 +1495,13 @@ private final class MPVViewController: UIViewController {
             mpv_terminate_destroy(handle)
             mpvHandle = nil
         }
+#if !targetEnvironment(macCatalyst)
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        } catch {
+            AppLog.error(.player, "mpv audio session deactivate failed: \(error.localizedDescription)")
+        }
+#endif
     }
 
     deinit {
