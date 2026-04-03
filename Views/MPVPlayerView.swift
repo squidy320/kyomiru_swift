@@ -1517,6 +1517,8 @@ private final class MPVViewController: UIViewController {
 }
 
 private final class MPVRenderHostView: UIView {
+    @objc weak var delegate: AnyObject?
+
     override class var layerClass: AnyClass {
         MPVMetalLayer.self
     }
