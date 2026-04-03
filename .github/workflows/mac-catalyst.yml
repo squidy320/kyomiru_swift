@@ -51,6 +51,17 @@ jobs:
         run: |
           python3 scripts/lint_interpolation.py
 
+      - name: Remove MPVKit for Catalyst Build
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          pbxproj = Path("Kyomiru.xcodeproj/project.pbxproj")
+          text = pbxproj.read_text()
+          text = text.replace("\n\t\t\t\tD1E2F3A4B5C6478899A0B1C2 /* MPVKit */,", "")
+          text = text.replace("\n\t\t\t\tC1D2E3F4A5B6478899A0B1C2 /* MPVKit */,", "")
+          pbxproj.write_text(text)
+          PY
+
       - name: Build Mac Catalyst App
         run: |
           set -e

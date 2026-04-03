@@ -78,7 +78,11 @@ struct PlayerView: View {
     }
 
     private var effectiveBackend: PlayerBackend {
+#if targetEnvironment(macCatalyst)
+        .avPlayer
+#else
         forceAVPlayerForSession ? .avPlayer : appState.settings.playerBackend
+#endif
     }
 }
 

@@ -42,9 +42,19 @@ final class SettingsState: ObservableObject {
     }
 
     var playerBackend: PlayerBackend {
-        get { PlayerBackend(rawValue: playerBackendRaw) ?? .avPlayer }
+        get {
+#if targetEnvironment(macCatalyst)
+            return .avPlayer
+#else
+            return PlayerBackend(rawValue: playerBackendRaw) ?? .avPlayer
+#endif
+        }
         set {
+#if targetEnvironment(macCatalyst)
+            playerBackendRaw = PlayerBackend.avPlayer.rawValue
+#else
             playerBackendRaw = newValue.rawValue
+#endif
             objectWillChange.send()
         }
     }

@@ -346,13 +346,13 @@ private struct PlayerSettingsScreen: View {
                         get: { appState.settings.playerBackend },
                         set: { appState.settings.playerBackend = $0 }
                     )) {
-                        ForEach(PlayerBackend.allCases) { backend in
+                        ForEach(availablePlayerBackends) { backend in
                             Text(backend.title).tag(backend)
                         }
                     }
                     .pickerStyle(.segmented)
 
-                    Text(appState.settings.playerBackend.summary)
+                    Text(playerBackendSummary)
                         .font(.system(size: 12))
                         .foregroundColor(Theme.textSecondary)
 
@@ -420,6 +420,29 @@ private struct PlayerSettingsScreen: View {
                 }
             }
         }
+        .onAppear {
+#if targetEnvironment(macCatalyst)
+            if appState.settings.playerBackend != .avPlayer {
+                appState.settings.playerBackend = .avPlayer
+            }
+#endif
+        }
+    }
+
+    private var availablePlayerBackends: [PlayerBackend] {
+#if targetEnvironment(macCatalyst)
+        [.avPlayer]
+#else
+        PlayerBackend.allCases
+#endif
+    }
+
+    private var playerBackendSummary: String {
+#if targetEnvironment(macCatalyst)
+        return "Mac Catalyst currently uses AVPlayer because the shipped MPVKit binary does not include a Catalyst slice."
+#else
+        return appState.settings.playerBackend.summary
+#endif
     }
 }
 
