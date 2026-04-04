@@ -276,23 +276,53 @@ final class TMDBMatchingService {
         preferredSeasonNumber: Int?,
         expectedEpisodeCount: Int?
     ) async -> TMDBSeasonMatch? {
+        // Skip ani.zip matching for movies/OVAs/specials - they need different handling
+        if isMovieLike(media) || isSpecialLike(media) {
+            return nil
+        }
+
         guard let seasonInfo = await AniZipClient.getSeasonInfo(aniListId: media.id),
-              let tmdbId = seasonInfo.tmdbId else {
+              let tmdbId = seasonInfo.tmdbId,
+              let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
             return nil
         }
 
         AppLog.debug(.matching, "tmdb ani.zip primary match mediaId=\(media.id) tmdbId=\(tmdbId)")
 
+        // Validate that the TMDB show is actually anime TV with episodes
+        guard let showSummary = await fetchShowSummary(showId: tmdbId, mediaType: "tv", apiKey: apiKey) else {
+            AppLog.debug(.matching, "ani.zip validation failed: could not fetch show summary mediaId=\(media.id) tmdbId=\(tmdbId)")
+            return nil
+        }
+
+        // Check if show has episodes and seasons
+        let hasEpisodes = (showSummary.allEpisodes ?? 0) > 0
+        let hasSeasons = !showSummary.seasons.isEmpty && showSummary.seasons.contains { $0.episodeCount > 0 }
+        
+        guard hasEpisodes && hasSeasons else {
+            AppLog.debug(.matching, "ani.zip validation failed: no episodes/seasons mediaId=\(media.id) tmdbId=\(tmdbId) episodes=\(showSummary.allEpisodes ?? 0) seasons=\(showSummary.seasons.count)")
+            return nil
+        }
+
+        // Validate episode count is reasonable (within 25% margin of expected)
+        let expectedEps = expectedEpisodeCount ?? media.episodes ?? 0
+        if expectedEps > 0, let totalEps = showSummary.allEpisodes {
+            let discrepancy = abs(totalEps - expectedEps)
+            let isWithinMargin = Double(discrepancy) / Double(expectedEps) <= 0.25
+            if !isWithinMargin {
+                AppLog.debug(.matching, "ani.zip validation failed: episode count mismatch mediaId=\(media.id) tmdbId=\(tmdbId) expected=\(expectedEps) actual=\(totalEps)")
+                return nil
+            }
+        }
+
         // Calculate offset from ani.zip episode data
         var episodeOffset = 0
         if let episodes = seasonInfo.episodes, !episodes.isEmpty {
             // Find the episode offset using absoluteEpisodeNumber
-            var minAbsolute = Int.max
             var maxEpisodeFromStart = 0
             
             for (_, episode) in episodes {
                 if let absNum = episode.absoluteEpisodeNumber, let epNum = episode.episodeNumber {
-                    minAbsolute = min(minAbsolute, absNum)
                     let potentialOffset = absNum - epNum
                     maxEpisodeFromStart = max(maxEpisodeFromStart, potentialOffset)
                 }
@@ -1228,11 +1258,32 @@ final class TMDBMatchingService {
             aliases.insert("\(colonParts[1]) \(colonParts[0])")
         }
 
+        // Handle JoJo's franchise 
         if trimmed.localizedCaseInsensitiveContains("steel ball run") {
             aliases.insert("Steel Ball Run")
             aliases.insert("JoJo's Bizarre Adventure")
             aliases.insert("JoJo no Kimyou na Bouken")
             aliases.insert("Steel Ball Run JoJo's Bizarre Adventure")
+            aliases.insert("ジョジョの奇妙な冒険")
+        }
+        
+        if trimmed.localizedCaseInsensitiveContains("jojo") || trimmed.localizedCaseInsensitiveContains("ジョジョ") {
+            aliases.insert("JoJo's Bizarre Adventure")
+            aliases.insert("JoJo no Kimyou na Bouken")
+        }
+        
+        // Handle Attack on Titan series
+        if trimmed.localizedCaseInsensitiveContains("attack on titan") || 
+           trimmed.localizedCaseInsensitiveContains("shingeki no kyojin") ||
+           trimmed.localizedCaseInsensitiveContains("進撃の巨人") {
+            aliases.insert("Attack on Titan")
+            aliases.insert("Shingeki no Kyojin")
+            aliases.insert("進撃の巨人")
+            // Remove season/part markers to help with base matching
+            let baseTitle = TitleMatcher.stripSeasonMarkers(trimmed)
+            if !baseTitle.isEmpty && baseTitle != trimmed {
+                aliases.insert(baseTitle)
+            }
         }
 
         if let english = media.title.english?.trimmingCharacters(in: .whitespacesAndNewlines),
