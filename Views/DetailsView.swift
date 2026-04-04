@@ -320,7 +320,7 @@ struct DetailsView: View {
                 loadSeasons: { candidate in
                     await appState.services.tmdbMatchingService.fetchSeasonChoices(for: media, showId: candidate.id, mediaType: candidate.mediaType)
                 },
-                onSave: { choice, additionalOffset in
+                onSave: { choice, additionalOffset, parentSeriesId in
                     Task {
                         let resolvedOffset = choice.episodeOffset + additionalOffset
                         await appState.services.metadataService.saveManualTMDBMatch(
@@ -330,7 +330,8 @@ struct DetailsView: View {
                             seasonNumber: choice.tmdbSeasonNumber,
                             episodeOffset: resolvedOffset,
                             showTitle: choice.showTitle,
-                            seasonLabel: choice.displayLabel
+                            seasonLabel: choice.displayLabel,
+                            parentSeriesId: parentSeriesId
                         )
                         await reloadTMDBOverrideDependentState()
                     }
@@ -1901,7 +1902,7 @@ private struct TMDBMatchSheet: View {
     let errorMessage: String?
     let onSearch: (String) -> Void
     let loadSeasons: (TMDBSearchResult) async -> [TMDBSeasonChoice]
-    let onSave: (TMDBSeasonChoice, Int) -> Void
+    let onSave: (TMDBSeasonChoice, Int, Int?) -> Void
     let onClear: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -2008,12 +2009,11 @@ private struct TMDBMatchSheet: View {
                         .foregroundColor(.secondary)
                     }
 
-                    Section("Additional Episode Offset") {
-                        TextField("0", text: $episodeOffsetText)
+                    Section("Match Options") {
+                        TextField("Episode Offset", text: $episodeOffsetText)
                             .keyboardType(.numberPad)
-                        Text("Adds to the choice's built-in TMDB offset for split-cour or globally numbered cases.")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                        Toggle("Link as Parent Series", isOn: $isParentSeries)
+                            .help("All future seasons/specials for this AniList media will map to this showId.")
                     }
 
                     if isLoadingSeasons {
@@ -2051,7 +2051,7 @@ private struct TMDBMatchSheet: View {
                                     Spacer()
                                     Button("Use") {
                                         let offset = Int(episodeOffsetText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-                                        onSave(season, offset)
+                                        onSave(season, offset, isParentSeries ? season.showId : nil)
                                         dismiss()
                                     }
                                     .buttonStyle(.borderedProminent)

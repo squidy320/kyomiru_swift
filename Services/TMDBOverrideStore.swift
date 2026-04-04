@@ -10,6 +10,7 @@ struct TMDBManualOverride: Codable, Equatable {
     let showTitle: String?
     let seasonLabel: String?
     let updatedAt: TimeInterval
+    let parentSeriesId: Int? // Added parent series mapping support
 }
 
 final class TMDBOverrideStore {
@@ -26,13 +27,17 @@ final class TMDBOverrideStore {
         loadMap()[String(aniListId)]
     }
 
+    func getParentOverride(for aniListId: Int) -> Int? {
+        loadMap()[String(aniListId)]?.parentSeriesId
+    }
+
     func save(_ overrideMatch: TMDBManualOverride) {
         var map = loadMap()
         map[String(overrideMatch.aniListId)] = overrideMatch
         saveMap(map)
         AppLog.debug(
             .matching,
-            "tmdb manual override saved mediaId=\(overrideMatch.aniListId) showId=\(overrideMatch.showId) season=\(overrideMatch.seasonNumber) offset=\(overrideMatch.episodeOffset)"
+            "tmdb manual override saved mediaId=\(overrideMatch.aniListId) showId=\(overrideMatch.showId) parentSeriesId=\(String(describing: overrideMatch.parentSeriesId))"
         )
     }
 

@@ -235,6 +235,17 @@ final class TMDBMatchingService {
         expectedEpisodeCount: Int? = nil,
         maxEpisodeNumber: Int? = nil
     ) async -> TMDBSeasonMatch? {
+        if let parentId = TMDBOverrideStore.shared.getParentOverride(for: media.id) {
+            AppLog.debug(.matching, "tmdb using parent override mediaId=\(media.id) parentId=\(parentId)")
+            return TMDBSeasonMatch(
+                showId: parentId,
+                mediaType: "tv",
+                seasonNumber: 1, // Defaulting to season 1 for now
+                episodeOffset: 0,
+                absoluteOffset: 0
+            )
+        }
+
         let resolved = await resolveShowAndSeason(
             media: media,
             franchiseStartYear: franchiseStartYear,
@@ -645,7 +656,8 @@ final class TMDBMatchingService {
         seasonNumber: Int,
         episodeOffset: Int = 0,
         showTitle: String? = nil,
-        seasonLabel: String? = nil
+        seasonLabel: String? = nil,
+        parentSeriesId: Int? = nil
     ) async {
         var absoluteOffset = episodeOffset
         if let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME",
@@ -666,7 +678,8 @@ final class TMDBMatchingService {
             absoluteOffset: absoluteOffset,
             showTitle: showTitle,
             seasonLabel: seasonLabel,
-            updatedAt: Date().timeIntervalSince1970
+            updatedAt: Date().timeIntervalSince1970,
+            parentSeriesId: parentSeriesId
         )
         overrideStore.save(overrideMatch)
         if let details = await fetchSeasonDetails(showId: showId, seasonNumber: seasonNumber) {
