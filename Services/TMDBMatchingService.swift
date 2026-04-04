@@ -235,17 +235,31 @@ final class TMDBMatchingService {
         expectedEpisodeCount: Int? = nil,
         maxEpisodeNumber: Int? = nil
     ) async -> TMDBSeasonMatch? {
+        // Tier 1: Manual Overrides
         if let parentId = TMDBOverrideStore.shared.getParentOverride(for: media.id) {
             AppLog.debug(.matching, "tmdb using parent override mediaId=\(media.id) parentId=\(parentId)")
             return TMDBSeasonMatch(
                 showId: parentId,
                 mediaType: "tv",
-                seasonNumber: 1, // Defaulting to season 1 for now
+                seasonNumber: 1,
                 episodeOffset: 0,
                 absoluteOffset: 0
             )
         }
 
+        // Tier 2: Ani.zip Fallback
+        if let mapping = await AniZipClient.fetchMapping(aniListId: media.id), let tmdbId = mapping.tmdb_id {
+            AppLog.debug(.matching, "tmdb using ani.zip mapping mediaId=\(media.id) tmdbId=\(tmdbId)")
+            return TMDBSeasonMatch(
+                showId: tmdbId,
+                mediaType: "tv",
+                seasonNumber: 1,
+                episodeOffset: 0,
+                absoluteOffset: 0
+            )
+        }
+
+        // Tier 3: Heuristic Matching
         let resolved = await resolveShowAndSeason(
             media: media,
             franchiseStartYear: franchiseStartYear,
