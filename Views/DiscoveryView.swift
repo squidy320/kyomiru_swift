@@ -125,7 +125,7 @@ struct DiscoveryView: View {
                 .refreshable {
                     await loadDiscovery(forceRefresh: true)
                 }
-                .navigationTitle(isPad ? "Discovery" : "")
+                .navigationTitle(PlatformSupport.prefersTabletLayout ? "" : "Discovery")
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationDestination(item: $navigateMedia) { media in
                     DetailsView(media: media)
@@ -200,12 +200,9 @@ struct DiscoveryView: View {
     }
 
     private var heroHeader: some View {
-        let height = UIScreen.main.bounds.height * 0.5
-        let topInset = UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
-            .first ?? 0
-        return GeometryReader { proxy in
+        GeometryReader { proxy in
             let width = proxy.size.width
+            let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
             let topFeatherHeight = max(24.0, insetTop * 0.6)
             ZStack(alignment: .bottomLeading) {
@@ -272,9 +269,9 @@ struct DiscoveryView: View {
             .onTapGesture {
                 handleHeroTap()
             }
+            .offset(y: -insetTop)
         }
-        .frame(height: height)
-        .offset(y: -topInset)
+        .frame(height: UIConstants.heroHeight)
     }
 
     private var imdbCarousel: AnyView {

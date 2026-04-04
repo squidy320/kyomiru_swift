@@ -404,41 +404,46 @@ struct DetailsView: View {
     }
 
     private var ipadEpisodeLayout: some View {
-        ZStack(alignment: .bottomLeading) {
-            detailHeroBackdropFull
+        GeometryReader { proxy in
+            ZStack(alignment: .bottomLeading) {
+                detailHeroBackdropFull(size: proxy.size, safeArea: proxy.safeAreaInsets)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                    Spacer(minLength: UIScreen.main.bounds.height * 0.35)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                        Spacer(minLength: proxy.size.height * 0.35)
 
-                    ipadMetaBlock
+                        ipadMetaBlock
 
-                    actionRow
+                        actionRow
 
-                    ipadGenreChips
+                        ipadGenreChips
 
-                    if isLoading {
-                        GlassCard {
-                            Text("Loading episodes...")
-                                .foregroundColor(Theme.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        if isLoading {
+                            GlassCard {
+                                Text("Loading episodes...")
+                                    .foregroundColor(Theme.textSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else if let errorMessage {
+                            GlassCard {
+                                Text(errorMessage)
+                                    .foregroundColor(Theme.textSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else {
+                            ipadEpisodeCarousel
+                            RelationsCarouselView(sections: relatedSections)
                         }
-                    } else if let errorMessage {
-                        GlassCard {
-                            Text(errorMessage)
-                                .foregroundColor(Theme.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    } else {
-                        ipadEpisodeCarousel
-                        RelationsCarouselView(sections: relatedSections)
                     }
+                    .padding(.horizontal, UIConstants.standardPadding)
+                    .padding(.bottom, UIConstants.bottomBarHeight)
                 }
-                .padding(.horizontal, UIConstants.standardPadding)
-                .padding(.bottom, UIConstants.bottomBarHeight)
             }
         }
         .ignoresSafeArea()
+#if targetEnvironment(macCatalyst)
+        .toolbar(.hidden, for: .navigationBar)
+#endif
     }
 
     private var ipadMetaBlock: some View {
@@ -516,57 +521,51 @@ struct DetailsView: View {
         .scrollClipDisabled()
     }
 
-    private var detailHeroBackdropFull: some View {
-        let height = UIScreen.main.bounds.height
-        let topInset = UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
-            .first ?? 0
-        return GeometryReader { proxy in
-            let width = proxy.size.width
-            let insetTop = proxy.safeAreaInsets.top
-            let topFeatherHeight = max(24.0, insetTop * 0.6)
-            let fallbackBackdrop = tmdbHeroLookupComplete ? (media.bannerURL ?? media.coverURL) : nil
-            ZStack {
-                Group {
-                    if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
-                        CachedImage(
-                            url: url,
-                            targetSize: CGSize(width: width, height: height + insetTop)
-                        ) { image in
-                            image.resizable().scaledToFill()
-                        } placeholder: {
-                            Theme.surface
-                        }
-                    } else {
+    private func detailHeroBackdropFull(size: CGSize, safeArea: EdgeInsets) -> some View {
+        let width = size.width
+        let height = size.height
+        let insetTop = safeArea.top
+        let topFeatherHeight = max(24.0, insetTop * 0.6)
+        let fallbackBackdrop = tmdbHeroLookupComplete ? (media.bannerURL ?? media.coverURL) : nil
+        return ZStack {
+            Group {
+                if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
+                    CachedImage(
+                        url: url,
+                        targetSize: CGSize(width: width, height: height + insetTop)
+                    ) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
                         Theme.surface
                     }
+                } else {
+                    Theme.surface
                 }
-                .frame(width: width, height: height + insetTop)
-                .clipped()
-                .mask(
-                    VStack(spacing: 0) {
-                        LinearGradient(
-                            colors: [Color.clear, Color.black],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: topFeatherHeight)
-                        Color.black
-                    }
-                )
-
-                LinearGradient(
-                    colors: [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-                .frame(width: width, height: height + insetTop)
             }
             .frame(width: width, height: height + insetTop)
             .clipped()
+            .mask(
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [Color.clear, Color.black],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: topFeatherHeight)
+                    Color.black
+                }
+            )
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
+                startPoint: .bottom,
+                endPoint: .top
+            )
+            .frame(width: width, height: height + insetTop)
         }
-        .frame(height: height)
-        .offset(y: -topInset)
+        .frame(width: width, height: height + insetTop)
+        .clipped()
+        .offset(y: -insetTop)
         .task(id: media.id) {
             tmdbHeroLookupComplete = false
             tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
@@ -579,12 +578,9 @@ struct DetailsView: View {
     }
 
     private var detailHeroHeader: some View {
-        let height = UIScreen.main.bounds.height * 0.5
-        let topInset = UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
-            .first ?? 0
-        return GeometryReader { proxy in
+        GeometryReader { proxy in
             let width = proxy.size.width
+            let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
             let topFeatherHeight = max(24.0, insetTop * 0.6)
             let fallbackBackdrop = tmdbHeroLookupComplete ? (media.bannerURL ?? media.coverURL) : nil
@@ -664,18 +660,21 @@ struct DetailsView: View {
             }
             .frame(width: width, height: height + insetTop)
             .clipped()
+            .offset(y: -insetTop)
+            .task(id: media.id) {
+                tmdbHeroLookupComplete = false
+                tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
+                tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
+                tmdbHeroLookupComplete = true
+                let fallback = media.bannerURL ?? media.coverURL
+                let urls = [tmdbHeroBackdropURL, fallback].compactMap { $0 }
+                await ImageCache.shared.prefetch(urls: urls)
+            }
         }
-        .frame(height: height)
-        .offset(y: -topInset)
-        .task(id: media.id) {
-            tmdbHeroLookupComplete = false
-            tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
-            tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
-            tmdbHeroLookupComplete = true
-            let fallback = media.bannerURL ?? media.coverURL
-            let urls = [tmdbHeroBackdropURL, fallback].compactMap { $0 }
-            await ImageCache.shared.prefetch(urls: urls)
-        }
+        .frame(height: UIScreen.main.bounds.height * 0.5)
+#if targetEnvironment(macCatalyst)
+        .toolbar(.hidden, for: .navigationBar)
+#endif
     }
 
     private var actionRow: some View {

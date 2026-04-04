@@ -776,22 +776,27 @@ private struct DownloadsDetailView: View {
     }
 
     private var ipadDownloadsLayout: some View {
-        ZStack(alignment: .bottomLeading) {
-            detailHeroBackdropFull
+        GeometryReader { proxy in
+            ZStack(alignment: .bottomLeading) {
+                detailHeroBackdropFull(size: proxy.size, safeArea: proxy.safeAreaInsets)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                    Spacer(minLength: UIScreen.main.bounds.height * 0.35)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                        Spacer(minLength: proxy.size.height * 0.35)
 
-                    ipadMetaBlock
+                        ipadMetaBlock
 
-                    ipadEpisodeCarousel
+                        ipadEpisodeCarousel
+                    }
+                    .padding(.horizontal, UIConstants.standardPadding)
+                    .padding(.bottom, UIConstants.bottomBarHeight)
                 }
-                .padding(.horizontal, UIConstants.standardPadding)
-                .padding(.bottom, UIConstants.bottomBarHeight)
             }
         }
         .ignoresSafeArea()
+#if targetEnvironment(macCatalyst)
+        .toolbar(.hidden, for: .navigationBar)
+#endif
     }
 
     private var episodeListContent: some View {
@@ -874,66 +879,57 @@ private struct DownloadsDetailView: View {
         }
     }
 
-    private var detailHeroBackdropFull: some View {
-        let height = UIScreen.main.bounds.height
-        let topInset = UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
-            .first ?? 0
-        return GeometryReader { proxy in
-            let width = proxy.size.width
-            let insetTop = proxy.safeAreaInsets.top
-            let topFeatherHeight = max(24.0, insetTop * 0.6)
-            let fallbackBackdrop = bannerURL ?? posterURL
-            ZStack {
-                Group {
-                    if let url = fallbackBackdrop {
-                        CachedImage(
-                            url: url,
-                            targetSize: CGSize(width: width, height: height + insetTop)
-                        ) { image in
-                            image.resizable().scaledToFill()
-                        } placeholder: {
-                            Theme.surface
-                        }
-                    } else {
+    private func detailHeroBackdropFull(size: CGSize, safeArea: EdgeInsets) -> some View {
+        let width = size.width
+        let height = size.height
+        let insetTop = safeArea.top
+        let topFeatherHeight = max(24.0, insetTop * 0.6)
+        let fallbackBackdrop = bannerURL ?? posterURL
+        return ZStack {
+            Group {
+                if let url = fallbackBackdrop {
+                    CachedImage(
+                        url: url,
+                        targetSize: CGSize(width: width, height: height + insetTop)
+                    ) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
                         Theme.surface
                     }
+                } else {
+                    Theme.surface
                 }
-                .frame(width: width, height: height + insetTop)
-                .clipped()
-                .mask(
-                    VStack(spacing: 0) {
-                        LinearGradient(
-                            colors: [Color.clear, Color.black],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: topFeatherHeight)
-                        Color.black
-                    }
-                )
-
-                LinearGradient(
-                    colors: [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-                .frame(width: width, height: height + insetTop)
             }
             .frame(width: width, height: height + insetTop)
             .clipped()
+            .mask(
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [Color.clear, Color.black],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: topFeatherHeight)
+                    Color.black
+                }
+            )
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
+                startPoint: .bottom,
+                endPoint: .top
+            )
+            .frame(width: width, height: height + insetTop)
         }
-        .frame(height: height)
-        .offset(y: -topInset)
+        .frame(width: width, height: height + insetTop)
+        .clipped()
+        .offset(y: -insetTop)
     }
 
     private var detailHeroHeader: some View {
-        let height = UIScreen.main.bounds.height * 0.5
-        let topInset = UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }
-            .first ?? 0
-        return GeometryReader { proxy in
+        GeometryReader { proxy in
             let width = proxy.size.width
+            let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
             let topFeatherHeight = max(24.0, insetTop * 0.6)
             let fallbackBackdrop = bannerURL ?? posterURL
@@ -1003,9 +999,12 @@ private struct DownloadsDetailView: View {
             }
             .frame(width: width, height: height + insetTop)
             .clipped()
+            .offset(y: -insetTop)
         }
-        .frame(height: height)
-        .offset(y: -topInset)
+        .frame(height: UIScreen.main.bounds.height * 0.5)
+#if targetEnvironment(macCatalyst)
+        .toolbar(.hidden, for: .navigationBar)
+#endif
     }
 
     private func loadCachedMetadata() {

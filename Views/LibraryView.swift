@@ -139,7 +139,7 @@ struct LibraryView: View {
                 .refreshable {
                     await loadLibrary(forceRefresh: true)
                 }
-                .navigationTitle(isPad ? "Library" : "")
+                .navigationTitle(PlatformSupport.prefersTabletLayout ? "" : "Library")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {

@@ -1,6 +1,14 @@
 import SwiftUI
 
 public struct UIConstants {
+    private static var windowBounds: CGRect {
+        guard let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+              let window = windowScene.windows.first(where: { $0.isKeyWindow }) else {
+            return UIScreen.main.bounds
+        }
+        return window.bounds
+    }
+
     static let cardWidth: CGFloat = 120
     static let cardHeight: CGFloat = 180
     static let episodeCardHeight: CGFloat = 110
@@ -8,21 +16,21 @@ public struct UIConstants {
     static let interCardSpacing: CGFloat = 12
     static let bottomBarHeight: CGFloat = 72
     static var heroHeight: CGFloat {
-        let width = UIScreen.main.bounds.width
+        let width = windowBounds.width
         if PlatformSupport.prefersTabletLayout { return 420 }
         if width <= 375 { return 300 }
         if width <= 414 { return 330 }
         return 350
     }
     static var heroHeightCompact: CGFloat {
-        let width = UIScreen.main.bounds.width
+        let width = windowBounds.width
         if PlatformSupport.prefersTabletLayout { return 320 }
         if width <= 375 { return 220 }
         if width <= 414 { return 240 }
         return 260
     }
     static var libraryProfileHeroHeight: CGFloat {
-        let width = UIScreen.main.bounds.width
+        let width = windowBounds.width
         if PlatformSupport.prefersTabletLayout { return 260 }
         if width <= 375 { return 170 }
         if width <= 414 { return 188 }
@@ -39,7 +47,7 @@ public struct UIConstants {
     static let microPadding: CGFloat = 4
     static let heroTopPadding: CGFloat = 2
     static var posterCardWidth: CGFloat {
-        let width = UIScreen.main.bounds.width
+        let width = windowBounds.width
         if PlatformSupport.prefersTabletLayout { return 200 }
         if width <= 375 { return 140 }
         if width <= 414 { return 150 }
@@ -49,7 +57,7 @@ public struct UIConstants {
         posterCardWidth * 1.47
     }
     static var continueCardWidth: CGFloat {
-        let width = UIScreen.main.bounds.width
+        let width = windowBounds.width
         if PlatformSupport.prefersTabletLayout { return 340 }
         return max(240, min(300, width * 0.7))
     }
@@ -57,7 +65,7 @@ public struct UIConstants {
         continueCardWidth * 0.54
     }
     static var episodeThumbWidth: CGFloat {
-        let width = UIScreen.main.bounds.width
+        let width = windowBounds.width
         if PlatformSupport.prefersTabletLayout { return 180 }
         if width <= 375 { return 120 }
         return 140
