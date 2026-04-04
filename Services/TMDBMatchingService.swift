@@ -247,16 +247,9 @@ final class TMDBMatchingService {
             )
         }
 
-        // Tier 2: Ani.zip Fallback
-        if let mapping = await AniZipClient.fetchMapping(aniListId: media.id), let tmdbId = mapping.tmdb_id {
-            AppLog.debug(.matching, "tmdb using ani.zip mapping mediaId=\(media.id) tmdbId=\(tmdbId)")
-            return TMDBSeasonMatch(
-                showId: tmdbId,
-                mediaType: "tv",
-                seasonNumber: 1,
-                episodeOffset: 0,
-                absoluteOffset: 0
-            )
+        // Tier 2: Ani.zip Primary (full episode data for accurate matching)
+        if let aniZipMatch = await matchViaAniZip(media: media, preferredSeasonNumber: preferredSeasonNumber, expectedEpisodeCount: expectedEpisodeCount) {
+            return aniZipMatch
         }
 
         // Tier 3: Heuristic Matching
@@ -275,6 +268,48 @@ final class TMDBMatchingService {
             seasonNumber: resolved.seasonNumber,
             episodeOffset: resolved.episodeOffset,
             absoluteOffset: resolved.absoluteOffset
+        )
+    }
+
+    private func matchViaAniZip(
+        media: AniListMedia,
+        preferredSeasonNumber: Int?,
+        expectedEpisodeCount: Int?
+    ) async -> TMDBSeasonMatch? {
+        guard let seasonInfo = await AniZipClient.getSeasonInfo(aniListId: media.id),
+              let tmdbId = seasonInfo.tmdbId else {
+            return nil
+        }
+
+        AppLog.debug(.matching, "tmdb ani.zip primary match mediaId=\(media.id) tmdbId=\(tmdbId)")
+
+        // Calculate offset from ani.zip episode data
+        var episodeOffset = 0
+        if let episodes = seasonInfo.episodes, !episodes.isEmpty {
+            // Find the episode offset using absoluteEpisodeNumber
+            var minAbsolute = Int.max
+            var maxEpisodeFromStart = 0
+            
+            for (_, episode) in episodes {
+                if let absNum = episode.absoluteEpisodeNumber, let epNum = episode.episodeNumber {
+                    minAbsolute = min(minAbsolute, absNum)
+                    let potentialOffset = absNum - epNum
+                    maxEpisodeFromStart = max(maxEpisodeFromStart, potentialOffset)
+                }
+            }
+            
+            if maxEpisodeFromStart > 0 {
+                episodeOffset = maxEpisodeFromStart
+                AppLog.debug(.matching, "ani.zip calculated offset mediaId=\(media.id) offset=\(episodeOffset) from episode data")
+            }
+        }
+
+        return TMDBSeasonMatch(
+            showId: tmdbId,
+            mediaType: "tv",
+            seasonNumber: 1,
+            episodeOffset: episodeOffset,
+            absoluteOffset: episodeOffset
         )
     }
 

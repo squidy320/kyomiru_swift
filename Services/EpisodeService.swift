@@ -202,12 +202,36 @@ final class EpisodeService {
             (expected == 0 || (sorted.count >= expected && rawMax <= max(expected, rawMin)))
 
         if looksSeasonLocal {
-            AppLog.debug(.matching, "TMDB shaping skipped mediaId=\(media.id) provider=\(provider.title) reason=season-local")
+            AppLog.debug(.matching, "ani.zip/TMDB shaping skipped mediaId=\(media.id) provider=\(provider.title) reason=season-local")
             return sorted.map {
                 SoraEpisode(id: $0.id, sourceNumber: $0.sourceNumber, displayNumber: $0.sourceNumber, playURL: $0.playURL)
             }
         }
 
+        // Tier 1: Ani.zip (most accurate for anime)
+        if let aniZipInfo = await AniZipClient.getSeasonInfo(aniListId: media.id),
+           let episodes = aniZipInfo.episodes, !episodes.isEmpty,
+           expected > 0 {
+            let aniZipOffset = calculateOffsetFromAniZip(episodes: episodes)
+            if aniZipOffset > 0 {
+                let seasonStart = aniZipOffset + 1
+                let canApplyAniZipSlice =
+                    seasonStart > 1 &&
+                    rawMin == 1 &&
+                    rawMax >= seasonStart &&
+                    sorted.count > aniZipOffset
+
+                if canApplyAniZipSlice {
+                    let slice = Array(sorted.dropFirst(aniZipOffset).prefix(expected))
+                    if !slice.isEmpty {
+                        AppLog.debug(.matching, "ani.zip season offset applied mediaId=\(media.id) offset=\(aniZipOffset) count=\(slice.count)")
+                        return enumerateDisplayNumbers(slice)
+                    }
+                }
+            }
+        }
+
+        // Tier 2: TMDB matching (fallback if ani.zip doesn't provide offset)
         // Only use TMDB for season-local slicing. Absolute franchise offsets can hide
         // valid AnimePahe episode lists when the provider already points at a season page.
         let tmdbMatch = await withThrowingTaskGroup(of: TMDBSeasonMatch?.self) { group in
@@ -241,7 +265,7 @@ final class EpisodeService {
             }
         }
 
-        // Fallback to heuristic slicing if TMDB fails or offset is 0
+        // Tier 3: Heuristic slicing if TMDB/ani.zip fails or offset is 0
 
         if expected > 0, seasonMarker > 1, rawMin == 1 {
             let offset = expected * (seasonMarker - 1)
@@ -267,6 +291,17 @@ final class EpisodeService {
         return sorted.map {
             SoraEpisode(id: $0.id, sourceNumber: $0.sourceNumber, displayNumber: $0.sourceNumber, playURL: $0.playURL)
         }
+    }
+
+    private func calculateOffsetFromAniZip(episodes: [String: AniZipEpisode]) -> Int {
+        var maxOffset = 0
+        for (_, episode) in episodes {
+            if let absNum = episode.absoluteEpisodeNumber, let epNum = episode.episodeNumber {
+                let offset = absNum - epNum
+                maxOffset = max(maxOffset, offset)
+            }
+        }
+        return maxOffset
     }
 
     private func enumerateDisplayNumbers(_ episodes: [SoraEpisode]) -> [SoraEpisode] {
