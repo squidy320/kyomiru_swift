@@ -175,11 +175,15 @@ struct DetailsView: View {
     @State private var downloadMessage: String?
     @State private var initialLoadTask: Task<Void, Never>?
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
+    private var useComfortableLayout: Bool { appState.settings.useComfortableLayout }
+    private var screenSpacing: CGFloat { UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0) }
+    private var screenPadding: CGFloat { UIConstants.standardPadding + (useComfortableLayout ? 4 : 0) }
 
     var body: some View {
-        let useComfortableLayout = appState.settings.useComfortableLayout
-        let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
-        let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
+        screenContent
+    }
+
+    private var detailContent: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             if isPad {
@@ -216,6 +220,10 @@ struct DetailsView: View {
                 }
             }
         }
+    }
+
+    private var modalContent: some View {
+        detailContent
         .navigationBarBackButtonHidden(!isPad)
         .navigationTitle(isPad ? "" : media.title.best)
         .navigationBarTitleDisplayMode(.inline)
@@ -359,6 +367,10 @@ struct DetailsView: View {
                 }
             }
         }
+    }
+
+    private var screenContent: some View {
+        modalContent
         .alert("Import", isPresented: Binding(
             get: { importMessage != nil },
             set: { _ in importMessage = nil }
@@ -1911,6 +1923,7 @@ private struct TMDBMatchSheet: View {
     @State private var isLoadingSeasons = false
     @State private var seasonError: String?
     @State private var episodeOffsetText = "0"
+    @State private var isParentSeries = false
 
     var body: some View {
         NavigationStack {
