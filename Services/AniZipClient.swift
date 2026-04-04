@@ -1,13 +1,13 @@
 import Foundation
 
-struct AniZipMapping: Codable {
-    let tmdb_id: Int?
-    let tvdb_id: Int?
-    let mal_id: Int?
+public struct AniZipMapping: Codable {
+    public let tmdb_id: Int?
+    public let tvdb_id: Int?
+    public let mal_id: Int?
 }
 
-struct AniZipClient {
-    static func fetchMapping(aniListId: Int) async -> AniZipMapping? {
+public struct AniZipClient {
+    public static func fetchMapping(aniListId: Int) async -> AniZipMapping? {
         let url = URL(string: "https://ani.zip/anilist/\(aniListId)")!
         do {
             let (data, _) = try await URLSession.shared.data(from: url)

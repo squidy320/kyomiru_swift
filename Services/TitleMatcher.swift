@@ -60,10 +60,11 @@ enum TitleMatcher {
             return ranked
         }
         .sorted { lhs, rhs in
-            if lhs.score == rhs.score {
-                return lhs.match.title.localizedCaseInsensitiveCompare(rhs.match.title) == .orderedAscending
+            // Strongly prioritize the highest score.
+            if lhs.score != rhs.score {
+                return lhs.score > rhs.score
             }
-            return lhs.score > rhs.score
+            return lhs.match.title.localizedCaseInsensitiveCompare(rhs.match.title) == .orderedAscending
         }
     }
 

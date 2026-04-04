@@ -413,7 +413,7 @@ final class TMDBMatchingService {
                     mediaType: show.mediaType,
                     seasonNumber: selection.seasonNumber,
                     episodeOffset: selection.episodeOffset,
-                    absoluteOffset: calculateAbsoluteOffset(
+                    absoluteOffset: self.calculateAbsoluteOffset(
                         seasonNumber: selection.seasonNumber,
                         offsetWithinSeason: selection.episodeOffset,
                         in: show
