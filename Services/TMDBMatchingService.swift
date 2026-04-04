@@ -296,17 +296,18 @@ final class TMDBMatchingService {
         }
 
         // Check if show has episodes and seasons
-        let hasEpisodes = (showSummary.allEpisodes ?? 0) > 0
+        let hasEpisodes = showSummary.numberOfEpisodes > 0
         let hasSeasons = !showSummary.seasons.isEmpty && showSummary.seasons.contains { $0.episodeCount > 0 }
         
         guard hasEpisodes && hasSeasons else {
-            AppLog.debug(.matching, "ani.zip validation failed: no episodes/seasons mediaId=\(media.id) tmdbId=\(tmdbId) episodes=\(showSummary.allEpisodes ?? 0) seasons=\(showSummary.seasons.count)")
+            AppLog.debug(.matching, "ani.zip validation failed: no episodes/seasons mediaId=\(media.id) tmdbId=\(tmdbId) episodes=\(showSummary.numberOfEpisodes) seasons=\(showSummary.seasons.count)")
             return nil
         }
 
         // Validate episode count is reasonable (within 25% margin of expected)
         let expectedEps = expectedEpisodeCount ?? media.episodes ?? 0
-        if expectedEps > 0, let totalEps = showSummary.allEpisodes {
+        if expectedEps > 0 {
+            let totalEps = showSummary.numberOfEpisodes
             let discrepancy = abs(totalEps - expectedEps)
             let isWithinMargin = Double(discrepancy) / Double(expectedEps) <= 0.25
             if !isWithinMargin {
