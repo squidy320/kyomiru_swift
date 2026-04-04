@@ -465,7 +465,7 @@ private final class MPVPlaybackController: ObservableObject {
 }
 
 @MainActor
-private final class MPVPictureInPictureSession: NSObject, AVPictureInPictureControllerDelegate {
+private final class MPVPictureInPictureSession: NSObject, @preconcurrency AVPictureInPictureControllerDelegate {
     static let shared = MPVPictureInPictureSession()
 
     private var player: AVPlayer?
@@ -1093,7 +1093,7 @@ private struct MPVPlayerRepresentable: UIViewControllerRepresentable {
     }
 }
 
-private final class MPVSampleBufferPiPBridge: NSObject, AVPictureInPictureControllerDelegate, AVPictureInPictureSampleBufferPlaybackDelegate {
+private final class MPVSampleBufferPiPBridge: NSObject, @preconcurrency AVPictureInPictureControllerDelegate, AVPictureInPictureSampleBufferPlaybackDelegate {
     let sampleBufferLayer = AVSampleBufferDisplayLayer()
     private var controller: AVPictureInPictureController?
 

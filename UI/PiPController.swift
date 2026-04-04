@@ -76,7 +76,7 @@ final class PiPManager: NSObject {
     }
 }
 
-extension PiPManager: AVPictureInPictureControllerDelegate {
+extension PiPManager: @preconcurrency AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         isPictureInPictureActive = true
         AppLog.debug(.player, "pip did start")
@@ -204,7 +204,7 @@ final class PiPController: NSObject {
     }
 }
 
-extension PiPController: AVPictureInPictureControllerDelegate {}
+extension PiPController: @preconcurrency AVPictureInPictureControllerDelegate {}
 
 extension PiPController {
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {

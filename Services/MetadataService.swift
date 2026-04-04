@@ -192,7 +192,8 @@ final class MetadataService {
         seasonNumber: Int,
         episodeOffset: Int = 0,
         showTitle: String? = nil,
-        seasonLabel: String? = nil
+        seasonLabel: String? = nil,
+        parentSeriesId: Int? = nil
     ) async {
         await tmdbMatcher.saveManualOverride(
             aniListId: media.id,
@@ -201,7 +202,8 @@ final class MetadataService {
             seasonNumber: seasonNumber,
             episodeOffset: episodeOffset,
             showTitle: showTitle,
-            seasonLabel: seasonLabel
+            seasonLabel: seasonLabel,
+            parentSeriesId: parentSeriesId
         )
         invalidateTMDBCaches(for: media.id)
     }
