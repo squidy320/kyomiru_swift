@@ -1559,13 +1559,20 @@ private final class MPVViewController: UIViewController {
         CATransaction.setDisableActions(true)
         videoHostView.frame = bounds
         let renderLayer = videoHostView.renderLayer
-        let scale = view.window?.screen.scale ?? view.contentScaleFactor
+        let scale = view.window?.windowScene?.screen.scale ?? view.contentScaleFactor
         renderLayer.contentsScale = scale
         renderLayer.drawableSize = CGSize(
-            width: max(videoHostView.bounds.width * scale, 1),
-            height: max(videoHostView.bounds.height * scale, 1)
+            width: max(bounds.width * scale, 1),
+            height: max(bounds.height * scale, 1)
         )
         CATransaction.commit()
+
+        if let handle = mpvHandle {
+            var wid = Int64(bitPattern: UInt64(UInt(bitPattern: Unmanaged.passUnretained(renderLayer).toOpaque())))
+            withUnsafeMutablePointer(to: &wid) { ptr in
+                _ = mpv_set_option(handle, "wid", MPV_FORMAT_INT64, ptr)
+            }
+        }
 
         if layoutChanged {
             DispatchQueue.main.async { [weak self] in

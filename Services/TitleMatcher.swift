@@ -13,9 +13,15 @@ enum TitleMatcher {
         candidates: [SoraAnimeMatch],
         provider: StreamingProvider = .current
     ) -> SoraAnimeMatch? {
-        AppLog.debug(.matching, "best match start mediaId=\(target.id) candidates=\(candidates.count)")
-        let best = rankedCandidates(target: target, candidates: candidates, provider: provider).first
-        AppLog.debug(.matching, "best match result mediaId=\(target.id) matched=\(best != nil)")
+        AppLog.debug(.matching, "best match start provider=\(provider.rawValue) mediaId=\(target.id) mediaTitle='\(target.title.best)' candidates=\(candidates.count)")
+        let ranked = rankedCandidateEntries(target: target, candidates: candidates, provider: provider)
+        
+        for (index, entry) in ranked.prefix(5).enumerated() {
+            AppLog.debug(.matching, "  #\(index+1) candidate='\(entry.match.title)' score=\(String(format: "%.4f", entry.score)) context='\(entry.context ?? "")'")
+        }
+        
+        let best = ranked.first?.match
+        AppLog.debug(.matching, "best match result mediaId=\(target.id) matched='\(best?.title ?? "nil")'")
         return best
     }
 
@@ -74,6 +80,7 @@ enum TitleMatcher {
             normalizedTarget: normalizedTarget,
             provider: provider
         )
+        
         var yearScore = 0.5
         if let targetYear, let candidateYear = candidate.year {
             if targetYear == candidateYear {
@@ -104,37 +111,41 @@ enum TitleMatcher {
         var score = (0.5 * titleScore) + (0.3 * yearScore) + (0.2 * formatScore)
 
         let candidateSeason = extractSeasonNumber(from: candidate.title)
+        let candidatePart = extractPartOnlyMarkerNumber(from: candidate.title)
+        let targetPart = extractPartOnlyMarkerNumber(from: normalizedTarget)
+
         if let wantedSeason {
             if candidateSeason == wantedSeason {
-                score += 0.15 // Increased bonus for exact season match
+                score += 0.20 // Increased bonus
             } else if let cs = candidateSeason, cs != wantedSeason {
-                score -= 0.30 // Heavier penalty for wrong season
+                score -= 0.40 // Heavier penalty
             } else if wantedSeason == 1 {
                 score += 0.08
             } else {
-                score -= 0.10
+                score -= 0.15 // Penalty for missing season info when we know we want S2+
             }
         }
         
-        // Bonus for "Part" or "Cour" match if target title has it
-        if normalizedTarget.contains("part") || normalizedTarget.contains("cour") {
-            let cTitle = candidate.title.lowercased()
-            if (normalizedTarget.contains("part") && cTitle.contains("part")) ||
-               (normalizedTarget.contains("cour") && cTitle.contains("cour")) {
-                score += 0.05
+        // Bonus/Penalty for "Part" match
+        if let targetPart {
+            if candidatePart == targetPart {
+                score += 0.10
+            } else if let cp = candidatePart, cp != targetPart {
+                score -= 0.25
             }
+        } else if candidatePart != nil {
+            // Target has no part, but candidate does -> likely wrong
+            score -= 0.10
         }
 
         if provider == .animeKai || provider == .animePahe {
             let normalizedCandidate = normalizedTitle(candidate.title, provider: provider)
             let candidateBase = stripSequenceMarkers(from: normalizedCandidate, provider: provider)
             let targetBase = stripSequenceMarkers(from: normalizedTarget, provider: provider)
+            
             let exactBonus = provider == .animePahe ? 0.16 : 0.20
             let baseBonus = provider == .animePahe ? 0.10 : 0.12
-            let overlapWeight = provider == .animePahe ? 0.10 : 0.12
-            let missingPenalty = provider == .animePahe ? 0.18 : 0.22
-            let noMissingBonus = provider == .animePahe ? 0.04 : 0.05
-
+            
             if normalizedCandidate == normalizedTarget {
                 score += exactBonus
             } else if candidateBase == targetBase {
@@ -145,7 +156,7 @@ enum TitleMatcher {
             let candidateTokens = Set(candidateBase.split(separator: " ").map(String.init))
             if !baseTokens.isEmpty {
                 let overlap = Double(baseTokens.intersection(candidateTokens).count) / Double(baseTokens.count)
-                score += overlap * overlapWeight
+                score += overlap * 0.12
             }
 
             let targetCoreTokens = coreAnimeKaiTokens(from: targetBase)
@@ -153,17 +164,14 @@ enum TitleMatcher {
             if !targetCoreTokens.isEmpty {
                 let missingCoreCount = targetCoreTokens.subtracting(candidateCoreTokens).count
                 let missingCoreRatio = Double(missingCoreCount) / Double(targetCoreTokens.count)
-                score -= missingCoreRatio * missingPenalty
+                score -= missingCoreRatio * 0.25 // Heavy penalty for missing core words
                 if missingCoreCount == 0 {
-                    score += noMissingBonus
+                    score += 0.05
                 }
             }
 
-            let targetHasFinalSeason = hasFinalSeasonMarker(normalizedTarget)
-            if targetHasFinalSeason && hasFinalSeasonMarker(candidate.title) {
-                score += 0.04
-            } else if targetHasFinalSeason {
-                score -= 0.08
+            if hasFinalSeasonMarker(normalizedTarget) && hasFinalSeasonMarker(candidate.title) {
+                score += 0.10
             }
         }
 

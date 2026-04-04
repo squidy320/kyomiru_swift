@@ -296,7 +296,7 @@ final class SoraRuntime {
     }
 
     func autoMatch(media: AniListMedia) async throws -> SoraAnimeMatch? {
-        AppLog.debug(.matching, "auto match start mediaId=\(media.id)")
+        AppLog.debug(.matching, "auto match start provider=\(config.provider.rawValue) mediaId=\(media.id)")
         let queries = TitleMatcher.buildQueries(for: media)
         var all: [SoraAnimeMatch] = []
         for q in queries {
@@ -304,10 +304,11 @@ final class SoraRuntime {
             all.append(contentsOf: matches)
         }
         if all.isEmpty { return nil }
-        let deduped = Dictionary(grouping: all, by: { $0.session })
-            .compactMap { $0.value.first }
-        let best = TitleMatcher.bestMatch(target: media, candidates: deduped)
-        AppLog.debug(.matching, "auto match result mediaId=\(media.id) matched=\(best != nil)")
+        
+        let deduped = TitleMatcher.dedupeCandidates(all, provider: config.provider)
+        let best = TitleMatcher.bestMatch(target: media, candidates: deduped, provider: config.provider)
+        
+        AppLog.debug(.matching, "auto match result mediaId=\(media.id) matched='\(best?.title ?? "nil")'")
         return best
     }
 
