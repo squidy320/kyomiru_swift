@@ -18,6 +18,7 @@
         C6D7E8F901A2B3C4D5E6F708 /* MediaTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7E8F901A2B3C4D5E6F70819 /* MediaTracker.swift */; };
         2523BB6A1CCC401CB2F04C4E /* AniListAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */; };
         7D6DD7FBD32C414EA5ABECFF /* AniListClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */; };
+        8D7E6C5B4A392817F0E1D2C3 /* AniZipClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D7E6C5B4A392817F0E1D2C2 /* AniZipClient.swift */; };
         F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A834867881B451BADAD93AA /* AppServices.swift */; };
 		EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D61DF5D7C6F4CDAB259605A /* CacheService.swift */; };
 		A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */; };
@@ -90,6 +91,7 @@
         D7E8F901A2B3C4D5E6F70819 /* MediaTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaTracker.swift; sourceTree = "<group>"; };
         8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListAuthService.swift; sourceTree = "<group>"; };
         7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListClient.swift; sourceTree = "<group>"; };
+        8D7E6C5B4A392817F0E1D2C2 /* AniZipClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniZipClient.swift; sourceTree = "<group>"; };
         5A834867881B451BADAD93AA /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
 		9D61DF5D7C6F4CDAB259605A /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
 		8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheStore.swift; sourceTree = "<group>"; };
@@ -214,6 +216,7 @@
                 F767F8BD91F7C2D9A61E1009 /* Luna */,
                 8C2A62C67E724D098CDD7C65 /* AniListAuthService.swift */,
                 7A6AD4229B1D4D9DB5D31F82 /* AniListClient.swift */,
+                8D7E6C5B4A392817F0E1D2C2 /* AniZipClient.swift */,
 				5A834867881B451BADAD93AA /* AppServices.swift */,
 				9D61DF5D7C6F4CDAB259605A /* CacheService.swift */,
 				8BC548A6BB5A4F3FAA3AEC8E /* CacheStore.swift */,
@@ -399,6 +402,7 @@
                 C6D7E8F901A2B3C4D5E6F708 /* MediaTracker.swift in Sources */,
                 2523BB6A1CCC401CB2F04C4E /* AniListAuthService.swift in Sources */,
                 7D6DD7FBD32C414EA5ABECFF /* AniListClient.swift in Sources */,
+                8D7E6C5B4A392817F0E1D2C3 /* AniZipClient.swift in Sources */,
 				F6F0D325A00A4D118C02EB86 /* AppServices.swift in Sources */,
 				EE7CFB650A594B10AA0A5669 /* CacheService.swift in Sources */,
 				A4AF9E8E377842D7A316D80A /* CacheStore.swift in Sources */,

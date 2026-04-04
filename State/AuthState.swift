@@ -19,7 +19,9 @@ final class AuthState: ObservableObject {
         ) { [weak self] _ in
             guard let self else { return }
             AppLog.error(.auth, "auth token invalidated, signing out")
-            self.signOut()
+            Task { @MainActor in
+                self.signOut()
+            }
         }
     }
 
