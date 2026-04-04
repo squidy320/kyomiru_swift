@@ -313,8 +313,17 @@ enum TitleMatcher {
     ) -> [SoraAnimeMatch] {
         switch provider {
         case .animePahe:
-            return Dictionary(grouping: candidates, by: { $0.session })
+            let deduped = Dictionary(grouping: candidates, by: { $0.session })
                 .compactMap { $0.value.first }
+            // Re-sort by matchScore to preserve ranking after deduplication
+            return deduped.sorted { lhs, rhs in
+                let left = lhs.matchScore ?? 0
+                let right = rhs.matchScore ?? 0
+                if left == right {
+                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                }
+                return left > right
+            }
         case .animeKai:
             var bestByKey: [String: SoraAnimeMatch] = [:]
             for candidate in candidates {
