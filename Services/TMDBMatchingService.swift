@@ -295,7 +295,7 @@ final class TMDBMatchingService {
             return nil
         }
 
-        // Check if show has episodes and seasons
+        // Check if show has episodes and seasons (basic validation)
         let hasEpisodes = showSummary.numberOfEpisodes > 0
         let hasSeasons = !showSummary.seasons.isEmpty && showSummary.seasons.contains { $0.episodeCount > 0 }
         
@@ -304,41 +304,47 @@ final class TMDBMatchingService {
             return nil
         }
 
-        // Validate episode count is reasonable (within 25% margin of expected)
-        let expectedEps = expectedEpisodeCount ?? media.episodes ?? 0
-        if expectedEps > 0 {
-            let totalEps = showSummary.numberOfEpisodes
-            let discrepancy = abs(totalEps - expectedEps)
-            let isWithinMargin = Double(discrepancy) / Double(expectedEps) <= 0.25
-            if !isWithinMargin {
-                AppLog.debug(.matching, "ani.zip validation failed: episode count mismatch mediaId=\(media.id) tmdbId=\(tmdbId) expected=\(expectedEps) actual=\(totalEps)")
-                return nil
-            }
-        }
-
         // Calculate offset from ani.zip episode data
+        // Use absoluteEpisodeNumber to detect which season this AniList entry represents
         var episodeOffset = 0
+        var detectedSeasonNumber = 1
+        
         if let episodes = seasonInfo.episodes, !episodes.isEmpty {
-            // Find the episode offset using absoluteEpisodeNumber
-            var maxEpisodeFromStart = 0
+            // Find the episode offset and season using absoluteEpisodeNumber
+            var minAbsoluteNumber = Int.max
+            var maxAbsoluteNumber = 0
+            var calculatedOffset = 0
             
             for (_, episode) in episodes {
-                if let absNum = episode.absoluteEpisodeNumber, let epNum = episode.episodeNumber {
-                    let potentialOffset = absNum - epNum
-                    maxEpisodeFromStart = max(maxEpisodeFromStart, potentialOffset)
+                if let absNum = episode.absoluteEpisodeNumber, let epNum = episode.episodeNumber, let seasonNum = episode.seasonNumber {
+                    minAbsoluteNumber = min(minAbsoluteNumber, absNum)
+                    maxAbsoluteNumber = max(maxAbsoluteNumber, absNum)
+                    
+                    // Offset = first episode's absolute number - 1
+                    // This tells us how many episodes aired before this season
+                    if epNum == 1 {
+                        calculatedOffset = absNum - 1
+                        detectedSeasonNumber = seasonNum
+                        break
+                    }
                 }
             }
             
-            if maxEpisodeFromStart > 0 {
-                episodeOffset = maxEpisodeFromStart
-                AppLog.debug(.matching, "ani.zip calculated offset mediaId=\(media.id) offset=\(episodeOffset) from episode data")
+            // Fallback: if no season 1 detected, calculate from the range
+            if calculatedOffset == 0 && minAbsoluteNumber != Int.max {
+                calculatedOffset = minAbsoluteNumber - 1
+                AppLog.debug(.matching, "ani.zip calculated offset mediaId=\(media.id) offset=\(calculatedOffset) from episode range")
+            } else if calculatedOffset > 0 {
+                AppLog.debug(.matching, "ani.zip calculated offset mediaId=\(media.id) offset=\(calculatedOffset) season=\(detectedSeasonNumber) from episode data")
             }
+            
+            episodeOffset = calculatedOffset
         }
 
         return TMDBSeasonMatch(
             showId: tmdbId,
             mediaType: "tv",
-            seasonNumber: 1,
+            seasonNumber: detectedSeasonNumber,
             episodeOffset: episodeOffset,
             absoluteOffset: episodeOffset
         )
