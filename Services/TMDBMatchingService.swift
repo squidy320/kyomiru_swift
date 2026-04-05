@@ -276,8 +276,8 @@ final class TMDBMatchingService {
         preferredSeasonNumber: Int?,
         expectedEpisodeCount: Int?
     ) async -> TMDBSeasonMatch? {
-        // Skip ani.zip matching for movies/OVAs/specials - they need different handling
-        if isMovieLike(media) || isSpecialLike(media) {
+        // Skip ani.zip matching for movies only (OVAs/specials can have main series mappings in ani.zip)
+        if isMovieLike(media) {
             return nil
         }
 
@@ -441,7 +441,18 @@ final class TMDBMatchingService {
 
                 let titles = await self.candidateTitles(for: media)
                 let startYear = franchiseStartYear ?? media.startDate?.year ?? media.seasonYear
-                guard let target = await self.findTarget(media: media, titles: titles, startYear: startYear),
+                var target = await self.findTarget(media: media, titles: titles, startYear: startYear)
+                
+                // For OVAs/Specials that didn't match, try searching by parent series name
+                if target == nil && self.isSpecialLike(media) {
+                    let parentTitles = self.parentSeriesTitles(from: media.title.best)
+                    if !parentTitles.isEmpty {
+                        AppLog.debug(.matching, "ova fallback searching parent series mediaId=\(media.id) titles=\(parentTitles.joined(separator: ", "))")
+                        target = await self.findTarget(media: media, titles: parentTitles, startYear: startYear)
+                    }
+                }
+                
+                guard let target, 
                       let show = await self.fetchShowSummary(showId: target.id, mediaType: target.mediaType, apiKey: apiKey) else {
                     self.writeNegativeSeasonMatchCache(forKey: cacheKey)
                     return nil
@@ -1302,6 +1313,43 @@ final class TMDBMatchingService {
         return aliases
     }
 
+    private func parentSeriesTitles(from ovaTitle: String) -> [String] {
+        var results: [String] = []
+        let trimmed = ovaTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return results }
+        
+        // Remove OVA/Special identifiers
+        var base = trimmed
+            .replacingOccurrences(of: "OVA", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "ONA", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: "Special", with: "", options: .caseInsensitive)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Remove episode counts like "(OVA)", "[OVA 1]", etc
+        base = base.replacingOccurrences(of: #"\([^)]*\)"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\[[^\]]*\]"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if !base.isEmpty && base != trimmed {
+            results.append(base)
+        }
+        
+        // For colons (subtitle format), extract both parts
+        let colonParts = trimmed
+            .split(separator: ":", maxSplits: 1, omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if colonParts.count == 2 {
+            let mainPart = colonParts[0]
+                .replacingOccurrences(of: "OVA", with: "", options: .caseInsensitive)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !mainPart.isEmpty {
+                results.append(mainPart)
+            }
+        }
+        
+        return results
+    }
+
     private func fetchShowSummary(showId: Int, mediaType: String, apiKey: String) async -> TMDBShowSummary? {
         if mediaType == "movie" {
             guard let movie = await fetchMovieDetails(movieId: showId, apiKey: apiKey) else { return nil }
@@ -1525,7 +1573,16 @@ final class TMDBMatchingService {
                         reason: "final-season-named-part"
                     )
                 }
-                return nil
+                
+                // If no named part found, assume it's the final season with offset
+                // For Part 2, estimate offset from first part's episode count
+                let estimatedOffset = (latestMainSeason.episodeCount * (partMarker - 1))
+                return SelectedSeason(
+                    seasonNumber: latestMainSeason.seasonNumber,
+                    episodeOffset: estimatedOffset,
+                    confidence: 0.82,
+                    reason: "final-season-part-estimated-offset"
+                )
             }
 
             if let dateMatch, dateMatch.seasonNumber == latestMainSeason.seasonNumber, dateMatch.score >= 0.78 {
@@ -1620,8 +1677,37 @@ final class TMDBMatchingService {
             )
         }
 
-        // If part > 1 and no range match, avoid offset 0.
+        // If part > 1 and no range match, try date/year match or estimate offset
         if partMarker > 1 {
+            if let dateMatch, dateMatch.score >= 0.75 {
+                return SelectedSeason(
+                    seasonNumber: dateMatch.seasonNumber,
+                    episodeOffset: 0,
+                    confidence: dateMatch.score,
+                    reason: "part-cour-part-number-with-date"
+                )
+            }
+            
+            if let yearMatch, yearMatch.score >= 0.80 {
+                return SelectedSeason(
+                    seasonNumber: yearMatch.seasonNumber,
+                    episodeOffset: 0,
+                    confidence: yearMatch.score,
+                    reason: "part-cour-part-number-with-year"
+                )
+            }
+            
+            // Last resort: Don't return nil, try to match based on part number
+            // For part 7 of JoJo's (Steel Ball Run), try to find a season that might contain it
+            if let matchedSeason = seasons.filter({ !$0.isSpecial }).sorted(by: { $0.seasonNumber < $1.seasonNumber }).dropFirst(partMarker - 1).first {
+                return SelectedSeason(
+                    seasonNumber: matchedSeason.seasonNumber,
+                    episodeOffset: 0,
+                    confidence: 0.65,
+                    reason: "part-cour-estimated-from-part-number"
+                )
+            }
+            
             return nil
         }
 
