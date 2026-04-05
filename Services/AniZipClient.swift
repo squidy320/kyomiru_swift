@@ -1,9 +1,13 @@
 import Foundation
 
 public struct AniZipMapping: Codable {
-    public let tmdb_id: Int?
-    public let tvdb_id: Int?
+    public let themoviedb_id: String?  // TMDB ID (can be string)
+    public let thetvdb_id: Int?        // TVDB ID
     public let mal_id: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case themoviedb_id, thetvdb_id, mal_id
+    }
 }
 
 // Per-episode metadata from ani.zip
@@ -25,6 +29,7 @@ public struct AniZipEpisode: Codable, Hashable {
 public struct AniZipShowData: Codable {
     public let episodes: [String: AniZipEpisode]?
     public let episodeCount: Int?
+    public let specialCount: Int?
     public let mappings: AniZipMapping?
 }
 
@@ -48,7 +53,7 @@ public struct AniZipClient {
         }
         
         // Fetch from API
-        let url = URL(string: "https://ani.zip/anilist/\(aniListId)")!
+        let url = URL(string: "https://api.ani.zip/mappings?anilist_id=\(aniListId)")!
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
             let showData = try JSONDecoder().decode(AniZipShowData.self, from: data)
@@ -97,9 +102,16 @@ public struct AniZipClient {
     /// Get season info from ani.zip for episode matching
     public static func getSeasonInfo(aniListId: Int) async -> (tmdbId: Int?, tvdbId: Int?, episodeCount: Int?, episodes: [String: AniZipEpisode]?)? {
         guard let showData = await fetchShowData(aniListId: aniListId) else { return nil }
+        
+        // Convert TMDB ID from String to Int if needed
+        var tmdbId: Int? = nil
+        if let tmdbStr = showData.mappings?.themoviedb_id {
+            tmdbId = Int(tmdbStr)
+        }
+        
         return (
-            tmdbId: showData.mappings?.tmdb_id,
-            tvdbId: showData.mappings?.tvdb_id,
+            tmdbId: tmdbId,
+            tvdbId: showData.mappings?.thetvdb_id,
             episodeCount: showData.episodeCount,
             episodes: showData.episodes
         )
