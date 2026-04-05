@@ -8,8 +8,8 @@
       "bundleIdentifier": "com.squidy320.kyomiru",
       "developerName": "squidy320",
       "version": "1.0-build.1",
-      "date": "2026-04-04T23:36:39Z",
-      "size": 14778511,
+      "date": "2026-04-05T15:22:17Z",
+      "size": 14780965,
       "downloadURL": "https://github.com/squidy320/kyomiru_swift/releases/latest/download/Kyomiru_Unsigned.ipa",
       "iconURL": "https://raw.githubusercontent.com/squidy320/kyomiru_swift/main/Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png",
       "versionDescription": ""
@@ -18,8 +18,8 @@
   "news": [
     {
       "title": "What's New",
-      "date": "2026-04-04T23:36:39Z",
-      "text": "Update TMDBMatchingService.swift"
+      "date": "2026-04-05T15:22:17Z",
+      "text": "Update AniZipClient.swift"
     }
   ]
 }
