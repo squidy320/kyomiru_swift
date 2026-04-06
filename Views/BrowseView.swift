@@ -37,43 +37,45 @@ struct BrowseView: View {
                                         .padding(.horizontal, UIConstants.standardPadding)
                                     }
 
-                                let horizontalPadding = UIConstants.standardPadding
-                                let availableWidth = UIScreen.main.bounds.width - (horizontalPadding * 2)
-                                let (columns, cardSize) = gridLayout(for: availableWidth)
-                                LazyVGrid(columns: columns, spacing: gridSpacing) {
-                                    ForEach(items, id: \.id) { media in
-                                        NavigationLink {
-                                            DetailsView(media: media)
-                                        } label: {
-                                            MediaPosterCard(
-                                                title: media.title.best,
-                                                subtitle: nil,
-                                                imageURL: media.coverURL,
-                                                media: media,
-                                                score: media.averageScore,
-                                                statusBadge: statusBadge(for: media),
-                                                cornerBadge: nil,
-                                                size: cardSize,
-                                                overlayOpacity: 0.45,
-                                                allowFallbackWhileLoading: false,
-                                                enablesTMDBArtworkLookup: true
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-                                        .onAppear {
-                                            if media.id == items.last?.id {
-                                                Task { await loadMoreIfNeeded() }
+                                    let horizontalPadding = UIConstants.standardPadding
+                                    let availableWidth = UIScreen.main.bounds.width - (horizontalPadding * 2)
+                                    let (columns, cardSize) = gridLayout(for: availableWidth)
+
+                                    LazyVGrid(columns: columns, spacing: gridSpacing) {
+                                        ForEach(items, id: \.id) { media in
+                                            NavigationLink {
+                                                DetailsView(media: media)
+                                            } label: {
+                                                MediaPosterCard(
+                                                    title: media.title.best,
+                                                    subtitle: nil,
+                                                    imageURL: media.coverURL,
+                                                    media: media,
+                                                    score: media.averageScore,
+                                                    statusBadge: statusBadge(for: media),
+                                                    cornerBadge: nil,
+                                                    size: cardSize,
+                                                    overlayOpacity: 0.45,
+                                                    allowFallbackWhileLoading: false,
+                                                    enablesTMDBArtworkLookup: true
+                                                )
+                                            }
+                                            .buttonStyle(.plain)
+                                            .onAppear {
+                                                if media.id == items.last?.id {
+                                                    Task { await loadMoreIfNeeded() }
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                .padding(.horizontal, horizontalPadding)
+                                    .padding(.horizontal, horizontalPadding)
 
-                                if isLoading {
-                                    ProgressView("Loading...")
-                                        .tint(.white)
-                                        .frame(maxWidth: .infinity, alignment: .center)
-                                        .padding(.vertical, UIConstants.smallPadding)
+                                    if isLoading {
+                                        ProgressView("Loading...")
+                                            .tint(.white)
+                                            .frame(maxWidth: .infinity, alignment: .center)
+                                            .padding(.vertical, UIConstants.smallPadding)
+                                    }
                                 }
                             }
                         }
