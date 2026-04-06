@@ -46,6 +46,7 @@
         C4101F54869D49D8A0B4A425 /* AuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = B889450D6A20487F833188E5 /* AuthState.swift */; };
         7CF625CC580C4B3886797010 /* SettingsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3028F9F1B2AB4647891B467C /* SettingsState.swift */; };
         B8E1D2C3B4A5061728394C5D /* AppDependencyContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8E1D2C3B4A5061728394C5D /* AppDependencyContainer.swift */; };
+		AF1B2C3D4E5F60718293A4B5 /* BrowseState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1B2C3D4E5F60718293A4B5 /* BrowseState.swift */; };
 		69950056E20B4D91A5990BD6 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = A61733A6B24C482A972EBD23 /* Glass.swift */; };
 		3A4B5C6D7E8F901A2B3C4D5E /* SampleBufferDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7E8F901A2B3C4D5E6F7081 /* SampleBufferDisplayView.swift */; };
 		8B7A6C5D4E3F2A1B0C9D8E7F /* PiPController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C1D2E3F4A5B6C7D8E9F0A1B /* PiPController.swift */; };
@@ -119,6 +120,7 @@
         B889450D6A20487F833188E5 /* AuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthState.swift; sourceTree = "<group>"; };
         3028F9F1B2AB4647891B467C /* SettingsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsState.swift; sourceTree = "<group>"; };
         A8E1D2C3B4A5061728394C5D /* AppDependencyContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDependencyContainer.swift; sourceTree = "<group>"; };
+		BF1B2C3D4E5F60718293A4B5 /* BrowseState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseState.swift; sourceTree = "<group>"; };
 		A61733A6B24C482A972EBD23 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
 		6D7E8F901A2B3C4D5E6F7081 /* SampleBufferDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleBufferDisplayView.swift; sourceTree = "<group>"; };
 		9C1D2E3F4A5B6C7D8E9F0A1B /* PiPController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiPController.swift; sourceTree = "<group>"; };
@@ -251,6 +253,7 @@
                 3028F9F1B2AB4647891B467C /* SettingsState.swift */,
                 A8E1D2C3B4A5061728394C5D /* AppDependencyContainer.swift */,
                 D7E8F901A2B3C4D5E6F70819 /* MediaTracker.swift */,
+                BF1B2C3D4E5F60718293A4B5 /* BrowseState.swift */,
             );
             path = State;
             sourceTree = "<group>";
