@@ -313,9 +313,9 @@ private struct AVPlayerScreen: View {
             if isBuffering != isBufferingNow {
                 isBuffering = isBufferingNow
                 if isBufferingNow {
-                    AppLog.debug(.player, "buffer: buffering started")
+                    AppLog.debug(.player, "buffer: buffering started - timeControlStatus=\(observed.timeControlStatus), rate=\(player.rate), keepUp=\(player.currentItem?.isPlaybackLikelyToKeepUp ?? .none)")
                 } else {
-                    AppLog.debug(.player, "buffer: buffering finished")
+                    AppLog.debug(.player, "buffer: buffering finished - timeControlStatus=\(observed.timeControlStatus), rate=\(player.rate), keepUp=\(player.currentItem?.isPlaybackLikelyToKeepUp ?? .none)")
                 }
             }
         }

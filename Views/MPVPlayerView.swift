@@ -1212,6 +1212,7 @@ private final class MPVViewController: UIViewController {
         videoHostView.clipsToBounds = true
         videoHostView.frame = view.bounds
         videoHostView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        AppLog.debug(.player, "viewDidLoad: videoHostView.frame = \(videoHostView.frame), view.bounds = \(view.bounds)")
         view.addSubview(videoHostView)
 
         pipBridge.configure(in: view)
@@ -1230,6 +1231,7 @@ private final class MPVViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        AppLog.debug(.player, "viewDidLayoutSubviews: view.bounds = \(view.bounds)")
         updateRenderLayerLayout()
     }
 
@@ -1242,15 +1244,20 @@ private final class MPVViewController: UIViewController {
 
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
+        AppLog.debug(.player, "viewSafeAreaInsetsDidChange: safeAreaInsets = \(view.safeAreaInsets), view.bounds = \(view.bounds)")
         updateRenderLayerLayout()
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
+        AppLog.debug(.player, "viewWillTransition: new size = \(size)")
         coordinator.animate(alongsideTransition: { [weak self] _ in
+            AppLog.debug(.player, "viewWillTransition: animate - before layoutIfNeeded, view.bounds = \(self?.view.bounds ?? .zero)")
             self?.view.layoutIfNeeded()
+            AppLog.debug(.player, "viewWillTransition: animate - after layoutIfNeeded, view.bounds = \(self?.view.bounds ?? .zero)")
             self?.updateRenderLayerLayout()
         }, completion: { [weak self] _ in
+            AppLog.debug(.player, "viewWillTransition: completion - view.bounds = \(self?.view.bounds ?? .zero)")
             self?.view.layoutIfNeeded()
             self?.updateRenderLayerLayout()
             self?.forceRefreshCurrentFrameIfNeeded()
@@ -1556,10 +1563,12 @@ private final class MPVViewController: UIViewController {
         guard bounds.width > 0, bounds.height > 0 else { return }
         let layoutChanged = bounds != lastLayoutBounds
         lastLayoutBounds = bounds
+        AppLog.debug(.player, "updateRenderLayerLayout: bounds = \(bounds), layoutChanged = \(layoutChanged)")
 
         // Ensure frame is updated before CA transaction
         videoHostView.frame = bounds
         videoHostView.layoutIfNeeded()
+        AppLog.debug(.player, "updateRenderLayerLayout: after setting videoHostView.frame, videoHostView.frame = \(videoHostView.frame), videoHostView.bounds = \(videoHostView.bounds)")
         
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -1575,6 +1584,7 @@ private final class MPVViewController: UIViewController {
             width: max(videoHostView.bounds.width * scale, 1),
             height: max(videoHostView.bounds.height * scale, 1)
         )
+        AppLog.debug(.player, "updateRenderLayerLayout: renderLayer.frame = \(renderLayer.frame), renderLayer.position = \(renderLayer.position), renderLayer.bounds = \(renderLayer.bounds)")
         CATransaction.commit()
 
         if let handle = mpvHandle {
@@ -1592,11 +1602,24 @@ private final class MPVViewController: UIViewController {
     }
 
     private func forceRefreshCurrentFrameIfNeeded() {
-        guard isViewLoaded else { return }
-        guard view.window != nil else { return }
-        guard isReady else { return }
+        guard isViewLoaded else { 
+            AppLog.debug(.player, "forceRefreshCurrentFrameIfNeeded: view not loaded")
+            return 
+        }
+        guard view.window != nil else { 
+            AppLog.debug(.player, "forceRefreshCurrentFrameIfNeeded: no window")
+            return 
+        }
+        guard isReady else { 
+            AppLog.debug(.player, "forceRefreshCurrentFrameIfNeeded: not ready")
+            return 
+        }
         let currentTime = getCurrentTime()
-        guard currentTime.isFinite, currentTime >= 0 else { return }
+        guard currentTime.isFinite, currentTime >= 0 else { 
+            AppLog.debug(.player, "forceRefreshCurrentFrameIfNeeded: invalid time \(currentTime)")
+            return 
+        }
+        AppLog.debug(.player, "forceRefreshCurrentFrameIfNeeded: seeking to \(currentTime)")
         sendCommand(["seek", "\(currentTime)", "absolute+exact"])
     }
 
