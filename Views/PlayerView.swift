@@ -190,12 +190,23 @@ private struct AVPlayerScreen: View {
         let headers = resolved.isFileURL ? [:] : source.headers
 
         let asset: AVURLAsset
-        if headers.isEmpty {
+        var assetOptions: [String: Any] = [:]
+        
+        // Add options for different file types
+        if headers.count > 0 {
+            assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = headers
+        }
+        
+        // Add type hint for .ts files (MPEG Transport Stream format)
+        let pathExtension = (resolved.lastPathComponent as NSString).pathExtension.lowercased()
+        if pathExtension == "ts" || pathExtension == "m2ts" || pathExtension == "mts" {
+            assetOptions["AVURLAssetOutOfBandMIMETypeKey"] = "video/mp2t"
+        }
+        
+        if assetOptions.isEmpty {
             asset = AVURLAsset(url: resolved)
         } else {
-            asset = AVURLAsset(url: resolved, options: [
-                "AVURLAssetHTTPHeaderFieldsKey": headers
-            ])
+            asset = AVURLAsset(url: resolved, options: assetOptions)
         }
 
         let item = AVPlayerItem(asset: asset)
