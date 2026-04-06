@@ -1212,16 +1212,6 @@ private final class MPVViewController: UIViewController {
         videoHostView.clipsToBounds = true
         videoHostView.frame = view.bounds
         videoHostView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        
-        // Center the layer's anchor point for proper rotation: adjust position to compensate
-        let oldAnchorPoint = videoHostView.layer.anchorPoint
-        videoHostView.layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        let anchorDelta = CGVector(dx: 0.5 - oldAnchorPoint.x, dy: 0.5 - oldAnchorPoint.y)
-        videoHostView.layer.position = CGPoint(
-            x: videoHostView.layer.position.x + anchorDelta.dx * videoHostView.bounds.width,
-            y: videoHostView.layer.position.y + anchorDelta.dy * videoHostView.bounds.height
-        )
-        
         view.addSubview(videoHostView)
 
         pipBridge.configure(in: view)
@@ -1258,9 +1248,10 @@ private final class MPVViewController: UIViewController {
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
         coordinator.animate(alongsideTransition: { [weak self] _ in
+            self?.view.layoutIfNeeded()
             self?.updateRenderLayerLayout()
         }, completion: { [weak self] _ in
-            self?.view.setNeedsLayout()
+            self?.view.layoutIfNeeded()
             self?.updateRenderLayerLayout()
             self?.forceRefreshCurrentFrameIfNeeded()
         })
@@ -1566,20 +1557,23 @@ private final class MPVViewController: UIViewController {
         let layoutChanged = bounds != lastLayoutBounds
         lastLayoutBounds = bounds
 
+        // Ensure frame is updated before CA transaction
+        videoHostView.frame = bounds
+        videoHostView.layoutIfNeeded()
+        
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         
-        // For videoHostView with centered anchor point (0.5, 0.5):
-        // Set bounds and position so layer fills the view
-        videoHostView.layer.bounds = CGRect(origin: .zero, size: bounds.size)
-        videoHostView.layer.position = CGPoint(x: bounds.midX, y: bounds.midY)
-        
+        // Ensure renderLayer fills videoHostView  
         let renderLayer = videoHostView.renderLayer
+        renderLayer.frame = videoHostView.bounds
+        renderLayer.position = CGPoint(x: 0, y: 0)
+        renderLayer.anchorPoint = CGPoint(x: 0, y: 0)
         let scale = view.window?.windowScene?.screen.scale ?? view.contentScaleFactor
         renderLayer.contentsScale = scale
         renderLayer.drawableSize = CGSize(
-            width: max(bounds.width * scale, 1),
-            height: max(bounds.height * scale, 1)
+            width: max(videoHostView.bounds.width * scale, 1),
+            height: max(videoHostView.bounds.height * scale, 1)
         )
         CATransaction.commit()
 
