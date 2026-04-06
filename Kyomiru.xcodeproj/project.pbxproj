@@ -433,6 +433,7 @@
                 C4101F54869D49D8A0B4A425 /* AuthState.swift in Sources */,
 				7CF625CC580C4B3886797010 /* SettingsState.swift in Sources */,
                 B8E1D2C3B4A5061728394C5D /* AppDependencyContainer.swift in Sources */,
+				AF1B2C3D4E5F60718293A4B5 /* BrowseState.swift in Sources */,
 				69950056E20B4D91A5990BD6 /* Glass.swift in Sources */,
 				3A4B5C6D7E8F901A2B3C4D5E /* SampleBufferDisplayView.swift in Sources */,
 				8B7A6C5D4E3F2A1B0C9D8E7F /* PiPController.swift in Sources */,
