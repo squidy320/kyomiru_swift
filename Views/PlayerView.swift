@@ -101,6 +101,8 @@ private struct AVPlayerScreen: View {
     @State private var statusObserver: NSKeyValueObservation?
     @State private var itemObservers: [NSKeyValueObservation] = []
     @State private var playbackStallObserver: NSObjectProtocol?
+    @State private var timeControlStatusObserver: NSKeyValueObservation?
+    @State private var isBuffering = true
     @State private var errorMessage: String?
     @State private var skipSegments: [AniSkipSegment] = []
     @State private var activeSkip: AniSkipSegment?
@@ -228,6 +230,8 @@ private struct AVPlayerScreen: View {
         }
         statusObserver?.invalidate()
         statusObserver = nil
+        timeControlStatusObserver?.invalidate()
+        timeControlStatusObserver = nil
         itemObservers.forEach { $0.invalidate() }
         itemObservers.removeAll()
         if let playbackStallObserver {
@@ -247,6 +251,7 @@ private struct AVPlayerScreen: View {
         didRequestRestoreAfterPictureInPicture = false
         wasPlayingBeforeHoldSpeed = false
         previousPlaybackRate = 1.0
+        isBuffering = true
         player.pause()
         player.replaceCurrentItem(with: nil)
         self.player = nil
@@ -301,6 +306,19 @@ private struct AVPlayerScreen: View {
                 }
             }
         ]
+
+        // Track buffering state changes
+        timeControlStatusObserver = player.observe(\.timeControlStatus, options: [.initial, .new]) { observed, _ in
+            let isBufferingNow = observed.timeControlStatus == .waitingToMinimizeStalling
+            if isBuffering != isBufferingNow {
+                isBuffering = isBufferingNow
+                if isBufferingNow {
+                    AppLog.debug(.player, "buffer: buffering started")
+                } else {
+                    AppLog.debug(.player, "buffer: buffering finished")
+                }
+            }
+        }
 
         playbackStallObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemPlaybackStalled,

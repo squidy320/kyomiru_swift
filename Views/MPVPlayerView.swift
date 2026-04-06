@@ -725,13 +725,6 @@ struct MPVPlayerScreen: View {
                 )
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
-                .overlay(alignment: .center) {
-                    if playbackController.isBuffering {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                            .tint(.white)
-                    }
-                }
                 .overlay { interactionLayer }
                 .overlay { overlayChromeLayer }
             } else {
@@ -883,18 +876,25 @@ struct MPVPlayerScreen: View {
 
     private func bottomBar(safeBottom: CGFloat, isLandscape: Bool) -> some View {
         VStack(spacing: 8) {
-            Slider(
-                value: Binding(
-                    get: { playbackController.displayedTime },
-                    set: { newValue in
-                        playbackController.displayedTime = newValue
-                    }
-                ),
-                in: 0...(max(playbackController.duration, 1)),
-                onEditingChanged: handleScrubbingChanged
-            )
-            .tint(.white)
-            .controlSize(.small)
+            ZStack(alignment: .leading) {
+                if playbackController.isBuffering {
+                    Capsule()
+                        .fill(Color.white.opacity(0.2))
+                        .frame(height: 2)
+                }
+                Slider(
+                    value: Binding(
+                        get: { playbackController.displayedTime },
+                        set: { newValue in
+                            playbackController.displayedTime = newValue
+                        }
+                    ),
+                    in: 0...(max(playbackController.duration, 1)),
+                    onEditingChanged: handleScrubbingChanged
+                )
+                .tint(.white)
+                .controlSize(.small)
+            }
 
             HStack {
                 Text(mpvTimeString(playbackController.displayedTime))
@@ -1212,6 +1212,7 @@ private final class MPVViewController: UIViewController {
         videoHostView.clipsToBounds = true
         videoHostView.frame = view.bounds
         videoHostView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        videoHostView.layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         view.addSubview(videoHostView)
 
         pipBridge.configure(in: view)
@@ -1250,6 +1251,7 @@ private final class MPVViewController: UIViewController {
         coordinator.animate(alongsideTransition: { [weak self] _ in
             self?.updateRenderLayerLayout()
         }, completion: { [weak self] _ in
+            self?.view.setNeedsLayout()
             self?.updateRenderLayerLayout()
             self?.forceRefreshCurrentFrameIfNeeded()
         })
@@ -1557,7 +1559,11 @@ private final class MPVViewController: UIViewController {
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        
+        // For videoHostView with centered anchor point, position at center
         videoHostView.frame = bounds
+        videoHostView.layer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        
         let renderLayer = videoHostView.renderLayer
         let scale = view.window?.windowScene?.screen.scale ?? view.contentScaleFactor
         renderLayer.contentsScale = scale
