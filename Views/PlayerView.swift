@@ -309,7 +309,7 @@ private struct AVPlayerScreen: View {
 
         // Track buffering state changes
         timeControlStatusObserver = player.observe(\.timeControlStatus, options: [.initial, .new]) { observed, _ in
-            let isBufferingNow = observed.timeControlStatus == .paused && player.rate == 0 && (item?.isPlaybackLikelyToKeepUp == false || item?.isPlaybackBufferFull == false)
+            let isBufferingNow = observed.timeControlStatus == .paused && player.rate == 0 && player.currentItem?.isPlaybackLikelyToKeepUp != true
             if isBuffering != isBufferingNow {
                 isBuffering = isBufferingNow
                 if isBufferingNow {
