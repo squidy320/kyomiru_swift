@@ -97,6 +97,7 @@ private struct AVPlayerScreen: View {
 
     @State private var player: AVPlayer?
     @State private var playerItem: AVPlayerItem?
+    @State private var sourceProvider: String = ""
     @State private var timeObserver: Any?
     @State private var statusObserver: NSKeyValueObservation?
     @State private var itemObservers: [NSKeyValueObservation] = []
@@ -185,9 +186,12 @@ private struct AVPlayerScreen: View {
             return
         }
 
+        sourceProvider = source.provider ?? "Unknown"
         let resolved = PlaybackService.resolvePlayableURL(for: source.url, title: mediaTitle, episode: episode.number)
         isRemoteStream = !resolved.isFileURL
         let headers = resolved.isFileURL ? [:] : source.headers
+        
+        AppLog.debug(.player, "playback: source provider=\(sourceProvider) isRemoteStream=\(isRemoteStream)")
 
         let asset: AVURLAsset
         var assetOptions: [String: Any] = [:]
@@ -493,9 +497,15 @@ private struct AVPlayerScreen: View {
 
         isSeeking = true
         item.cancelPendingSeeks()
-        AppLog.debug(.player, "seek: perform time=\(clampedSeconds) reason=\(reason)")
+        AppLog.debug(.player, "seek: perform time=\(clampedSeconds) reason=\(reason) provider=\(sourceProvider)")
         player.seek(to: target, toleranceBefore: tolerance, toleranceAfter: tolerance) { finished in
-            AppLog.debug(.player, "seek: finished=\(finished) time=\(clampedSeconds) reason=\(reason)")
+            AppLog.debug(.player, "seek: finished=\(finished) time=\(clampedSeconds) reason=\(reason) provider=\(self.sourceProvider)")
+            
+            // AnimePhae doesn't support HTTP range requests, so seeking might fail
+            if !finished && self.sourceProvider.lowercased().contains("animepahe") {
+                AppLog.error(.player, "seek: failed for AnimePhae - provider doesn't support range requests. Try using AnimeKai or another provider")
+            }
+            
             isSeeking = false
             if shouldResumePlayback {
                 resumePlaybackAfterSeek(player: player)
