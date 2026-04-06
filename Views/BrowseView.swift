@@ -29,13 +29,13 @@ struct BrowseView: View {
                             LazyVStack(pinnedViews: [.sectionHeaders]) {
                                 Section(header: filterBar) {
                                     if let errorMessage {
-                                    GlassCard {
-                                        Text(errorMessage)
-                                            .foregroundColor(Theme.textSecondary)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        GlassCard {
+                                            Text(errorMessage)
+                                                .foregroundColor(Theme.textSecondary)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .padding(.horizontal, UIConstants.standardPadding)
                                     }
-                                    .padding(.horizontal, UIConstants.standardPadding)
-                                }
 
                                 let horizontalPadding = UIConstants.standardPadding
                                 let availableWidth = UIScreen.main.bounds.width - (horizontalPadding * 2)
