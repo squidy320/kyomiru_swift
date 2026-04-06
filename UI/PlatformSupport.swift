@@ -48,6 +48,15 @@ private struct HoverLiftModifier: ViewModifier {
 }
 
 extension View {
+    @ViewBuilder
+    func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
+
     func platformHoverLift(reduceMotion: Bool = false) -> some View {
         modifier(HoverLiftModifier(enabled: PlatformSupport.supportsPointerHover, reduceMotion: reduceMotion))
     }
