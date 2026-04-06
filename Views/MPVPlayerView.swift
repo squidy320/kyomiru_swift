@@ -1212,7 +1212,16 @@ private final class MPVViewController: UIViewController {
         videoHostView.clipsToBounds = true
         videoHostView.frame = view.bounds
         videoHostView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        
+        // Center the layer's anchor point for proper rotation: adjust position to compensate
+        let oldAnchorPoint = videoHostView.layer.anchorPoint
         videoHostView.layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        let anchorDelta = CGVector(dx: 0.5 - oldAnchorPoint.x, dy: 0.5 - oldAnchorPoint.y)
+        videoHostView.layer.position = CGPoint(
+            x: videoHostView.layer.position.x + anchorDelta.dx * videoHostView.bounds.width,
+            y: videoHostView.layer.position.y + anchorDelta.dy * videoHostView.bounds.height
+        )
+        
         view.addSubview(videoHostView)
 
         pipBridge.configure(in: view)
@@ -1560,8 +1569,9 @@ private final class MPVViewController: UIViewController {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         
-        // For videoHostView with centered anchor point, position at center
-        videoHostView.frame = bounds
+        // For videoHostView with centered anchor point (0.5, 0.5):
+        // Set bounds and position so layer fills the view
+        videoHostView.layer.bounds = CGRect(origin: .zero, size: bounds.size)
         videoHostView.layer.position = CGPoint(x: bounds.midX, y: bounds.midY)
         
         let renderLayer = videoHostView.renderLayer
