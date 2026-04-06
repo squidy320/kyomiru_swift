@@ -19,11 +19,16 @@ struct BrowseView: View {
             Theme.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                    VStack(alignment: .leading, spacing: 0) {
                         heroHeader
-                        LazyVStack(pinnedViews: [.sectionHeaders]) {
-                            Section(header: filterBar) {
-                                if let errorMessage {
+                            .if(!isPad) { view in
+                                view.ignoresSafeArea(edges: .top)
+                            }
+                        
+                        VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
+                            LazyVStack(pinnedViews: [.sectionHeaders]) {
+                                Section(header: filterBar) {
+                                    if let errorMessage {
                                     GlassCard {
                                         Text(errorMessage)
                                             .foregroundColor(Theme.textSecondary)

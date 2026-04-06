@@ -190,9 +190,12 @@ struct DetailsView: View {
                 ipadEpisodeLayout
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: screenSpacing) {
+                    VStack(alignment: .leading, spacing: 0) {
                         detailHeroHeader
-
+                            .if(!isPad) { view in
+                                view.ignoresSafeArea(edges: .top)
+                            }
+                        
                         VStack(alignment: .leading, spacing: screenSpacing) {
                             actionRow
 
