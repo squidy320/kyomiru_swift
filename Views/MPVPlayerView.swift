@@ -1563,28 +1563,33 @@ private final class MPVViewController: UIViewController {
         guard bounds.width > 0, bounds.height > 0 else { return }
         let layoutChanged = bounds != lastLayoutBounds
         lastLayoutBounds = bounds
-        AppLog.debug(.player, "updateRenderLayerLayout: bounds = \(bounds), layoutChanged = \(layoutChanged)")
+        AppLog.debug(.player, "updateRenderLayerLayout: bounds = \(bounds), layoutChanged = \(layoutChanged), videoHostView.superview = \(videoHostView.superview != nil ? "YES" : "NO")")
 
         // Ensure frame is updated before CA transaction
         videoHostView.frame = bounds
+        // Force immediate layout update
+        videoHostView.setNeedsLayout()
         videoHostView.layoutIfNeeded()
-        AppLog.debug(.player, "updateRenderLayerLayout: after setting videoHostView.frame, videoHostView.frame = \(videoHostView.frame), videoHostView.bounds = \(videoHostView.bounds)")
+        
+        AppLog.debug(.player, "updateRenderLayerLayout: after setting videoHostView.frame, videoHostView.frame = \(videoHostView.frame), videoHostView.bounds = \(videoHostView.bounds), videoHostView.layer.frame = \(videoHostView.layer.frame)")
         
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         
-        // Ensure renderLayer fills videoHostView  
+        // Ensure renderLayer exactly matches the videoHostView's bounds
         let renderLayer = videoHostView.renderLayer
         renderLayer.frame = videoHostView.bounds
-        renderLayer.position = CGPoint(x: 0, y: 0)
-        renderLayer.anchorPoint = CGPoint(x: 0, y: 0)
+        renderLayer.bounds = videoHostView.bounds
+        renderLayer.position = CGPoint(x: videoHostView.bounds.midX, y: videoHostView.bounds.midY)
+        renderLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        
         let scale = view.window?.windowScene?.screen.scale ?? view.contentScaleFactor
         renderLayer.contentsScale = scale
         renderLayer.drawableSize = CGSize(
             width: max(videoHostView.bounds.width * scale, 1),
             height: max(videoHostView.bounds.height * scale, 1)
         )
-        AppLog.debug(.player, "updateRenderLayerLayout: renderLayer.frame = \(renderLayer.frame), renderLayer.position = \(renderLayer.position), renderLayer.bounds = \(renderLayer.bounds)")
+        AppLog.debug(.player, "updateRenderLayerLayout: renderLayer.frame = \(renderLayer.frame), renderLayer.position = \(renderLayer.position), renderLayer.bounds = \(renderLayer.bounds), renderLayer.anchorPoint = \(renderLayer.anchorPoint)")
         CATransaction.commit()
 
         if let handle = mpvHandle {
