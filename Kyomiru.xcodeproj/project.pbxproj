@@ -10,6 +10,8 @@
         4F9D0B2A7C164E1E8A12B9F4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7E3A8C1B5D2F4A9C8B6E1D03 /* Assets.xcassets */; };
         9749FCDEB57240EABD536F98 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB03B22F525412691AD3912 /* RootView.swift */; };
         D4E5F60718293A4B5C6D7E8F /* NavigationShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* NavigationShell.swift */; };
+        5C97AFFC7DD823D160FB8E18 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B9DBA9411C2F769120D165B0 /* WebKit.framework */; };
+        1F1794364860EAEFCE63C284 /* JavaScriptCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 59848050E347612F09813FD7 /* JavaScriptCore.framework */; };
 		57D7D511708747C286FA1D14 /* AniListModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A722697BFB5416EA44A529C /* AniListModels.swift */; };
 		0AD981C75D824CAB83424331 /* SoraModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C36726A901F4A6BA25B8FED /* SoraModels.swift */; };
 		E1C2A3B4D5F60718293A4B5E /* EpisodeImportCandidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C2A3B4D5F60718293A4B5D /* EpisodeImportCandidate.swift */; };
@@ -84,6 +86,8 @@
 
 /* Begin PBXFileReference section */
         72071117F02B492EA7D8D08E /* Kyomiru.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Kyomiru.app; sourceTree = BUILT_PRODUCTS_DIR; };
+        B9DBA9411C2F769120D165B0 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+        59848050E347612F09813FD7 /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
         6AB03B22F525412691AD3912 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
         A1B2C3D4E5F60718293A4B5C /* NavigationShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationShell.swift; sourceTree = "<group>"; };
 		1A722697BFB5416EA44A529C /* AniListModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AniListModels.swift; sourceTree = "<group>"; };
