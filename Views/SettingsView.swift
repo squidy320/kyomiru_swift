@@ -433,13 +433,13 @@ private struct PlayerSettingsScreen: View {
 #if targetEnvironment(macCatalyst)
         [.avPlayer]
 #else
-        PlayerBackend.allCases
+        PlayerBackend.allCases.filter { $0 != .mpv }
 #endif
     }
 
     private var playerBackendSummary: String {
 #if targetEnvironment(macCatalyst)
-        return "Mac Catalyst currently uses AVPlayer because the shipped MPVKit binary does not include a Catalyst slice."
+        return "Mac Catalyst currently uses AVPlayer."
 #else
         return appState.settings.playerBackend.summary
 #endif
