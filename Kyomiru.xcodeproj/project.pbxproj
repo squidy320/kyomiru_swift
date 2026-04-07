@@ -68,6 +68,7 @@
         BCFACE101D36497780C276D3 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E6C6FE87AB947BE98547B90 /* LogsView.swift */; };
         C6372A0E92E24F3A9427C2A4 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEA74C0C38214FBC986C9022 /* PlayerView.swift */; };
         A1B2C3D4E5F60718293A4B6E /* MPVPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B6D /* MPVPlayerView.swift */; };
+        E1A2B3C4D5E6F708192A3B4D /* KSPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E6F708192A3B4C /* KSPlayerView.swift */; };
         92401A9DC859426A8AF69DF2 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0A90E57F6F44F0583A71822 /* SettingsView.swift */; };
         F3F3C1E6A0A94E34A29B1DEB /* UnwatchedBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF49C70551B440FF9A686940 /* UnwatchedBadge.swift */; };
         BD14A6AD0AE24C59ADB229A3 /* KyomiruApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2110ACC12DA4498F90623464 /* KyomiruApp.swift */; };
@@ -143,6 +144,7 @@
         2E6C6FE87AB947BE98547B90 /* LogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogsView.swift; sourceTree = "<group>"; };
         FEA74C0C38214FBC986C9022 /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
         A1B2C3D4E5F60718293A4B6D /* MPVPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MPVPlayerView.swift; sourceTree = "<group>"; };
+        E1A2B3C4D5E6F708192A3B4C /* KSPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KSPlayerView.swift; sourceTree = "<group>"; };
         E0A90E57F6F44F0583A71822 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
         CF49C70551B440FF9A686940 /* UnwatchedBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnwatchedBadge.swift; sourceTree = "<group>"; };
         2110ACC12DA4498F90623464 /* KyomiruApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KyomiruApp.swift; sourceTree = "<group>"; };
@@ -288,6 +290,7 @@
                 2E6C6FE87AB947BE98547B90 /* LogsView.swift */,
                 FEA74C0C38214FBC986C9022 /* PlayerView.swift */,
                 A1B2C3D4E5F60718293A4B6D /* MPVPlayerView.swift */,
+                E1A2B3C4D5E6F708192A3B4C /* KSPlayerView.swift */,
                 E0A90E57F6F44F0583A71822 /* SettingsView.swift */,
                 CF49C70551B440FF9A686940 /* UnwatchedBadge.swift */,
             );
@@ -455,6 +458,7 @@
                 BCFACE101D36497780C276D3 /* LogsView.swift in Sources */,
                 C6372A0E92E24F3A9427C2A4 /* PlayerView.swift in Sources */,
                 A1B2C3D4E5F60718293A4B6E /* MPVPlayerView.swift in Sources */,
+                E1A2B3C4D5E6F708192A3B4D /* KSPlayerView.swift in Sources */,
                 92401A9DC859426A8AF69DF2 /* SettingsView.swift in Sources */,
                 F3F3C1E6A0A94E34A29B1DEB /* UnwatchedBadge.swift in Sources */,
                 BD14A6AD0AE24C59ADB229A3 /* KyomiruApp.swift in Sources */,
