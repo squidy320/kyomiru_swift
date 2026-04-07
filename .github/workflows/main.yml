@@ -54,12 +54,17 @@ jobs:
         run: |
           python3 scripts/lint_interpolation.py
 
+      - name: Install CocoaPods Dependencies
+        run: |
+          gem install cocoapods
+          pod install
+
       - name: Build Archive (Unsigned)
         run: |
           set -e
           for attempt in 1 2; do
             xcodebuild archive \
-              -project Kyomiru.xcodeproj \
+              -workspace Kyomiru.xcworkspace \
               -scheme Kyomiru \
               -configuration Release \
               -sdk iphoneos \

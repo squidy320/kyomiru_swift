@@ -51,6 +51,11 @@ jobs:
         run: |
           python3 scripts/lint_interpolation.py
 
+      - name: Install CocoaPods Dependencies
+        run: |
+          gem install cocoapods
+          pod install
+
       - name: Remove MPVKit for Catalyst Build
         run: |
           python3 - <<'PY'
@@ -66,7 +71,7 @@ jobs:
         run: |
           set -e
           xcodebuild build \
-            -project Kyomiru.xcodeproj \
+            -workspace Kyomiru.xcworkspace \
             -scheme Kyomiru \
             -configuration Release \
             -destination 'generic/platform=macOS,variant=Mac Catalyst' \
