@@ -350,6 +350,7 @@
             name = Kyomiru;
 			packageProductDependencies = (
 				B3E8C6D4F1A24B7C9E0F1A2B /* Kingfisher */,
+				E2F3A4B5C6D7488990A1B2C3 /* KSPlayer */,
 				D1E2F3A4B5C6478899A0B1C2 /* MPVKit */,
 			);
             productName = Kyomiru;
@@ -368,6 +369,7 @@
             mainGroup = A1F6688393CD43E789FC9C3D;
 			packageReferences = (
 				A2D7F5B1C4A84D9E8F1B2C3D /* Kingfisher */,
+				F3A4B5C6D7E84990A1B2C3D4 /* KSPlayer */,
 				C1D2E3F4A5B6478899A0B1C2 /* MPVKit */,
 			);
             productRefGroup = A1F6688393CD43E789FC9C3D;
@@ -481,6 +483,14 @@
 				minimumVersion = 7.0.0;
 			};
 		};
+		F3A4B5C6D7E84990A1B2C3D4 /* KSPlayer */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kingslay/KSPlayer.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 		C1D2E3F4A5B6478899A0B1C2 /* MPVKit */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/mpvkit/MPVKit.git";
@@ -496,6 +506,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A2D7F5B1C4A84D9E8F1B2C3D /* Kingfisher */;
 			productName = Kingfisher;
+		};
+		E2F3A4B5C6D7488990A1B2C3 /* KSPlayer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F3A4B5C6D7E84990A1B2C3D4 /* KSPlayer */;
+			productName = KSPlayer;
 		};
 		D1E2F3A4B5C6478899A0B1C2 /* MPVKit */ = {
 			isa = XCSwiftPackageProductDependency;
