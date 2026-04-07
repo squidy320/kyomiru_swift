@@ -62,6 +62,16 @@ struct PlayerView: View {
                     sessionFallbackMessage = message
                     forceAVPlayerForSession = true
                 }
+            case .ksplayer:
+                KSPlayerScreen(
+                    episode: episode,
+                    sources: sources,
+                    mediaId: mediaId,
+                    malId: malId,
+                    mediaTitle: mediaTitle,
+                    startAt: startAt,
+                    onRestoreAfterPictureInPicture: onRestoreAfterPictureInPicture
+                )
             }
 #else
             Text("Playback is only supported on iOS.")

@@ -223,6 +223,7 @@ enum StreamingProvider: String, CaseIterable, Identifiable, Codable {
 enum PlayerBackend: String, CaseIterable, Identifiable {
     case avPlayer
     case mpv
+    case ksplayer
 
     var id: String { rawValue }
 
@@ -232,6 +233,8 @@ enum PlayerBackend: String, CaseIterable, Identifiable {
             return "AVPlayer"
         case .mpv:
             return "mpv"
+        case .ksplayer:
+            return "KSPlayer"
         }
     }
 
@@ -241,6 +244,8 @@ enum PlayerBackend: String, CaseIterable, Identifiable {
             return "Best iOS integration with Picture in Picture support."
         case .mpv:
             return "Advanced playback pipeline with broader codec and subtitle handling."
+        case .ksplayer:
+            return "Lightweight player with hardware acceleration support."
         }
     }
 }
