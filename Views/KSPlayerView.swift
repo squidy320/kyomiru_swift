@@ -1,11 +1,11 @@
 import SwiftUI
-#if os(iOS)
+#if os(iOS) && canImport(KSPlayer)
 import AVFoundation
 import UIKit
 import KSPlayer
 #endif
 
-#if os(iOS)
+#if os(iOS) && canImport(KSPlayer)
 struct KSPlayerScreen: View {
     let episode: SoraEpisode
     let sources: [SoraSource]
@@ -113,4 +113,36 @@ struct KSPlayerViewRepresentable: UIViewControllerRepresentable {
     }
 }
 
+#endif
+
+#if os(iOS) && !canImport(KSPlayer)
+struct KSPlayerScreen: View {
+    let episode: SoraEpisode
+    let sources: [SoraSource]
+    let mediaId: Int
+    let malId: Int?
+    let mediaTitle: String?
+    let startAt: Double?
+    let onRestoreAfterPictureInPicture: (() -> Void)?
+
+    var body: some View {
+        Color.black
+            .ignoresSafeArea()
+            .overlay {
+                VStack(spacing: 12) {
+                    Image(systemName: "play.slash.fill")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.9))
+                    Text("KSPlayer is not available in this build.")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("Switch the playback engine to AVPlayer or mpv.")
+                        .font(.system(size: 13))
+                        .foregroundColor(.white.opacity(0.72))
+                }
+                .multilineTextAlignment(.center)
+                .padding(24)
+            }
+    }
+}
 #endif
