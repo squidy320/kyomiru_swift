@@ -1791,8 +1791,6 @@ extension DownloadManager: @preconcurrency URLSessionDownloadDelegate {
 actor MediaConversionManager {
     static let shared = MediaConversionManager()
     private let conversionSemaphore = AsyncSemaphore(value: 1)
-    private static var ffmpegBuildconfChecked = false
-    private static var ffmpegHasVideoToolbox = false
 
     private struct MediaProbeResult {
         let format: String
@@ -1819,21 +1817,8 @@ actor MediaConversionManager {
             if inputURL.pathExtension.lowercased() == "mp4" {
                 return inputURL
             }
-
-            let outputURL = inputURL.deletingPathExtension().appendingPathExtension("mp4")
-            if FileManager.default.fileExists(atPath: outputURL.path) {
-                return outputURL
-            }
-
-            AppLog.debug(.downloads, "ffmpeg remux preferred start input=\(inputURL.path) output=\(outputURL.path)")
-            let output = try await convertToMp4WithFFmpeg(
-                inputURL: inputURL,
-                outputURL: outputURL,
-                progress: progress,
-                preferHardwareTranscode: false
-            )
-            AppLog.debug(.downloads, "ffmpeg remux preferred success output=\(output.path)")
-            return output
+            AppLog.error(.downloads, "media conversion unavailable after FFmpeg removal input=\(inputURL.path)")
+            throw ConversionError.exportFailed("media conversion is unavailable in this build")
         }
     }
 
@@ -1856,20 +1841,7 @@ actor MediaConversionManager {
     }
 
     private func ensureFFmpegBuildconfLogged() -> Bool {
-        if Self.ffmpegBuildconfChecked {
-            return Self.ffmpegHasVideoToolbox
-        }
-        Self.ffmpegBuildconfChecked = true
-        let session = FFmpegKit.execute("-buildconf")
-        let logs = session?.getAllLogsAsString() ?? ""
-        let hasVT = logs.localizedCaseInsensitiveContains("--enable-videotoolbox")
-        Self.ffmpegHasVideoToolbox = hasVT
-        let version = FFmpegKitConfig.getFFmpegVersion() ?? "unknown"
-        AppLog.debug(.downloads, "ffmpeg buildconf videotoolbox=\(hasVT ? "YES" : "NO") version=\(version)")
-        if !hasVT {
-            AppLog.error(.downloads, "ffmpeg buildconf missing videotoolbox; falling back to software decode/encode")
-        }
-        return hasVT
+        false
     }
 
     func remuxToMp4(
@@ -1878,15 +1850,9 @@ actor MediaConversionManager {
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> URL {
         try await withConversionPermit {
-            AppLog.debug(.downloads, "ffmpeg remux preferred start input=\(inputURL.path) output=\(outputURL.path)")
-            let output = try await convertToMp4WithFFmpeg(
-                inputURL: inputURL,
-                outputURL: outputURL,
-                progress: progress,
-                preferHardwareTranscode: false
-            )
-            AppLog.debug(.downloads, "ffmpeg remux preferred success output=\(output.path)")
-            return output
+            progress?(0)
+            AppLog.error(.downloads, "remux unavailable after FFmpeg removal input=\(inputURL.path) output=\(outputURL.path)")
+            throw ConversionError.exportFailed("remuxing is unavailable in this build")
         }
     }
 
@@ -1896,30 +1862,9 @@ actor MediaConversionManager {
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> URL {
         try await withConversionPermit {
-            do {
-                AppLog.debug(.downloads, "ffmpeg import remux preferred start input=\(inputURL.path) output=\(outputURL.path)")
-                let output = try await convertToMp4WithFFmpeg(
-                    inputURL: inputURL,
-                    outputURL: outputURL,
-                    progress: progress,
-                    preferHardwareTranscode: true,
-                    forceAudioReencode: true
-                )
-                AppLog.debug(.downloads, "ffmpeg import remux preferred success output=\(output.path)")
-                return output
-            } catch {
-                AppLog.error(.downloads, "ffmpeg import remux preferred failed input=\(inputURL.path) error=\(error.localizedDescription) fallback=vt")
-            }
-
-            do {
-                AppLog.debug(.downloads, "vt import remux start input=\(inputURL.path) output=\(outputURL.path)")
-                let output = try await convertWithVideoToolbox(inputURL: inputURL, outputURL: outputURL)
-                AppLog.debug(.downloads, "vt import remux success output=\(output.path)")
-                return output
-            } catch {
-                AppLog.error(.downloads, "vt import remux failed input=\(inputURL.path) error=\(error.localizedDescription)")
-            }
-            throw ConversionError.exportFailed("import conversion failed with ffmpeg and videotoolbox")
+            progress?(0)
+            AppLog.error(.downloads, "import remux unavailable after FFmpeg removal input=\(inputURL.path) output=\(outputURL.path)")
+            throw ConversionError.exportFailed("import conversion is unavailable in this build")
         }
     }
 
@@ -1930,68 +1875,10 @@ actor MediaConversionManager {
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> URL {
         try await withConversionPermit {
-            if FileManager.default.fileExists(atPath: outputURL.path) {
-                return outputURL
-            }
-
-            let playlistPath = playlistURL.absoluteString
-            let outputPath = outputURL.path
-            try? FileManager.default.removeItem(at: outputURL)
-            let tempOutput = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension("mp4")
-            try? FileManager.default.removeItem(at: tempOutput)
-
-            let headerString = buildHeaderString(headers)
-            let headerArg = headerString.isEmpty ? "" : "-headers \(quoted(value: headerString))"
-            let duration = await probeDurationSeconds(path: playlistPath)
-            let probe = await probeMedia(path: playlistPath)
-            let baseArgs = "-y -protocol_whitelist file,http,https,tcp,tls,crypto -allowed_extensions ALL -fflags +genpts+discardcorrupt+igndts -err_detect ignore_err -avoid_negative_ts make_zero -max_interleave_delta 0 -dn -sn \(headerArg) -i \(quoted(value: playlistPath)) -map 0:v:0? -map 0:a:0?"
-            let commandWithBsf = "\(baseArgs) -c:v copy -c:a copy -bsf:a aac_adtstoasc -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
-            let commandNoBsf = "\(baseArgs) -c:v copy -c:a copy -movflags +faststart -max_muxing_queue_size 1024 \(quoted(path: tempOutput.path))"
-            let canCopyVideo = probe.videoCodec.map(isMp4VideoCodecCompatible) ?? true
-            let canCopyAudio = probe.audioCodec.map(isAVPlayerSafeMp4AudioCodec) ?? true
-
-            AppLog.debug(.downloads, "ffmpeg hls start input=\(playlistPath) output=\(outputPath) duration=\(duration) headers=\(headerString.isEmpty ? 0 : headerString.count) format=\(probe.format) vcodec=\(probe.videoCodec ?? "none") acodec=\(probe.audioCodec ?? "none")")
-
-            if !canCopyVideo || !canCopyAudio {
-                let reason = "hls remux requires mp4-safe codecs vcodec=\(probe.videoCodec ?? "unknown") acodec=\(probe.audioCodec ?? "unknown")"
-                AppLog.error(.downloads, reason)
-                throw ConversionError.exportFailed(reason)
-            }
-
-            AppLog.debug(.downloads, "ffmpeg hls skipping instant mux; using AAC bitstream fix first")
-
-            let first = await runFFmpeg(commandWithBsf, duration: duration, progress: progress)
-            if ReturnCode.isSuccess(first.code) {
-                try? FileManager.default.removeItem(at: outputURL)
-                try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-                AppLog.debug(.downloads, "ffmpeg hls success (copy+bsf) output=\(outputPath)")
-                return outputURL
-            }
-            if ReturnCode.isCancel(first.code) {
-                AppLog.error(.downloads, "ffmpeg hls cancelled input=\(playlistPath)")
-                throw ConversionError.cancelled
-            }
-            logCopyFailure(label: "hls copy+bsf", result: first)
-
-            AppLog.error(.downloads, "ffmpeg hls failed with aac_adtstoasc, retrying without bsf input=\(playlistPath)")
-            let second = await runFFmpeg(commandNoBsf, duration: duration, progress: progress)
-            if ReturnCode.isSuccess(second.code) {
-                try? FileManager.default.removeItem(at: outputURL)
-                try? FileManager.default.moveItem(at: tempOutput, to: outputURL)
-                AppLog.debug(.downloads, "ffmpeg hls success (no bsf) output=\(outputPath)")
-                return outputURL
-            }
-            if ReturnCode.isCancel(second.code) {
-                AppLog.error(.downloads, "ffmpeg hls cancelled (no bsf) input=\(playlistPath)")
-                throw ConversionError.cancelled
-            }
-            logCopyFailure(label: "hls copy", result: second)
-            let message = second.logs ?? first.logs ?? "ffmpeg hls remux failed"
-            AppLog.error(.downloads, "ffmpeg hls failed input=\(playlistPath) error=\(message)")
-            try? FileManager.default.removeItem(at: outputURL)
-            throw ConversionError.exportFailed(message)
+            _ = headers
+            progress?(0)
+            AppLog.error(.downloads, "hls conversion unavailable after FFmpeg removal input=\(playlistURL.absoluteString) output=\(outputURL.path)")
+            throw ConversionError.exportFailed("HLS conversion is unavailable in this build")
         }
     }
 
@@ -2001,6 +1888,39 @@ actor MediaConversionManager {
         return try await work()
     }
 
+    private func probeMedia(path: String) async -> MediaProbeResult {
+        let asset = AVURLAsset(url: URL(fileURLWithPath: path), options: [
+            AVURLAssetPreferPreciseDurationAndTimingKey: false
+        ])
+        let format = URL(fileURLWithPath: path).pathExtension.lowercased()
+        let videoCodec = await firstCodecName(for: asset, mediaType: .video)
+        let audioCodec = await firstCodecName(for: asset, mediaType: .audio)
+        return MediaProbeResult(format: format, videoCodec: videoCodec, audioCodec: audioCodec)
+    }
+
+    private func firstCodecName(for asset: AVURLAsset, mediaType: AVMediaType) async -> String? {
+        guard let track = try? await asset.loadTracks(withMediaType: mediaType).first else {
+            return nil
+        }
+        guard let formatDescription = try? await track.load(.formatDescriptions).first else {
+            return nil
+        }
+        let mediaSubType = CMFormatDescriptionGetMediaSubType(formatDescription)
+        let bytes: [UInt8] = [
+            UInt8((mediaSubType >> 24) & 0xff),
+            UInt8((mediaSubType >> 16) & 0xff),
+            UInt8((mediaSubType >> 8) & 0xff),
+            UInt8(mediaSubType & 0xff)
+        ]
+        let codec = String(bytes: bytes, encoding: .ascii) ?? ""
+        return codec
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .lowercased()
+    }
+
+    #if false
     private func convertToMp4WithFFmpeg(
         inputURL: URL,
         outputURL: URL,
@@ -2528,6 +2448,7 @@ actor MediaConversionManager {
             }
         }
     }
+    #endif
 
     nonisolated static func describe(_ error: Error?) -> String {
         guard let error = error as NSError? else {
