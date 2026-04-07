@@ -6,7 +6,7 @@ import KSPlayer
 #endif
 
 #if os(iOS)
-private struct KSPlayerScreen: View {
+struct KSPlayerScreen: View {
     let episode: SoraEpisode
     let sources: [SoraSource]
     let mediaId: Int
@@ -29,7 +29,7 @@ private struct KSPlayerScreen: View {
     }
 }
 
-private struct KSPlayerViewRepresentable: UIViewControllerRepresentable {
+struct KSPlayerViewRepresentable: UIViewControllerRepresentable {
     let episode: SoraEpisode
     let sources: [SoraSource]
     let mediaId: Int
