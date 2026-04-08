@@ -433,7 +433,7 @@ private struct PlayerSettingsScreen: View {
 #if targetEnvironment(macCatalyst)
         [.avPlayer]
 #else
-        PlayerBackend.allCases.filter { $0 != .mpv }
+        PlayerBackend.allCases.filter { $0 != .ksplayer }
 #endif
     }
 

@@ -189,27 +189,6 @@
 		};
 /* End PBXCopyFilesBuildPhase section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		D7C8B9A0E1F24356A7B8C9D0 /* Sanitize Embedded Framework Bundle IDs */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Sanitize Embedded Framework Bundle IDs";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "APP_FRAMEWORKS_DIR=\"${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}/Frameworks\"\nif [ ! -d \"$APP_FRAMEWORKS_DIR\" ]; then\n  exit 0\nfi\n\nsanitize_identifier() {\n  local value=\"$1\"\n  value=$(printf '%s' \"$value\" | tr '[:upper:]' '[:lower:]')\n  value=$(printf '%s' \"$value\" | sed 's/[^a-z0-9.-]/-/g; s/\\.-/./g; s/-\\././g; s/--*/-/g; s/^[-.]*//; s/[-.]*$//')\n  printf '%s' \"$value\"\n}\n\nfor framework in \"$APP_FRAMEWORKS_DIR\"/*.framework; do\n  [ -d \"$framework\" ] || continue\n  plist=\"$framework/Info.plist\"\n  [ -f \"$plist\" ] || continue\n\n  identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"$plist\" 2>/dev/null || true)\n  if [ -z \"$identifier\" ]; then\n    continue\n  fi\n\n  if printf '%s' \"$identifier\" | grep -Eq '^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$'; then\n    continue\n  fi\n\n  framework_name=$(basename \"$framework\" .framework)\n  sanitized_name=$(sanitize_identifier \"$framework_name\")\n  sanitized_identifier=\"${PRODUCT_BUNDLE_IDENTIFIER}.framework.${sanitized_name}\"\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleIdentifier $sanitized_identifier\" \"$plist\"\n  echo \"Sanitized $framework_name CFBundleIdentifier -> $sanitized_identifier\"\ndone\n";
-		};
-/* End PBXShellScriptBuildPhase section */
-
 /* Begin PBXGroup section */
         A1F6688393CD43E789FC9C3D = {
             isa = PBXGroup;
@@ -362,7 +341,6 @@
                 0B91B2A9C00C4BCB8F83B690 /* Sources */,
                 61A1D0A9364F47778B137DBF /* Frameworks */,
 				CC11BB22CC33DD44EE55FF21 /* Embed Frameworks */,
-				D7C8B9A0E1F24356A7B8C9D0 /* Sanitize Embedded Framework Bundle IDs */,
                 35674947A872482CBA7B348E /* Resources */,
             );
             buildRules = (
@@ -372,7 +350,7 @@
             name = Kyomiru;
 			packageProductDependencies = (
 				B3E8C6D4F1A24B7C9E0F1A2B /* Kingfisher */,
-				E2F3A4B5C6D7488990A1B2C3 /* KSPlayer */,
+				D1E2F3A4B5C6478899A0B1C2 /* MPVKit */,
 			);
             productName = Kyomiru;
             productReference = 72071117F02B492EA7D8D08E /* Kyomiru.app */;
@@ -390,7 +368,7 @@
             mainGroup = A1F6688393CD43E789FC9C3D;
 			packageReferences = (
 				A2D7F5B1C4A84D9E8F1B2C3D /* Kingfisher */,
-				F3A4B5C6D7E84990A1B2C3D4 /* KSPlayer */,
+				C1D2E3F4A5B6478899A0B1C2 /* MPVKit */,
 			);
             productRefGroup = A1F6688393CD43E789FC9C3D;
             projectDirPath = "";
@@ -503,12 +481,12 @@
 				minimumVersion = 7.0.0;
 			};
 		};
-		F3A4B5C6D7E84990A1B2C3D4 /* KSPlayer */ = {
+		C1D2E3F4A5B6478899A0B1C2 /* MPVKit */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/kingslay/KSPlayer.git";
+			repositoryURL = "https://github.com/mpvkit/MPVKit.git";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -519,10 +497,10 @@
 			package = A2D7F5B1C4A84D9E8F1B2C3D /* Kingfisher */;
 			productName = Kingfisher;
 		};
-		E2F3A4B5C6D7488990A1B2C3 /* KSPlayer */ = {
+		D1E2F3A4B5C6478899A0B1C2 /* MPVKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = F3A4B5C6D7E84990A1B2C3D4 /* KSPlayer */;
-			productName = KSPlayer;
+			package = C1D2E3F4A5B6478899A0B1C2 /* MPVKit */;
+			productName = MPVKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 

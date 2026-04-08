@@ -4,7 +4,7 @@ final class SettingsState: ObservableObject {
     @AppStorage("settings.streamingProvider") private var streamingProviderRaw: String = StreamingProvider.animePahe.rawValue
     @AppStorage("settings.defaultAudio") private var defaultAudioRaw: String = "Sub"
     @AppStorage("settings.defaultQuality") private var defaultQualityRaw: String = "Auto"
-    @AppStorage("settings.playerBackend") private var playerBackendRaw: String = PlayerBackend.avPlayer.rawValue
+    @AppStorage("settings.playerBackend") private var playerBackendRaw: String = PlayerBackend.mpv.rawValue
     @AppStorage("settings.autoSyncAniList") private var autoSyncAniListRaw: Bool = true
     @AppStorage("settings.autoSkipSegments") private var autoSkipSegmentsRaw: Bool = false
     @AppStorage("settings.showPlayerDebugOverlay") private var showPlayerDebugOverlayRaw: Bool = false
@@ -43,11 +43,11 @@ final class SettingsState: ObservableObject {
 
     var playerBackend: PlayerBackend {
         get {
-            let stored = PlayerBackend(rawValue: playerBackendRaw) ?? .avPlayer
-            return stored == .mpv ? .avPlayer : stored
+            let stored = PlayerBackend(rawValue: playerBackendRaw) ?? .mpv
+            return stored == .ksplayer ? .mpv : stored
         }
         set {
-            playerBackendRaw = (newValue == .mpv ? PlayerBackend.avPlayer : newValue).rawValue
+            playerBackendRaw = (newValue == .ksplayer ? PlayerBackend.mpv : newValue).rawValue
             objectWillChange.send()
         }
     }
