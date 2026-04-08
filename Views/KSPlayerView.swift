@@ -70,7 +70,7 @@ struct KSPlayerViewRepresentable: UIViewControllerRepresentable {
 
     private func setupPlayback(playerView: IOSVideoPlayerView) {
         guard let source = sources.first else {
-            AppLog.error(.playback, "No sources available for KSPlayer")
+            AppLog.error(.player, "No sources available for KSPlayer")
             return
         }
 
@@ -81,7 +81,6 @@ struct KSPlayerViewRepresentable: UIViewControllerRepresentable {
         )
 
         var options = KSOptions()
-        options.isAutoPlay = true
         options.startPlayTime = startAt ?? 0
         options.hardwareDecode = true
 
@@ -93,18 +92,18 @@ struct KSPlayerViewRepresentable: UIViewControllerRepresentable {
 
         let definition = KSPlayerResourceDefinition(
             url: mediaURL,
-            definition: source.quality ?? "default",
+            definition: source.quality,
             options: options
         )
 
         let resource = KSPlayerResource(
-            name: mediaTitle ?? episode.title ?? "Episode \(episode.number)",
+            name: mediaTitle ?? "Episode \(episode.number)",
             definitions: [definition]
         )
 
         playerView.set(resource: resource)
 
-        AppLog.debug(.playback, "KSPlayer loading: \(mediaURL.absoluteString) (quality: \(source.quality ?? "default"))")
+        AppLog.debug(.player, "KSPlayer loading: \(mediaURL.absoluteString) (quality: \(source.quality))")
     }
 
     class Coordinator {

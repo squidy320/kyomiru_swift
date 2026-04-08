@@ -21,7 +21,7 @@ struct BrowseView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         heroHeader
-                            .if(!isPad) { view in
+                            .applyIf(!isPad) { view in
                                 view.ignoresSafeArea(edges: .top)
                             }
                         

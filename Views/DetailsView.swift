@@ -192,7 +192,7 @@ struct DetailsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         detailHeroHeader
-                            .if(!isPad) { view in
+                            .applyIf(!isPad) { view in
                                 view.ignoresSafeArea(edges: .top)
                             }
                         
