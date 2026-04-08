@@ -189,6 +189,27 @@
 		};
 /* End PBXCopyFilesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		D7C8B9A0E1F24356A7B8C9D0 /* Sanitize Embedded Framework Bundle IDs */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Sanitize Embedded Framework Bundle IDs";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "APP_FRAMEWORKS_DIR=\"${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}/Frameworks\"\nif [ ! -d \"$APP_FRAMEWORKS_DIR\" ]; then\n  exit 0\nfi\n\nsanitize_identifier() {\n  local value=\"$1\"\n  value=$(printf '%s' \"$value\" | tr '[:upper:]' '[:lower:]')\n  value=$(printf '%s' \"$value\" | sed 's/[^a-z0-9.-]/-/g; s/\\.-/./g; s/-\\././g; s/--*/-/g; s/^[-.]*//; s/[-.]*$//')\n  printf '%s' \"$value\"\n}\n\nfor framework in \"$APP_FRAMEWORKS_DIR\"/*.framework; do\n  [ -d \"$framework\" ] || continue\n  plist=\"$framework/Info.plist\"\n  [ -f \"$plist\" ] || continue\n\n  identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \"$plist\" 2>/dev/null || true)\n  if [ -z \"$identifier\" ]; then\n    continue\n  fi\n\n  if printf '%s' \"$identifier\" | grep -Eq '^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$'; then\n    continue\n  fi\n\n  framework_name=$(basename \"$framework\" .framework)\n  sanitized_name=$(sanitize_identifier \"$framework_name\")\n  sanitized_identifier=\"${PRODUCT_BUNDLE_IDENTIFIER}.framework.${sanitized_name}\"\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleIdentifier $sanitized_identifier\" \"$plist\"\n  echo \"Sanitized $framework_name CFBundleIdentifier -> $sanitized_identifier\"\ndone\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXGroup section */
         A1F6688393CD43E789FC9C3D = {
             isa = PBXGroup;
@@ -341,6 +362,7 @@
                 0B91B2A9C00C4BCB8F83B690 /* Sources */,
                 61A1D0A9364F47778B137DBF /* Frameworks */,
 				CC11BB22CC33DD44EE55FF21 /* Embed Frameworks */,
+				D7C8B9A0E1F24356A7B8C9D0 /* Sanitize Embedded Framework Bundle IDs */,
                 35674947A872482CBA7B348E /* Resources */,
             );
             buildRules = (
