@@ -1379,6 +1379,10 @@ final class DownloadManager: NSObject, ObservableObject {
         AppLog.debug(.downloads, "offline resolve path=\(localFile.path) exists=\(exists) isDir=\(localFile.hasDirectoryPath)")
 
         if ext == "ts", isMergedEpisodeFile(localFile, item: item) {
+            if let playlist = ensureSingleFilePlaylist(for: localFile) {
+                AppLog.debug(.downloads, "offline resolve using single-file playlist path=\(playlist.path)")
+                return playlist
+            }
             AppLog.debug(.downloads, "offline resolve using merged episode ts path=\(localFile.path)")
             return localFile
         }
@@ -1452,6 +1456,10 @@ final class DownloadManager: NSObject, ObservableObject {
 
         let mergedTs = localMergedHLSFileURL(for: item.title, episode: item.episode)
         if fm.fileExists(atPath: mergedTs.path) {
+            if let playlist = ensureSingleFilePlaylist(for: mergedTs) {
+                AppLog.debug(.downloads, "offline fallback using single-file playlist path=\(playlist.path)")
+                return playlist
+            }
             AppLog.debug(.downloads, "offline fallback using merged ts path=\(mergedTs.path)")
             return mergedTs
         }
@@ -1521,6 +1529,33 @@ final class DownloadManager: NSObject, ObservableObject {
             return playlist
         } catch {
             AppLog.error(.downloads, "offline playlist write failed path=\(playlist.path) error=\(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func ensureSingleFilePlaylist(for transportStream: URL) -> URL? {
+        guard fm.fileExists(atPath: transportStream.path) else { return nil }
+
+        let folder = transportStream.deletingLastPathComponent()
+        let playlist = folder.appendingPathComponent("\(transportStream.deletingPathExtension().lastPathComponent).m3u8")
+
+        let lines = [
+            "#EXTM3U",
+            "#EXT-X-VERSION:3",
+            "#EXT-X-PLAYLIST-TYPE:VOD",
+            "#EXT-X-TARGETDURATION:600",
+            "#EXTINF:600.0,",
+            transportStream.lastPathComponent,
+            "#EXT-X-ENDLIST"
+        ]
+
+        let text = lines.joined(separator: "\n")
+        do {
+            try text.data(using: .utf8)?.write(to: playlist, options: .atomic)
+            AppLog.debug(.downloads, "offline single-file playlist generated path=\(playlist.path)")
+            return playlist
+        } catch {
+            AppLog.error(.downloads, "offline single-file playlist write failed path=\(playlist.path) error=\(error.localizedDescription)")
             return nil
         }
     }
