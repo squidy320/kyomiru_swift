@@ -173,7 +173,7 @@ enum StreamingProvider: String, CaseIterable, Identifiable, Codable {
     var manifestURL: URL {
         switch self {
         case .animePahe:
-            return URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.json")!
+            return URL(string: "https://git.luna-app.eu/ibro/services/raw/branch/main/animepahe/animepahe.json")!
         case .animeKai:
             return URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animekai/animekai.json")!
         }
