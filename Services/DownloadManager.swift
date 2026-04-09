@@ -1303,7 +1303,7 @@ final class DownloadManager: NSObject, ObservableObject {
             }
 
             let outputURL = localMergedHLSFileURL(for: existing.title, episode: existing.episode)
-            let (compiledURL, totalDuration) = try await offlineManager.downloadAndMerge(
+            let (compiledURL, _) = try await offlineManager.downloadAndMerge(
                 playlistURL: playlistURL,
                 headers: [:],
                 outputURL: outputURL,
