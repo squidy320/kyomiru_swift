@@ -755,8 +755,9 @@ final class DownloadManager: NSObject, ObservableObject {
             do {
                 if ["mp4", "m4v", "mov"].contains(item.ext) {
                     let asset = AVAsset(url: item.tempURL)
-                    let hasVideo = !asset.tracks(withMediaType: .video).isEmpty
-                    if asset.isPlayable && hasVideo {
+                    let hasVideo = !(try await asset.loadTracks(withMediaType: .video)).isEmpty
+                    let isPlayable = try await asset.load(.isPlayable)
+                    if isPlayable && hasVideo {
                         try replaceItem(at: item.outputURL, with: item.tempURL, move: false)
                     } else {
                         failed.append("\(item.candidate.fileName) (unsupported codec)")
@@ -2159,7 +2160,7 @@ private struct PersistedDownload: Codable {
     }
 }
 
-extension DownloadManager: @preconcurrency URLSessionDownloadDelegate {
+extension DownloadManager: URLSessionDownloadDelegate {
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         Task { @MainActor in
             self.handleDidFinishDownload(task: downloadTask, location: location)
