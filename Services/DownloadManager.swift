@@ -1733,7 +1733,6 @@ final class DownloadManager: NSObject, ObservableObject {
     private func readAVAssetDuration(from fileURL: URL) -> Double? {
         let asset = AVURLAsset(url: fileURL, options: ["AVURLAssetOutOfBandMIMETypeKey": "video/mp2t"])
         let duration = asset.duration
-        guard duration.isValid && !duration.value.isNaN else { return nil }
         let seconds = CMTimeGetSeconds(duration)
         guard seconds.isFinite && seconds > 0 else { return nil }
         return seconds
