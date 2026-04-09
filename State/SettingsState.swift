@@ -2,6 +2,7 @@ import SwiftUI
 
 final class SettingsState: ObservableObject {
     @AppStorage("settings.streamingProvider") private var streamingProviderRaw: String = StreamingProvider.animePahe.rawValue
+    @AppStorage("settings.streamingModuleID") private var streamingModuleIDRaw: String = StreamingModuleStore.shared.selectedModuleID()
     @AppStorage("settings.defaultAudio") private var defaultAudioRaw: String = "Sub"
     @AppStorage("settings.defaultQuality") private var defaultQualityRaw: String = "Auto"
     @AppStorage("settings.playerBackend") private var playerBackendRaw: String = PlayerBackend.avPlayer.rawValue
@@ -26,11 +27,39 @@ final class SettingsState: ObservableObject {
     }
 
     var streamingProvider: StreamingProvider {
-        get { StreamingProvider(rawValue: streamingProviderRaw) ?? .animePahe }
+        get { streamingModule.behavior }
         set {
             streamingProviderRaw = newValue.rawValue
+            if let module = StreamingModuleStore.shared.modules().first(where: { $0.behavior == newValue }) {
+                streamingModuleIDRaw = module.id
+                StreamingModuleStore.shared.setSelectedModuleID(module.id)
+            }
             objectWillChange.send()
         }
+    }
+
+    var streamingModuleID: String {
+        get {
+            let selected = streamingModuleIDRaw
+            if StreamingModuleStore.shared.modules().contains(where: { $0.id == selected }) {
+                return selected
+            }
+            let fallback = StreamingModuleStore.shared.selectedModuleID()
+            if streamingModuleIDRaw != fallback {
+                streamingModuleIDRaw = fallback
+            }
+            return fallback
+        }
+        set {
+            streamingModuleIDRaw = newValue
+            StreamingModuleStore.shared.setSelectedModuleID(newValue)
+            streamingProviderRaw = (StreamingModuleStore.shared.module(id: newValue)?.behavior ?? .animePahe).rawValue
+            objectWillChange.send()
+        }
+    }
+
+    var streamingModule: StreamingModule {
+        StreamingModuleStore.shared.module(id: streamingModuleID) ?? StreamingModuleStore.shared.currentModule()
     }
 
     var defaultQuality: String {
