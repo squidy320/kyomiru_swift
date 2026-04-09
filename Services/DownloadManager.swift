@@ -110,6 +110,7 @@ actor OfflineDownloadManager {
         let baseURL: URL
         let usesByteRange: Bool
         let mediaSequence: Int
+        let totalDuration: Double
     }
 
     private let session: URLSession
@@ -128,7 +129,7 @@ actor OfflineDownloadManager {
         outputFolder: URL?,
         progress: ProgressHandler?,
         preferLocalHLS: Bool
-    ) async throws -> URL {
+    ) async throws -> (url: URL, duration: Double) {
         try Task.checkCancellation()
         let playlistData = try await fetchData(url: playlistURL, headers: headers)
         let resolved = try await resolveSegments(from: playlistData, baseURL: playlistURL, headers: headers)
@@ -145,9 +146,11 @@ actor OfflineDownloadManager {
                 AppLog.debug(.downloads, "byte-range playlist detected; forcing local HLS for reliable playback")
             }
             let folder = outputFolder ?? outputURL.deletingPathExtension().appendingPathExtension("hls")
-            return try await storeAsLocalHLS(resolved: resolved, outputFolder: folder, headers: headers, progress: progress)
+            let result = try await storeAsLocalHLS(resolved: resolved, outputFolder: folder, headers: headers, progress: progress)
+            return (url: result, duration: resolved.totalDuration)
         }
-        return try await mergeSegments(resolved: resolved, outputURL: finalOutputURL, headers: headers, progress: progress)
+        let result = try await mergeSegments(resolved: resolved, outputURL: finalOutputURL, headers: headers, progress: progress)
+        return (url: result, duration: resolved.totalDuration)
     }
 
     private func fetchData(url: URL, headers: [String: String]) async throws -> Data {
@@ -198,11 +201,17 @@ actor OfflineDownloadManager {
         segments.reserveCapacity(mediaLines.count)
         var currentKey: KeySpec?
         var sequence = mediaSequence
+        var totalDuration: Double = 0
 
         for line in lines {
             try Task.checkCancellation()
             if line.hasPrefix("#EXT-X-KEY:") {
                 currentKey = parseKeySpec(from: line, baseURL: baseURL)
+                continue
+            }
+            if line.hasPrefix("#EXTINF:") {
+                let duration = parseDuration(from: line)
+                totalDuration += duration
                 continue
             }
             if !line.hasPrefix("#") && !line.isEmpty {
@@ -222,7 +231,8 @@ actor OfflineDownloadManager {
             isFmp4: isFmp4,
             baseURL: baseURL,
             usesByteRange: usesByteRange,
-            mediaSequence: mediaSequence
+            mediaSequence: mediaSequence,
+            totalDuration: totalDuration
         )
     }
 
@@ -401,6 +411,13 @@ actor OfflineDownloadManager {
         guard let url = extractKeyURL(from: line, baseURL: baseURL) else { return nil }
         let iv = extractIV(from: line)
         return KeySpec(url: url, iv: iv)
+    }
+
+    private func parseDuration(from line: String) -> Double {
+        guard line.hasPrefix("#EXTINF:") else { return 0 }
+        let withoutPrefix = line.dropFirst("#EXTINF:".count)
+        let durationStr = withoutPrefix.split(separator: ",").first.map(String.init) ?? ""
+        return Double(durationStr.trimmingCharacters(in: .whitespaces)) ?? 0
     }
 
     private func extractIV(from line: String) -> Data? {
@@ -1121,7 +1138,7 @@ final class DownloadManager: NSObject, ObservableObject {
 
             AppLog.debug(.downloads, "hls offline compile start id=\(id)")
             setState(id: id, state: .downloadingHLS)
-            let output = try await offlineManager.downloadAndMerge(
+            let (outputURL, totalDuration) = try await offlineManager.downloadAndMerge(
                 playlistURL: url,
                 headers: headerPayload,
                 outputURL: mergedTs,
@@ -1132,14 +1149,19 @@ final class DownloadManager: NSObject, ObservableObject {
                         self?.refreshHLSMetrics(id: id)
                     }
                 },
-                preferLocalHLS: true
+                preferLocalHLS: false
             )
             updateProgress(id: id, progress: 1)
             refreshHLSMetrics(id: id)
-            updateCompletedHLSMetadata(id: id, folder: hlsFolder, playlist: output)
-            setState(id: id, state: .completed, localFile: output)
+            
+            if outputURL.pathExtension.lowercased() == "ts" {
+                _ = ensureSingleFilePlaylist(for: outputURL, duration: totalDuration)
+            }
+            
+            updateCompletedHLSMetadata(id: id, folder: hlsFolder, playlist: outputURL)
+            setState(id: id, state: .completed, localFile: outputURL)
             cleanupActiveWork(id: id)
-            AppLog.debug(.downloads, "hls local bundle complete id=\(id) output=\(output.path)")
+            AppLog.debug(.downloads, "hls local bundle complete id=\(id) output=\(outputURL.path)")
         } catch is CancellationError {
             AppLog.debug(.downloads, "hls download cancelled id=\(id)")
             markCancelled(id: id)
@@ -1281,7 +1303,7 @@ final class DownloadManager: NSObject, ObservableObject {
             }
 
             let outputURL = localMergedHLSFileURL(for: existing.title, episode: existing.episode)
-            let compiledURL = try await offlineManager.downloadAndMerge(
+            let (compiledURL, totalDuration) = try await offlineManager.downloadAndMerge(
                 playlistURL: playlistURL,
                 headers: [:],
                 outputURL: outputURL,
@@ -1703,18 +1725,21 @@ final class DownloadManager: NSObject, ObservableObject {
         return false
     }
 
-    private func ensureSingleFilePlaylist(for transportStream: URL) -> URL? {
+    private func ensureSingleFilePlaylist(for transportStream: URL, duration: Double? = nil) -> URL? {
         guard fm.fileExists(atPath: transportStream.path) else { return nil }
 
         let folder = transportStream.deletingLastPathComponent()
         let playlist = folder.appendingPathComponent("\(transportStream.deletingPathExtension().lastPathComponent).m3u8")
 
+        let actualDuration = duration ?? 600.0
+        let targetDuration = Int(ceil(actualDuration))
+
         let lines = [
             "#EXTM3U",
             "#EXT-X-VERSION:3",
             "#EXT-X-PLAYLIST-TYPE:VOD",
-            "#EXT-X-TARGETDURATION:600",
-            "#EXTINF:600.0,",
+            "#EXT-X-TARGETDURATION:\(targetDuration)",
+            "#EXTINF:\(actualDuration),",
             transportStream.lastPathComponent,
             "#EXT-X-ENDLIST"
         ]
@@ -1722,7 +1747,7 @@ final class DownloadManager: NSObject, ObservableObject {
         let text = lines.joined(separator: "\n")
         do {
             try text.data(using: .utf8)?.write(to: playlist, options: .atomic)
-            AppLog.debug(.downloads, "offline single-file playlist generated path=\(playlist.path)")
+            AppLog.debug(.downloads, "offline single-file playlist generated path=\(playlist.path) duration=\(actualDuration)")
             return playlist
         } catch {
             AppLog.error(.downloads, "offline single-file playlist write failed path=\(playlist.path) error=\(error.localizedDescription)")
