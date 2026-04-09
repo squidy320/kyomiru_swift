@@ -128,6 +128,9 @@ actor OfflineDownloadManager {
 
     private func fetchData(url: URL, headers: [String: String]) async throws -> Data {
         try Task.checkCancellation()
+        if url.isFileURL {
+            return try Data(contentsOf: url)
+        }
         var request = URLRequest(url: url)
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         let (data, response) = try await session.data(for: request)
@@ -263,7 +266,8 @@ actor OfflineDownloadManager {
             if !line.hasPrefix("#") && !line.isEmpty {
                 guard segmentIndex < resolved.segments.count else { continue }
                 let segmentURL = resolved.segments[segmentIndex].url
-                let localName = "segment_\(segmentIndex).ts"
+                let ext = segmentURL.pathExtension.isEmpty ? "ts" : segmentURL.pathExtension.lowercased()
+                let localName = "segment_\(segmentIndex).\(ext)"
                 segmentIndex += 1
                 let data = try await fetchData(url: segmentURL, headers: headers)
                 let localURL = baseFolder.appendingPathComponent(localName)
@@ -509,6 +513,7 @@ enum DownloadState: String, Codable {
     case queued
     case downloading
     case downloadingHLS
+    case compilingHLS
     case completed
     case failed
     case cancelled
@@ -522,6 +527,8 @@ enum DownloadState: String, Codable {
             self = .downloading
         case "downloading hls":
             self = .downloadingHLS
+        case "compiling hls":
+            self = .compilingHLS
         case "completed":
             self = .completed
         case "cancelled":
@@ -535,6 +542,8 @@ enum DownloadState: String, Codable {
                 self = .queued
             } else if normalized.contains("downloading hls") {
                 self = .downloadingHLS
+            } else if normalized.contains("compiling hls") {
+                self = .compilingHLS
             } else if normalized.contains("download") {
                 self = isHls ? .downloadingHLS : .downloading
             } else if normalized.contains("complete") {
@@ -547,7 +556,7 @@ enum DownloadState: String, Codable {
 
     var isActive: Bool {
         switch self {
-        case .queued, .downloading, .downloadingHLS:
+        case .queued, .downloading, .downloadingHLS, .compilingHLS:
             return true
         case .completed, .failed, .cancelled:
             return false
@@ -562,6 +571,8 @@ enum DownloadState: String, Codable {
             return "Downloading"
         case .downloadingHLS:
             return "Downloading HLS"
+        case .compilingHLS:
+            return "Compiling HLS"
         case .completed:
             return "Completed"
         case .failed:
@@ -670,7 +681,7 @@ final class DownloadManager: NSObject, ObservableObject {
                 continue
             }
             if fm.fileExists(atPath: outputURL.path) {
-                registerImportedEpisode(media: media, episode: episodeNumber, fileURL: outputURL)
+                registerImportedEpisode(media: media, episode: episodeNumber, fileURL: outputURL, isHls: ext == "m3u8")
                 imported += 1
                 continue
             }
@@ -755,7 +766,7 @@ final class DownloadManager: NSObject, ObservableObject {
                     continue
                 }
                 try? fm.removeItem(at: item.tempURL)
-                registerImportedEpisode(media: media, episode: item.episodeNumber, fileURL: item.outputURL)
+                registerImportedEpisode(media: media, episode: item.episodeNumber, fileURL: item.outputURL, isHls: item.ext == "m3u8")
                 imported += 1
             } catch {
                 failed.append("\(item.candidate.fileName) (import failed)")
@@ -923,9 +934,16 @@ final class DownloadManager: NSObject, ObservableObject {
 
     private func localHLSFolder(title: String, episode: Int) -> URL {
         let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let folder = base.appendingPathComponent("KyomiruDownloads/\(safe(title))/E\(episode)", isDirectory: true)
-        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder
+        return base.appendingPathComponent("KyomiruDownloads/\(safe(title))/Episode(\(episode))", isDirectory: true)
+    }
+
+    private func legacyHLSFolder(title: String, episode: Int) -> URL {
+        let base = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return base.appendingPathComponent("KyomiruDownloads/\(safe(title))/E\(episode)", isDirectory: true)
+    }
+
+    private func localHLSPlaylistURL(title: String, episode: Int) -> URL {
+        localHLSFolder(title: title, episode: episode).appendingPathComponent("playlist.m3u8")
     }
 
 
@@ -1042,6 +1060,10 @@ final class DownloadManager: NSObject, ObservableObject {
         hlsTasks[id] = nil
     }
 
+    func registerManagedHLSTask(id: String, task: Task<Void, Never>) {
+        hlsTasks[id] = task
+    }
+
     private func markCancelled(id: String) {
         clearTransientTransferState(id: id, preserveProgress: true)
         setState(id: id, state: .cancelled)
@@ -1058,6 +1080,10 @@ final class DownloadManager: NSObject, ObservableObject {
             let mergedTs = localMergedHLSFileURL(for: item.title, episode: item.episode)
             if fm.fileExists(atPath: mergedTs.path) {
                 AppLog.debug(.downloads, "hls merged ts exists id=\(id) path=\(mergedTs.path)")
+                if let idx = items.firstIndex(where: { $0.id == id }) {
+                    objectWillChange.send()
+                    items[idx].isHls = false
+                }
                 setState(id: id, state: .completed, localFile: mergedTs)
                 cleanupActiveWork(id: id)
                 return
@@ -1084,13 +1110,13 @@ final class DownloadManager: NSObject, ObservableObject {
                         self?.refreshHLSMetrics(id: id)
                     }
                 },
-                preferLocalHLS: false
+                preferLocalHLS: true
             )
             updateProgress(id: id, progress: 1)
             refreshHLSMetrics(id: id)
             setState(id: id, state: .completed, localFile: output)
             cleanupActiveWork(id: id)
-            AppLog.debug(.downloads, "hls offline compile complete id=\(id) output=\(output.path)")
+            AppLog.debug(.downloads, "hls local bundle complete id=\(id) output=\(output.path)")
         } catch is CancellationError {
             AppLog.debug(.downloads, "hls download cancelled id=\(id)")
             markCancelled(id: id)
@@ -1154,7 +1180,7 @@ final class DownloadManager: NSObject, ObservableObject {
                     }
                 }
             }
-        case .downloadingHLS:
+        case .downloadingHLS, .compilingHLS:
             hlsTasks[itemId]?.cancel()
         case .failed, .cancelled, .completed:
             break
@@ -1167,7 +1193,7 @@ final class DownloadManager: NSObject, ObservableObject {
         case .failed, .cancelled, .queued:
             cleanupPartialFiles(for: itemId, keepMetadata: true)
             startDownload(for: item)
-        case .downloading, .downloadingHLS, .completed:
+        case .downloading, .downloadingHLS, .compilingHLS, .completed:
             break
         }
     }
@@ -1189,6 +1215,100 @@ final class DownloadManager: NSObject, ObservableObject {
         }
     }
 
+    func isFolderBackedHLS(_ item: DownloadItem) -> Bool {
+        guard item.isHls else { return false }
+        if let localFile = item.localFile,
+           let folder = canonicalHLSFolderIfAvailable(localFile: localFile, item: item) {
+            return folder.pathExtension.isEmpty && fm.fileExists(atPath: folder.path)
+        }
+        return canonicalHLSFolderIfAvailable(localFile: nil, item: item) != nil
+    }
+
+    func canCompileFolderBackedHLS(_ item: DownloadItem) -> Bool {
+        guard isFolderBackedHLS(item),
+              let folder = canonicalHLSFolderIfAvailable(localFile: item.localFile, item: item) else {
+            return false
+        }
+        let segments = collectSegments(in: folder, prefix: nil)
+        return !segments.isEmpty && segments.allSatisfy { $0.pathExtension.lowercased() == "ts" }
+    }
+
+    func compileHLS(itemId: String) async throws {
+        guard let existing = item(for: itemId) else {
+            throw NSError(domain: "DownloadManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "download not found"])
+        }
+        guard existing.state == .completed, existing.isHls else {
+            throw NSError(domain: "DownloadManager", code: 400, userInfo: [NSLocalizedDescriptionKey: "download is not a completed HLS item"])
+        }
+        guard canCompileFolderBackedHLS(existing) else {
+            throw NSError(domain: "DownloadManager", code: 422, userInfo: [NSLocalizedDescriptionKey: "download cannot be compiled to .ts"])
+        }
+
+        let originalLocalFile = existing.localFile
+        let originalDownloadedBytes = existing.downloadedBytes
+        let originalTotalBytes = existing.totalBytes
+
+        clearTransientTransferState(id: itemId, preserveProgress: false)
+        setState(id: itemId, state: .compilingHLS)
+
+        do {
+            guard let playlistURL = playableURL(for: existing),
+                  playlistURL.pathExtension.lowercased() == "m3u8" else {
+                throw NSError(domain: "DownloadManager", code: 422, userInfo: [NSLocalizedDescriptionKey: "missing local HLS playlist"])
+            }
+
+            let outputURL = localMergedHLSFileURL(for: existing.title, episode: existing.episode)
+            let compiledURL = try await offlineManager.downloadAndMerge(
+                playlistURL: playlistURL,
+                headers: [:],
+                outputURL: outputURL,
+                outputFolder: nil,
+                progress: { [weak self] value in
+                    Task { @MainActor in
+                        self?.updateProgress(id: itemId, progress: value)
+                    }
+                },
+                preferLocalHLS: false
+            )
+
+            if let folder = canonicalHLSFolderIfAvailable(localFile: playlistURL, item: existing),
+               fm.fileExists(atPath: folder.path) {
+                try? fm.removeItem(at: folder)
+            }
+            let legacyFolder = legacyHLSFolder(title: existing.title, episode: existing.episode)
+            if fm.fileExists(atPath: legacyFolder.path) {
+                try? fm.removeItem(at: legacyFolder)
+            }
+
+            updateProgress(id: itemId, progress: 1)
+            if let idx = items.firstIndex(where: { $0.id == itemId }) {
+                objectWillChange.send()
+                items[idx].isHls = false
+                items[idx].localFile = compiledURL
+                items[idx].downloadedBytes = fileSize(at: compiledURL)
+                items[idx].totalBytes = items[idx].downloadedBytes
+                items[idx].speedBytesPerSec = nil
+            }
+            setState(id: itemId, state: .completed, localFile: compiledURL)
+            cleanupActiveWork(id: itemId)
+            AppLog.debug(.downloads, "hls compile complete id=\(itemId) output=\(compiledURL.path)")
+        } catch {
+            let restoredPlayable = originalLocalFile ?? localHLSPlaylistURL(title: existing.title, episode: existing.episode)
+            if let idx = items.firstIndex(where: { $0.id == itemId }) {
+                objectWillChange.send()
+                items[idx].localFile = restoredPlayable
+                items[idx].progress = 1
+                items[idx].downloadedBytes = originalDownloadedBytes
+                items[idx].totalBytes = originalTotalBytes
+                items[idx].speedBytesPerSec = nil
+            }
+            setState(id: itemId, state: .completed, localFile: restoredPlayable)
+            cleanupActiveWork(id: itemId)
+            AppLog.error(.downloads, "hls compile failed id=\(itemId) error=\(error.localizedDescription)")
+            throw error
+        }
+    }
+
     private func cleanupPartialFiles(for itemId: String, keepMetadata: Bool) {
         if let idx = items.firstIndex(where: { $0.id == itemId }) {
             if let localFile = items[idx].localFile {
@@ -1202,6 +1322,10 @@ final class DownloadManager: NSObject, ObservableObject {
             if fm.fileExists(atPath: hlsFolder.path) {
                 try? fm.removeItem(at: hlsFolder)
             }
+            let legacyFolder = legacyHLSFolder(title: items[idx].title, episode: items[idx].episode)
+            if fm.fileExists(atPath: legacyFolder.path) {
+                try? fm.removeItem(at: legacyFolder)
+            }
             if keepMetadata {
                 objectWillChange.send()
                 items[idx].localFile = nil
@@ -1210,6 +1334,7 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     func playableURL(for item: DownloadItem) -> URL? {
+        _ = migrateLegacyHLSIfNeeded(item: item)
         if let local = item.localFile {
             let resolved = resolvePlayableURL(localFile: local, item: item)
             if isVerifiedPlayablePath(resolved, item: item) {
@@ -1316,6 +1441,14 @@ final class DownloadManager: NSObject, ObservableObject {
                 items[idx].speedBytesPerSec = nil
                 didChange = true
             }
+            if items[idx].isHls,
+               let localFile = items[idx].localFile,
+               localFile.pathExtension.lowercased() == "ts",
+               !fm.fileExists(atPath: localHLSFolder(title: items[idx].title, episode: items[idx].episode).path),
+               !fm.fileExists(atPath: legacyHLSFolder(title: items[idx].title, episode: items[idx].episode).path) {
+                items[idx].isHls = false
+                didChange = true
+            }
         }
         if didChange {
             saveIndex()
@@ -1378,23 +1511,15 @@ final class DownloadManager: NSObject, ObservableObject {
         let exists = fm.fileExists(atPath: localFile.path)
         AppLog.debug(.downloads, "offline resolve path=\(localFile.path) exists=\(exists) isDir=\(localFile.hasDirectoryPath)")
 
-        if ext == "ts", isMergedEpisodeFile(localFile, item: item) {
-            if let playlist = ensureSingleFilePlaylist(for: localFile) {
-                AppLog.debug(.downloads, "offline resolve using single-file playlist path=\(playlist.path)")
-                return playlist
-            }
-            AppLog.debug(.downloads, "offline resolve using merged episode ts path=\(localFile.path)")
-            return localFile
-        }
-
         if item.isHls {
-            if let segmentFolder = findSegmentFolder(for: item, localFile: localFile),
-               let playlist = ensurePlaylist(forFolder: segmentFolder, prefix: nil) {
+            if let folder = canonicalHLSFolderIfAvailable(localFile: localFile, item: item),
+               let playlist = ensurePlaylist(forFolder: folder, prefix: nil) {
                 AppLog.debug(.downloads, "offline resolve using playlist path=\(playlist.path)")
                 return playlist
             }
             let candidateFolders = [
                 localHLSFolder(title: item.title, episode: item.episode),
+                legacyHLSFolder(title: item.title, episode: item.episode),
                 localFile.deletingPathExtension(),
                 localFile.deletingLastPathComponent()
             ]
@@ -1402,6 +1527,15 @@ final class DownloadManager: NSObject, ObservableObject {
                 let count = countSegments(in: folder, prefix: nil)
                 AppLog.debug(.downloads, "offline resolve candidate folder=\(folder.path) segments=\(count)")
             }
+        }
+
+        if ext == "ts", isMergedEpisodeFile(localFile, item: item) {
+            if let playlist = ensureSingleFilePlaylist(for: localFile) {
+                AppLog.debug(.downloads, "offline resolve using single-file playlist path=\(playlist.path)")
+                return playlist
+            }
+            AppLog.debug(.downloads, "offline resolve using merged episode ts path=\(localFile.path)")
+            return localFile
         }
 
         if !exists {
@@ -1446,6 +1580,7 @@ final class DownloadManager: NSObject, ObservableObject {
     }
 
     private func resolveFallbackPlayableURL(for item: DownloadItem) -> URL? {
+        _ = migrateLegacyHLSIfNeeded(item: item)
         let folder = localHLSFolder(title: item.title, episode: item.episode)
         if fm.fileExists(atPath: folder.path) {
             if let playlist = ensurePlaylist(forFolder: folder, prefix: nil) {
@@ -1456,10 +1591,6 @@ final class DownloadManager: NSObject, ObservableObject {
 
         let mergedTs = localMergedHLSFileURL(for: item.title, episode: item.episode)
         if fm.fileExists(atPath: mergedTs.path) {
-            if let playlist = ensureSingleFilePlaylist(for: mergedTs) {
-                AppLog.debug(.downloads, "offline fallback using single-file playlist path=\(playlist.path)")
-                return playlist
-            }
             AppLog.debug(.downloads, "offline fallback using merged ts path=\(mergedTs.path)")
             return mergedTs
         }
@@ -1497,6 +1628,33 @@ final class DownloadManager: NSObject, ObservableObject {
         return false
     }
 
+    private func ensureSingleFilePlaylist(for transportStream: URL) -> URL? {
+        guard fm.fileExists(atPath: transportStream.path) else { return nil }
+
+        let folder = transportStream.deletingLastPathComponent()
+        let playlist = folder.appendingPathComponent("\(transportStream.deletingPathExtension().lastPathComponent).m3u8")
+
+        let lines = [
+            "#EXTM3U",
+            "#EXT-X-VERSION:3",
+            "#EXT-X-PLAYLIST-TYPE:VOD",
+            "#EXT-X-TARGETDURATION:600",
+            "#EXTINF:600.0,",
+            transportStream.lastPathComponent,
+            "#EXT-X-ENDLIST"
+        ]
+
+        let text = lines.joined(separator: "\n")
+        do {
+            try text.data(using: .utf8)?.write(to: playlist, options: .atomic)
+            AppLog.debug(.downloads, "offline single-file playlist generated path=\(playlist.path)")
+            return playlist
+        } catch {
+            AppLog.error(.downloads, "offline single-file playlist write failed path=\(playlist.path) error=\(error.localizedDescription)")
+            return nil
+        }
+    }
+
     private func ensurePlaylist(forFolder folder: URL, prefix: String?) -> URL? {
         let playlist = folder.appendingPathComponent("playlist.m3u8")
         if fm.fileExists(atPath: playlist.path) {
@@ -1529,33 +1687,6 @@ final class DownloadManager: NSObject, ObservableObject {
             return playlist
         } catch {
             AppLog.error(.downloads, "offline playlist write failed path=\(playlist.path) error=\(error.localizedDescription)")
-            return nil
-        }
-    }
-
-    private func ensureSingleFilePlaylist(for transportStream: URL) -> URL? {
-        guard fm.fileExists(atPath: transportStream.path) else { return nil }
-
-        let folder = transportStream.deletingLastPathComponent()
-        let playlist = folder.appendingPathComponent("\(transportStream.deletingPathExtension().lastPathComponent).m3u8")
-
-        let lines = [
-            "#EXTM3U",
-            "#EXT-X-VERSION:3",
-            "#EXT-X-PLAYLIST-TYPE:VOD",
-            "#EXT-X-TARGETDURATION:600",
-            "#EXTINF:600.0,",
-            transportStream.lastPathComponent,
-            "#EXT-X-ENDLIST"
-        ]
-
-        let text = lines.joined(separator: "\n")
-        do {
-            try text.data(using: .utf8)?.write(to: playlist, options: .atomic)
-            AppLog.debug(.downloads, "offline single-file playlist generated path=\(playlist.path)")
-            return playlist
-        } catch {
-            AppLog.error(.downloads, "offline single-file playlist write failed path=\(playlist.path) error=\(error.localizedDescription)")
             return nil
         }
     }
@@ -1612,6 +1743,68 @@ final class DownloadManager: NSObject, ObservableObject {
         return name == "Episode(\(item.episode))"
     }
 
+    private func canonicalHLSFolderIfAvailable(localFile: URL?, item: DownloadItem) -> URL? {
+        let canonical = localHLSFolder(title: item.title, episode: item.episode)
+        if fm.fileExists(atPath: canonical.path) {
+            return canonical
+        }
+
+        if let localFile {
+            if localFile.hasDirectoryPath, fm.fileExists(atPath: localFile.path) {
+                return localFile
+            }
+            let parent = localFile.deletingLastPathComponent()
+            if parent.lastPathComponent == "Episode(\(item.episode))", fm.fileExists(atPath: parent.path) {
+                return parent
+            }
+        }
+
+        let legacy = legacyHLSFolder(title: item.title, episode: item.episode)
+        if fm.fileExists(atPath: legacy.path) {
+            return legacy
+        }
+        return nil
+    }
+
+    @discardableResult
+    private func migrateLegacyHLSIfNeeded(item: DownloadItem) -> URL? {
+        guard item.isHls else { return nil }
+
+        let canonical = localHLSFolder(title: item.title, episode: item.episode)
+        if fm.fileExists(atPath: canonical.path) {
+            let playlist = canonical.appendingPathComponent("playlist.m3u8")
+            if let idx = items.firstIndex(where: { $0.id == item.id }),
+               items[idx].localFile?.path != playlist.path,
+               fm.fileExists(atPath: playlist.path) {
+                objectWillChange.send()
+                items[idx].localFile = playlist
+                saveIndex()
+            }
+            return canonical
+        }
+
+        let legacy = legacyHLSFolder(title: item.title, episode: item.episode)
+        guard fm.fileExists(atPath: legacy.path) else { return nil }
+
+        do {
+            if fm.fileExists(atPath: canonical.path) {
+                try fm.removeItem(at: canonical)
+            }
+            try fm.moveItem(at: legacy, to: canonical)
+            let playlist = canonical.appendingPathComponent("playlist.m3u8")
+            if let idx = items.firstIndex(where: { $0.id == item.id }) {
+                objectWillChange.send()
+                items[idx].localFile = playlist
+                saveIndex()
+            }
+            AppLog.debug(.downloads, "offline hls migrated folder old=\(legacy.path) new=\(canonical.path)")
+            return canonical
+        } catch {
+            AppLog.error(.downloads, "offline hls migration failed old=\(legacy.path) new=\(canonical.path) error=\(error.localizedDescription)")
+            return legacy
+        }
+    }
+
     private func isEpisodeLikeSegment(_ url: URL) -> Bool {
         let name = url.deletingPathExtension().lastPathComponent
         guard name.hasPrefix("E") else { return false }
@@ -1647,9 +1840,16 @@ final class DownloadManager: NSObject, ObservableObject {
         return nil
     }
 
-    private func registerImportedEpisode(media: MediaItem, episode: Int, fileURL: URL) {
+    private func registerImportedEpisode(media: MediaItem, episode: Int, fileURL: URL, isHls: Bool = false) {
         let id = "\(media.title)|\(episode)|\(fileURL.absoluteString)"
-        let size = (try? fm.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber)?.int64Value
+        let size: Int64?
+        if isHls {
+            let folder = fileURL.deletingLastPathComponent()
+            let total = totalBytesOnDisk(at: folder)
+            size = total > 0 ? total : nil
+        } else {
+            size = (try? fm.attributesOfItem(atPath: fileURL.path)[.size] as? NSNumber)?.int64Value
+        }
         let item = DownloadItem(
             id: id,
             title: media.title,
@@ -1659,7 +1859,7 @@ final class DownloadManager: NSObject, ObservableObject {
             progress: 1.0,
             localFile: fileURL,
             status: "Completed",
-            isHls: false,
+            isHls: isHls,
             downloadedBytes: size,
             totalBytes: size,
             speedBytesPerSec: nil,
@@ -1714,7 +1914,8 @@ final class DownloadManager: NSObject, ObservableObject {
 
         var counts: [URL: Int] = [:]
         for case let fileURL as URL in enumerator {
-            guard fileURL.pathExtension.lowercased() == "ts" else { continue }
+            let ext = fileURL.pathExtension.lowercased()
+            guard ext == "ts" || ext == "m4s" else { continue }
             let folder = fileURL.deletingLastPathComponent()
             counts[folder, default: 0] += 1
         }

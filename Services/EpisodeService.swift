@@ -27,10 +27,11 @@ final class EpisodeService {
 
     func loadEpisodes(media: AniListMedia) async throws -> MatchLoadResult {
         AppLog.debug(.network, "episodes load start mediaId=\(media.id)")
-        let provider = StreamingProvider.current
-        let runtime = SoraRuntime(provider: provider)
+        let module = StreamingModuleStore.shared.currentModule()
+        let provider = module.behavior
+        let runtime = SoraRuntime(module: module)
 
-        if let stored = matchStore.match(for: media.id, provider: provider),
+        if let stored = matchStore.match(for: media.id, moduleID: module.id),
            let storedMatch = stored.asSoraMatch() {
             AppLog.debug(.matching, "using stored match mediaId=\(media.id) session=\(storedMatch.session) provider=\(provider.title) manual=\(stored.isManual)")
             do {
@@ -43,7 +44,7 @@ final class EpisodeService {
 
                 AppLog.debug(.matching, "stored match rejected mediaId=\(media.id) session=\(storedMatch.session) manual=\(stored.isManual) count=\(adjusted.count)")
                 matchStore.clear(mediaId: media.id)
-                return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, provider: provider, replaceExisting: false)
+                return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, moduleID: module.id, provider: provider, replaceExisting: false)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -52,16 +53,17 @@ final class EpisodeService {
                     throw CancellationError()
                 }
                 matchStore.clear(mediaId: media.id)
-                return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, provider: provider, replaceExisting: false)
+                return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, moduleID: module.id, provider: provider, replaceExisting: false)
             }
         }
 
-        return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, provider: provider, replaceExisting: true)
+        return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, moduleID: module.id, provider: provider, replaceExisting: true)
     }
 
     private func loadAutoMatchedEpisodes(
         media: AniListMedia,
         runtime: SoraRuntime,
+        moduleID: String,
         provider: StreamingProvider,
         replaceExisting: Bool
     ) async throws -> MatchLoadResult {
@@ -98,7 +100,7 @@ final class EpisodeService {
                     AppLog.debug(.matching, "auto match candidate rejected mediaId=\(media.id) session=\(match.session) provider=\(provider.title) count=\(adjusted.count) score=\(match.matchScore ?? 0)")
                     continue
                 }
-                matchStore.set(match: match, mediaId: media.id, isManual: false, provider: provider)
+                matchStore.set(match: match, mediaId: media.id, isManual: false, moduleID: moduleID, behavior: provider)
                 AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
                 return MatchLoadResult(match: match, episodes: adjusted, isManual: false)
             } catch is CancellationError {
@@ -114,15 +116,16 @@ final class EpisodeService {
 
     func loadSources(for episode: SoraEpisode) async throws -> [SoraSource] {
         AppLog.debug(.network, "sources load start episode=\(episode.number)")
-        let runtime = SoraRuntime(provider: .current)
+        let runtime = SoraRuntime(module: StreamingModuleStore.shared.currentModule())
         let sources = try await runtime.sources(for: episode)
         AppLog.debug(.network, "sources load success count=\(sources.count)")
         return sources
     }
 
     func searchCandidates(media: AniListMedia) async throws -> [SoraAnimeMatch] {
-        let provider = StreamingProvider.current
-        let runtime = SoraRuntime(provider: provider)
+        let module = StreamingModuleStore.shared.currentModule()
+        let provider = module.behavior
+        let runtime = SoraRuntime(module: module)
         let queries = TitleMatcher.buildQueries(for: media)
         AppLog.debug(.matching, "manual match search start mediaId=\(media.id) queries=\(queries.count)")
         var all: [SoraAnimeMatch] = []
@@ -137,8 +140,9 @@ final class EpisodeService {
     }
 
     func searchCandidates(query: String, media: AniListMedia? = nil) async throws -> [SoraAnimeMatch] {
-        let provider = StreamingProvider.current
-        let runtime = SoraRuntime(provider: provider)
+        let module = StreamingModuleStore.shared.currentModule()
+        let provider = module.behavior
+        let runtime = SoraRuntime(module: module)
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         AppLog.debug(.matching, "manual match search start query=\(trimmed)")
@@ -150,12 +154,14 @@ final class EpisodeService {
     }
 
     func setManualMatch(media: AniListMedia, match: SoraAnimeMatch) {
-        matchStore.set(match: match, mediaId: media.id, isManual: true, provider: .current)
+        let module = StreamingModuleStore.shared.currentModule()
+        matchStore.set(match: match, mediaId: media.id, isManual: true, moduleID: module.id, behavior: module.behavior)
     }
 
     func applyManualMatch(media: AniListMedia, match: SoraAnimeMatch) async throws -> MatchLoadResult {
-        let provider = StreamingProvider.current
-        let runtime = SoraRuntime(provider: provider)
+        let module = StreamingModuleStore.shared.currentModule()
+        let provider = module.behavior
+        let runtime = SoraRuntime(module: module)
         let episodes = try await runtime.episodes(for: match)
         let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media, provider: provider)
         guard isPlausibleEpisodeMatch(
@@ -168,7 +174,7 @@ final class EpisodeService {
             AppLog.debug(.matching, "manual match rejected mediaId=\(media.id) session=\(match.session) provider=\(provider.title) count=\(adjusted.count)")
             throw EpisodeMatchValidationError.implausibleEpisodes
         }
-        matchStore.set(match: match, mediaId: media.id, isManual: true, provider: provider)
+        matchStore.set(match: match, mediaId: media.id, isManual: true, moduleID: module.id, behavior: provider)
         AppLog.debug(.network, "manual match validated mediaId=\(media.id) session=\(match.session) count=\(adjusted.count)")
         return MatchLoadResult(match: match, episodes: adjusted, isManual: true)
     }

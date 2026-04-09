@@ -11,7 +11,7 @@ enum TitleMatcher {
     static func bestMatch(
         target: AniListMedia,
         candidates: [SoraAnimeMatch],
-        provider: StreamingProvider = .current
+        provider: StreamingProvider = StreamingModuleStore.shared.currentModule().behavior
     ) -> SoraAnimeMatch? {
         AppLog.debug(.matching, "best match start provider=\(provider.rawValue) mediaId=\(target.id) mediaTitle='\(target.title.best)' candidates=\(candidates.count)")
         let ranked = rankedCandidateEntries(target: target, candidates: candidates, provider: provider)
@@ -28,7 +28,7 @@ enum TitleMatcher {
     static func rankedCandidates(
         target: AniListMedia,
         candidates: [SoraAnimeMatch],
-        provider: StreamingProvider = .current
+        provider: StreamingProvider = StreamingModuleStore.shared.currentModule().behavior
     ) -> [SoraAnimeMatch] {
         rankedCandidateEntries(target: target, candidates: candidates, provider: provider).map(\.match)
     }
@@ -36,7 +36,7 @@ enum TitleMatcher {
     static func rankedCandidateEntries(
         target: AniListMedia,
         candidates: [SoraAnimeMatch],
-        provider: StreamingProvider = .current
+        provider: StreamingProvider = StreamingModuleStore.shared.currentModule().behavior
     ) -> [RankedCandidate] {
         let targetTitle = target.title.best
         let wantedSeason = extractSeasonNumber(from: targetTitle)
@@ -74,7 +74,7 @@ enum TitleMatcher {
         wantedSeason: Int?,
         targetYear: Int?,
         targetFormat: String?,
-        provider: StreamingProvider = .current
+        provider: StreamingProvider = StreamingModuleStore.shared.currentModule().behavior
     ) -> Double {
         let titleScore = titleSimilarity(
             candidateTitle: candidate.title,
@@ -298,18 +298,20 @@ enum TitleMatcher {
         return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func normalizedTitle(_ input: String, provider: StreamingProvider = .current) -> String {
+    static func normalizedTitle(_ input: String, provider: StreamingProvider = StreamingModuleStore.shared.currentModule().behavior) -> String {
         switch provider {
         case .animePahe:
             return cleanTitle(stripSeasonMarkers(input))
         case .animeKai:
             return cleanAnimeKaiTitle(input)
+        case .custom:
+            return cleanTitle(stripSeasonMarkers(input))
         }
     }
 
     static func dedupeCandidates(
         _ candidates: [SoraAnimeMatch],
-        provider: StreamingProvider = .current
+        provider: StreamingProvider = StreamingModuleStore.shared.currentModule().behavior
     ) -> [SoraAnimeMatch] {
         switch provider {
         case .animePahe:
@@ -340,6 +342,17 @@ enum TitleMatcher {
                 }
             }
             return bestByKey.values.sorted { lhs, rhs in
+                let left = lhs.matchScore ?? 0
+                let right = rhs.matchScore ?? 0
+                if left == right {
+                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                }
+                return left > right
+            }
+        case .custom:
+            let deduped = Dictionary(grouping: candidates, by: { $0.session })
+                .compactMap { $0.value.first }
+            return deduped.sorted { lhs, rhs in
                 let left = lhs.matchScore ?? 0
                 let right = rhs.matchScore ?? 0
                 if left == right {
@@ -557,6 +570,8 @@ enum TitleMatcher {
             for pattern in patterns {
                 out = out.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
             }
+        case .custom:
+            out = stripSeasonMarkers(out)
         }
         return out
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)

@@ -426,6 +426,8 @@ private struct DownloadsQueueView: View {
             return "Downloading"
         case .downloadingHLS:
             return "Downloading HLS"
+        case .compilingHLS:
+            return "Compiling HLS"
         case .completed:
             return "Completed"
         case .failed:
@@ -439,7 +441,7 @@ private struct DownloadsQueueView: View {
     private func actionRow(for item: DownloadItem) -> some View {
         HStack(spacing: 10) {
             switch item.state {
-            case .queued, .downloading, .downloadingHLS:
+            case .queued, .downloading, .downloadingHLS, .compilingHLS:
                 actionButton("Cancel", tint: Color.orange.opacity(0.85)) {
                     DownloadManager.shared.cancel(itemId: item.id)
                 }
@@ -475,7 +477,7 @@ private struct DownloadsQueueView: View {
             return Color.orange.opacity(0.9)
         case .completed:
             return Color.green.opacity(0.85)
-        case .queued, .downloading, .downloadingHLS:
+        case .queued, .downloading, .downloadingHLS, .compilingHLS:
             return Theme.textSecondary
         }
     }
@@ -617,6 +619,7 @@ private struct DownloadsDetailView: View {
     @State private var showImportReview = false
     @State private var importCandidates: [EpisodeImportCandidate] = []
     @State private var importMessage: String?
+    @State private var compileMessage: String?
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
 
     var body: some View {
@@ -701,6 +704,14 @@ private struct DownloadsDetailView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(importMessage ?? "")
+        }
+        .alert("Compile", isPresented: Binding(
+            get: { compileMessage != nil },
+            set: { _ in compileMessage = nil }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(compileMessage ?? "")
         }
         .task {
             loadCachedMetadata()
@@ -807,17 +818,24 @@ private struct DownloadsDetailView: View {
                     episodeNumber: item.episode,
                     title: meta?.title ?? "Episode \(item.episode)",
                     ratingText: nil,
-                    description: nil,
+                    description: item.isActiveState ? item.status : nil,
                     thumbnailURL: meta?.thumbnailURL,
-                    isPlayable: true,
+                    isPlayable: !item.isActiveState,
                     isWatched: isEpisodeWatched(item.episode),
                     isDownloaded: true,
                     isNew: false,
                     onTap: {
-                        play(item)
+                        if !item.isActiveState {
+                            play(item)
+                        }
                     }
                 )
                 .contextMenu {
+                    if !item.isActiveState && DownloadManager.shared.canCompileFolderBackedHLS(item) {
+                        Button("Compile to .ts") {
+                            compile(item)
+                        }
+                    }
                     Button("Delete") {
                         DownloadManager.shared.delete(itemId: item.id)
                     }
@@ -836,7 +854,9 @@ private struct DownloadsDetailView: View {
                     let title = meta?.title ?? "Episode \(item.episode)"
                     let subtitle = "Episode \(item.episode)"
                     Button {
-                        play(item)
+                        if !item.isActiveState {
+                            play(item)
+                        }
                     } label: {
                         DownloadEpisodeThumbCard(
                             title: title,
@@ -848,6 +868,11 @@ private struct DownloadsDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
+                        if !item.isActiveState && DownloadManager.shared.canCompileFolderBackedHLS(item) {
+                            Button("Compile to .ts") {
+                                compile(item)
+                            }
+                        }
                         Button("Delete") {
                             DownloadManager.shared.delete(itemId: item.id)
                         }
@@ -1117,6 +1142,18 @@ private struct DownloadsDetailView: View {
         selectedItem = latestItem
         playURL = resolved
         showPlayer = true
+    }
+
+    private func compile(_ item: DownloadItem) {
+        let task = Task { @MainActor in
+            do {
+                try await DownloadManager.shared.compileHLS(itemId: item.id)
+                compileMessage = "Compiled Episode \(item.episode) to .ts."
+            } catch {
+                compileMessage = error.localizedDescription
+            }
+        }
+        DownloadManager.shared.registerManagedHLSTask(id: item.id, task: task)
     }
 
     private func normalizedTitle(_ value: String) -> String {

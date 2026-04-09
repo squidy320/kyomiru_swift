@@ -1,12 +1,11 @@
 import SwiftUI
 
 final class SettingsState: ObservableObject {
-    @AppStorage("settings.streamingProvider") private var streamingProviderRaw: String = StreamingProvider.animePahe.rawValue
-    @AppStorage("settings.defaultAudio") private var defaultAudioRaw: String = "Sub"
-    @AppStorage("settings.defaultQuality") private var defaultQualityRaw: String = "Auto"
+    @AppStorage("settings.streamingModuleID") private var streamingModuleIDRaw: String = StreamingModuleStore.shared.selectedModuleID()
+    @AppStorage("settings.defaultAudio") private var defaultAudioRaw: String = AudioPreferenceOption.sub.rawValue
+    @AppStorage("settings.defaultQuality") private var defaultQualityRaw: String = QualityPreferenceOption.auto.rawValue
     @AppStorage("settings.playerBackend") private var playerBackendRaw: String = PlayerBackend.mpv.rawValue
     @AppStorage("settings.autoSyncAniList") private var autoSyncAniListRaw: Bool = true
-    @AppStorage("settings.autoSkipSegments") private var autoSkipSegmentsRaw: Bool = false
     @AppStorage("settings.showPlayerDebugOverlay") private var showPlayerDebugOverlayRaw: Bool = false
     @AppStorage("settings.playerSkipIntervalSeconds") private var playerSkipIntervalRaw: Double = 85
     @AppStorage("settings.playerHoldSpeed") private var playerHoldSpeedRaw: Double = PlayerHoldSpeed.twoX.rawValue
@@ -25,12 +24,17 @@ final class SettingsState: ObservableObject {
         }
     }
 
-    var streamingProvider: StreamingProvider {
-        get { StreamingProvider(rawValue: streamingProviderRaw) ?? .animePahe }
+    var streamingModuleID: String {
+        get { streamingModuleIDRaw }
         set {
-            streamingProviderRaw = newValue.rawValue
+            streamingModuleIDRaw = newValue
+            StreamingModuleStore.shared.setSelectedModuleID(newValue)
             objectWillChange.send()
         }
+    }
+
+    var streamingModule: StreamingModule {
+        StreamingModuleStore.shared.module(id: streamingModuleIDRaw) ?? StreamingModuleStore.shared.currentModule()
     }
 
     var defaultQuality: String {
@@ -56,14 +60,6 @@ final class SettingsState: ObservableObject {
         get { autoSyncAniListRaw }
         set {
             autoSyncAniListRaw = newValue
-            objectWillChange.send()
-        }
-    }
-
-    var autoSkipSegments: Bool {
-        get { autoSkipSegmentsRaw }
-        set {
-            autoSkipSegmentsRaw = newValue
             objectWillChange.send()
         }
     }
@@ -137,86 +133,6 @@ final class SettingsState: ObservableObject {
             accentColorGreenRaw = green
             accentColorBlueRaw = blue
             objectWillChange.send()
-        }
-    }
-}
-
-enum StreamingProvider: String, CaseIterable, Identifiable, Codable {
-    case animePahe
-    case animeKai
-
-    static let storageKey = "settings.streamingProvider"
-
-    static var current: StreamingProvider {
-        let raw = UserDefaults.standard.string(forKey: storageKey)
-        return StreamingProvider(rawValue: raw ?? "") ?? .animePahe
-    }
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .animePahe: return "AnimePahe"
-        case .animeKai: return "AnimeKai"
-        }
-    }
-
-    var summary: String {
-        switch self {
-        case .animePahe:
-            return "Fast direct API fallback when AnimePahe is healthy."
-        case .animeKai:
-            return "Luna-powered AnimeKai source with alternate search, episodes, and streams."
-        }
-    }
-
-    var manifestURL: URL {
-        switch self {
-        case .animePahe:
-            return URL(string: "https://git.luna-app.eu/ibro/services/raw/branch/main/animepahe/animepahe.json")!
-        case .animeKai:
-            return URL(string: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animekai/animekai.json")!
-        }
-    }
-
-    var fallbackMetadata: ServiceMetadata {
-        switch self {
-        case .animePahe:
-            return ServiceMetadata(
-                sourceName: "AnimePahe",
-                author: .init(
-                    name: "50/50",
-                    icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3122kQwublLkZ6rf1fEpUP79BxZOFmH9BSA&s"
-                ),
-                iconUrl: "https://files.catbox.moe/fu5sq7.png",
-                version: "1.0.1",
-                language: "English",
-                baseUrl: "https://animepahe.si/",
-                streamType: "HLS",
-                quality: "1080p",
-                searchBaseUrl: "https://animepahe.si/",
-                scriptUrl: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.js",
-                softsub: true,
-                type: "anime"
-            )
-        case .animeKai:
-            return ServiceMetadata(
-                sourceName: "AnimeKai",
-                author: .init(
-                    name: "50/50",
-                    icon: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3122kQwublLkZ6rf1fEpUP79BxZOFmH9BSA&s"
-                ),
-                iconUrl: "https://apktodo.io/uploads/2025/5/animekai-icon.jpg",
-                version: "1.0.1",
-                language: "English",
-                baseUrl: "https://animekai.to/",
-                streamType: "HLS",
-                quality: "1080p",
-                searchBaseUrl: "https://animekai.to/",
-                scriptUrl: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animekai/animekai.js",
-                softsub: false,
-                type: "anime"
-            )
         }
     }
 }

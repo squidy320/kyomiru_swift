@@ -121,8 +121,8 @@ struct SettingsView: View {
                         onRefreshExtensions: { force in
                             await refreshExtensions(force: force)
                         },
-                        onApplyExtensionUpdate: { provider in
-                            await applyExtensionUpdate(for: provider)
+                        onApplyExtensionUpdate: { moduleID in
+                            await applyExtensionUpdate(for: moduleID)
                         }
                     )
                     .environmentObject(appState)
@@ -185,7 +185,7 @@ struct SettingsView: View {
                 .foregroundColor(Theme.textSecondary)
 
             HStack(spacing: 8) {
-                settingsTag(appState.settings.streamingProvider.title)
+                settingsTag(appState.settings.streamingModule.title)
                 settingsTag(appState.settings.playerBackend.title)
                 settingsTag(appState.settings.appearanceThemeMode.title)
             }
@@ -208,7 +208,7 @@ struct SettingsView: View {
                 icon: "play.fill",
                 iconColor: .white,
                 title: "Player",
-                value: "\(appState.settings.streamingProvider.title) / \(appState.settings.playerBackend.title)",
+                value: "\(appState.settings.streamingModule.title) / \(appState.settings.playerBackend.title)",
                 destination: .player
             )
         ]
@@ -304,14 +304,14 @@ struct SettingsView: View {
         isRefreshingExtensions = false
     }
 
-    private func applyExtensionUpdate(for provider: StreamingProvider) async {
+    private func applyExtensionUpdate(for moduleID: String) async {
         isRefreshingExtensions = true
         do {
-            let updated = try await appState.services.streamingExtensionManager.update(provider: provider)
+            let updated = try await appState.services.streamingExtensionManager.update(moduleID: moduleID)
             extensionRecords = appState.services.streamingExtensionManager.installedRecords()
-            extensionStatusMessage = "\(updated.provider.title) updated to \(updated.installedVersion)."
+            extensionStatusMessage = "\(updated.title) updated to \(updated.installedVersion)."
         } catch {
-            extensionStatusMessage = "Failed to update \(provider.title)."
+            extensionStatusMessage = "Failed to update module."
         }
         isRefreshingExtensions = false
     }
@@ -322,23 +322,29 @@ private struct PlayerSettingsScreen: View {
     @Binding var extensionRecords: [StreamingExtensionRecord]
     @Binding var isRefreshingExtensions: Bool
     let onRefreshExtensions: (Bool) async -> Void
-    let onApplyExtensionUpdate: (StreamingProvider) async -> Void
+    let onApplyExtensionUpdate: (String) async -> Void
+    @State private var showModuleEditor = false
+    @State private var editingModule: StreamingModule?
+    @State private var moduleNameDraft = ""
+    @State private var moduleJSONDraft = ""
+    @State private var editorBehavior: StreamingProvider = .custom
+    @State private var editorMessage: String?
 
     var body: some View {
         SettingsDetailScroll(title: "Player") {
             LunaSettingsSection(title: "Streaming Defaults", subtitle: "Applied automatically when a matching source exists.") {
                 VStack(alignment: .leading, spacing: 12) {
                     Picker("Streaming Source", selection: Binding(
-                        get: { appState.settings.streamingProvider },
-                        set: { appState.settings.streamingProvider = $0 }
+                        get: { appState.settings.streamingModuleID },
+                        set: { appState.settings.streamingModuleID = $0 }
                     )) {
-                        ForEach(StreamingProvider.allCases) { provider in
-                            Text(provider.title).tag(provider)
+                        ForEach(StreamingModuleStore.shared.modules()) { module in
+                            Text(module.title).tag(module.id)
                         }
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
 
-                    Text(appState.settings.streamingProvider.summary)
+                    Text(appState.settings.streamingModule.summary)
                         .font(.system(size: 12))
                         .foregroundColor(Theme.textSecondary)
 
@@ -362,7 +368,7 @@ private struct PlayerSettingsScreen: View {
                             get: { appState.settings.defaultAudio },
                             set: { appState.settings.defaultAudio = $0 }
                         ),
-                        options: ["Sub", "Dub", "Any"]
+                        options: AudioPreferenceOption.allCases.map(\.rawValue)
                     )
 
                     settingsPickerRow(
@@ -371,14 +377,8 @@ private struct PlayerSettingsScreen: View {
                             get: { appState.settings.defaultQuality },
                             set: { appState.settings.defaultQuality = $0 }
                         ),
-                        options: ["Auto", "1080p", "720p", "360p"]
+                        options: QualityPreferenceOption.allCases.map(\.rawValue)
                     )
-
-                    Toggle("Auto-Skip Segments", isOn: Binding(
-                        get: { appState.settings.autoSkipSegments },
-                        set: { appState.settings.autoSkipSegments = $0 }
-                    ))
-                    .foregroundColor(.white)
                 }
             }
 
@@ -400,6 +400,10 @@ private struct PlayerSettingsScreen: View {
                         Text(isRefreshingExtensions ? "Checking for updates..." : "Installed Sources")
                             .foregroundColor(.white)
                         Spacer()
+                        Button("Add Module") {
+                            beginEditingModule(nil)
+                        }
+                        .buttonStyle(.bordered)
                         Button(isRefreshingExtensions ? "Checking..." : "Check Updates") {
                             Task { await onRefreshExtensions(true) }
                         }
@@ -411,14 +415,64 @@ private struct PlayerSettingsScreen: View {
                         StreamingExtensionCard(
                             record: record,
                             isRefreshingExtensions: isRefreshingExtensions,
-                            isActive: appState.settings.streamingProvider == record.provider,
+                            isActive: appState.settings.streamingModuleID == record.moduleID,
                             onApply: {
-                                Task { await onApplyExtensionUpdate(record.provider) }
+                                Task { await onApplyExtensionUpdate(record.moduleID) }
+                            },
+                            onSelect: {
+                                appState.settings.streamingModuleID = record.moduleID
+                            },
+                            onEdit: {
+                                beginEditingModule(StreamingModuleStore.shared.module(id: record.moduleID))
+                            },
+                            onDelete: {
+                                StreamingModuleStore.shared.deleteModule(id: record.moduleID)
+                                extensionRecords = appState.services.streamingExtensionManager.installedRecords()
+                                if appState.settings.streamingModuleID == record.moduleID {
+                                    appState.settings.streamingModuleID = StreamingModuleStore.shared.selectedModuleID()
+                                }
                             }
                         )
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showModuleEditor) {
+            NavigationStack {
+                Form {
+                    Section("Module") {
+                        TextField("Display Name", text: $moduleNameDraft)
+                        Picker("Behavior", selection: $editorBehavior) {
+                            Text("AnimePahe").tag(StreamingProvider.animePahe)
+                            Text("AnimeKai").tag(StreamingProvider.animeKai)
+                            Text("Custom").tag(StreamingProvider.custom)
+                        }
+                        .disabled(editingModule?.isBuiltIn == true)
+                    }
+                    Section("Manifest JSON") {
+                        TextEditor(text: $moduleJSONDraft)
+                            .frame(minHeight: 280)
+                            .font(.system(.body, design: .monospaced))
+                    }
+                }
+                .navigationTitle(editingModule == nil ? "Add Module" : "Edit Module")
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") { showModuleEditor = false }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Save") { saveEditedModule() }
+                    }
+                }
+            }
+        }
+        .alert("Module", isPresented: Binding(
+            get: { editorMessage != nil },
+            set: { _ in editorMessage = nil }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(editorMessage ?? "")
         }
         .onAppear {
 #if targetEnvironment(macCatalyst)
@@ -426,6 +480,33 @@ private struct PlayerSettingsScreen: View {
                 appState.settings.playerBackend = .avPlayer
             }
 #endif
+        }
+    }
+
+    private func beginEditingModule(_ module: StreamingModule?) {
+        editingModule = module
+        moduleNameDraft = module?.title ?? ""
+        moduleJSONDraft = module?.manifestJSON ?? ""
+        editorBehavior = module?.behavior ?? .custom
+        showModuleEditor = true
+    }
+
+    private func saveEditedModule() {
+        do {
+            let saved = try StreamingModuleStore.shared.upsertModule(
+                moduleID: editingModule?.id,
+                name: moduleNameDraft,
+                behavior: editorBehavior,
+                manifestJSON: moduleJSONDraft,
+                manifestURLString: editingModule?.manifestURLString
+            )
+            extensionRecords = appState.services.streamingExtensionManager.installedRecords()
+            if editingModule == nil {
+                appState.settings.streamingModuleID = saved.id
+            }
+            showModuleEditor = false
+        } catch {
+            editorMessage = error.localizedDescription
         }
     }
 
@@ -761,6 +842,9 @@ private struct StreamingExtensionCard: View {
     let isRefreshingExtensions: Bool
     let isActive: Bool
     let onApply: () -> Void
+    let onSelect: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
@@ -768,13 +852,16 @@ private struct StreamingExtensionCard: View {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        Text(record.provider.title)
+                        Text(record.title)
                             .foregroundColor(.white)
                         if isActive {
                             statusTag("Active")
                         }
                         if record.hasUpdate {
                             statusTag("Update")
+                        }
+                        if record.isBuiltIn {
+                            statusTag("Built-in")
                         }
                     }
                     Text("Installed \(record.installedVersion)" + (record.remoteVersion.map { " - Remote \($0)" } ?? ""))
@@ -783,16 +870,32 @@ private struct StreamingExtensionCard: View {
                 }
 
                 Spacer()
-
-                Button(record.hasUpdate ? "Update" : "Reinstall", action: onApply)
-                    .buttonStyle(.bordered)
-                    .disabled(isRefreshingExtensions)
             }
 
             Text(record.scriptURL.absoluteString)
                 .font(.system(size: 11))
                 .foregroundColor(Theme.textSecondary)
                 .textSelection(.enabled)
+
+            HStack {
+                Button(isActive ? "Selected" : "Use", action: onSelect)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isActive)
+
+                Button("Edit", action: onEdit)
+                    .buttonStyle(.bordered)
+
+                if record.sourceURL != nil {
+                    Button(record.hasUpdate ? "Update" : "Refresh", action: onApply)
+                        .buttonStyle(.bordered)
+                        .disabled(isRefreshingExtensions)
+                }
+
+                if !record.isBuiltIn {
+                    Button("Delete", role: .destructive, action: onDelete)
+                        .buttonStyle(.bordered)
+                }
+            }
         }
         .padding(.vertical, 4)
         .platformHoverLift(reduceMotion: appState.settings.reduceMotion)

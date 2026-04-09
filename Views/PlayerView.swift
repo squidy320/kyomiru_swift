@@ -359,11 +359,6 @@ private struct AVPlayerScreen: View {
                 applyPendingResumeIfNeeded(reason: "playbackAdvanced")
             }
             updateActiveSkip(at: seconds)
-            
-            if appState.settings.autoSkipSegments, let active = activeSkip {
-                AppLog.debug(.player, "aniskip: auto-skipping type=\(active.type)")
-                seekToSkipEnd(active)
-            }
 
             if isSeeking { return }
             let duration = player.currentItem?.duration.seconds ?? 0

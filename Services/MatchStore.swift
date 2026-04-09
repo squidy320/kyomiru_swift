@@ -9,15 +9,15 @@ final class MatchStore {
 
     private init() {}
 
-    func match(for mediaId: Int, provider: StreamingProvider = .current) -> StoredMatch? {
+    func match(for mediaId: Int, moduleID: String = StreamingModuleStore.shared.selectedModuleID()) -> StoredMatch? {
         let map = loadMap()
         guard let stored = map[String(mediaId)] else { return nil }
-        let storedProvider = StreamingProvider(rawValue: stored.provider ?? "") ?? .animePahe
-        guard storedProvider == provider else { return nil }
+        let storedModuleID = stored.moduleID ?? StreamingModuleStore.shared.migrateMatchProvider(stored.provider)
+        guard storedModuleID == moduleID else { return nil }
         return stored
     }
 
-    func set(match: SoraAnimeMatch, mediaId: Int, isManual: Bool, provider: StreamingProvider = .current) {
+    func set(match: SoraAnimeMatch, mediaId: Int, isManual: Bool, moduleID: String, behavior: StreamingProvider) {
         var map = loadMap()
         let stored = StoredMatch(
             mediaId: mediaId,
@@ -28,13 +28,14 @@ final class MatchStore {
             year: match.year,
             format: match.format,
             episodeCount: match.episodeCount,
-            provider: provider.rawValue,
+            provider: behavior.rawValue,
+            moduleID: moduleID,
             isManual: isManual,
             updatedAt: Date().timeIntervalSince1970
         )
         map[String(mediaId)] = stored
         saveMap(map)
-        AppLog.debug(.matching, "match saved mediaId=\(mediaId) session=\(match.session) provider=\(provider.title) manual=\(isManual)")
+        AppLog.debug(.matching, "match saved mediaId=\(mediaId) session=\(match.session) module=\(moduleID) manual=\(isManual)")
     }
 
     func clear(mediaId: Int) {
@@ -69,6 +70,7 @@ struct StoredMatch: Codable, Hashable {
     let format: String?
     let episodeCount: Int?
     let provider: String?
+    let moduleID: String?
     let isManual: Bool
     let updatedAt: TimeInterval
 

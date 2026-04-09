@@ -8,6 +8,7 @@ struct SourceModuleStreamResult {
 
 private struct SourceProviderConfiguration {
     let provider: StreamingProvider
+    let moduleID: String
     let sourceURL: URL
     let scriptURL: URL
     let baseURL: URL
@@ -20,17 +21,19 @@ private struct SourceProviderConfiguration {
     let sourceTimeout: Double
     let logKey: String
 
-    static func make(for provider: StreamingProvider) -> SourceProviderConfiguration {
-        let resolvedMetadata = StreamingExtensionManager.cachedMetadata(for: provider) ?? provider.fallbackMetadata
-        let resolvedScriptURL = URL(string: resolvedMetadata.scriptUrl)
-            ?? URL(string: provider.fallbackMetadata.scriptUrl)!
-        let resolvedBaseURL = URL(string: resolvedMetadata.baseUrl)
-            ?? URL(string: provider.fallbackMetadata.baseUrl)!
-        switch provider {
+    static func make(for module: StreamingModule) -> SourceProviderConfiguration {
+        let resolvedMetadata = module.metadata
+        let fallbackScriptURL = URL(string: resolvedMetadata.scriptUrl) ?? URL(string: "https://example.com")!
+        let fallbackBaseURL = URL(string: resolvedMetadata.baseUrl) ?? URL(string: "https://example.com")!
+        let resolvedScriptURL = URL(string: resolvedMetadata.scriptUrl) ?? fallbackScriptURL
+        let resolvedBaseURL = URL(string: resolvedMetadata.baseUrl) ?? fallbackBaseURL
+        let sourceURL = module.manifestURL ?? URL(string: "local://\(module.id)")!
+        switch module.behavior {
         case .animePahe:
             return SourceProviderConfiguration(
                 provider: .animePahe,
-                sourceURL: provider.manifestURL,
+                moduleID: module.id,
+                sourceURL: sourceURL,
                 scriptURL: resolvedScriptURL,
                 baseURL: resolvedBaseURL,
                 metadata: resolvedMetadata,
@@ -49,7 +52,8 @@ private struct SourceProviderConfiguration {
         case .animeKai:
             return SourceProviderConfiguration(
                 provider: .animeKai,
-                sourceURL: provider.manifestURL,
+                moduleID: module.id,
+                sourceURL: sourceURL,
                 scriptURL: resolvedScriptURL,
                 baseURL: resolvedBaseURL,
                 metadata: resolvedMetadata,
@@ -60,6 +64,22 @@ private struct SourceProviderConfiguration {
                 episodeTimeout: 35,
                 sourceTimeout: 35,
                 logKey: "animekai"
+            )
+        case .custom:
+            return SourceProviderConfiguration(
+                provider: .custom,
+                moduleID: module.id,
+                sourceURL: sourceURL,
+                scriptURL: resolvedScriptURL,
+                baseURL: resolvedBaseURL,
+                metadata: resolvedMetadata,
+                supportsDirectSearch: false,
+                supportsDirectEpisodes: false,
+                scriptPatches: [],
+                searchTimeout: 15,
+                episodeTimeout: 35,
+                sourceTimeout: 35,
+                logKey: module.id.replacingOccurrences(of: ".", with: "_")
             )
         }
     }
@@ -204,8 +224,8 @@ final class SoraRuntime {
     private let searchTasks = InFlightStringTaskStore<[SoraAnimeMatch]>()
     private let episodeTasks = InFlightStringTaskStore<[SoraEpisode]>()
 
-    init(provider: StreamingProvider = .current, session: URLSession = .custom) {
-        self.config = SourceProviderConfiguration.make(for: provider)
+    init(module: StreamingModule = StreamingModuleStore.shared.currentModule(), session: URLSession = .custom) {
+        self.config = SourceProviderConfiguration.make(for: module)
         self.baseURL = self.config.baseURL
         self.session = session
         self.moduleService = SourceModuleService(config: self.config, session: session)

@@ -5,6 +5,12 @@ import Observation
 enum StreamSourcePreferenceResolver {
     static func audioKey(_ value: String) -> String {
         let normalized = value.lowercased()
+        if normalized.contains("manual") {
+            return "manual"
+        }
+        if normalized.contains("any") {
+            return "any"
+        }
         if normalized.contains("dub") || normalized.contains("eng") {
             return "dub"
         }
@@ -25,6 +31,9 @@ enum StreamSourcePreferenceResolver {
         preferredAudio: String,
         preferredQuality: String
     ) -> Bool {
+        if audioKey(preferredAudio) == "manual" || preferredQuality.lowercased() == "manual" {
+            return false
+        }
         let audioMatches = sources.filter { audioKey($0.subOrDub) == audioKey(preferredAudio) }
         guard !audioMatches.isEmpty else { return false }
         if preferredQuality.lowercased() == "auto" {
@@ -65,7 +74,7 @@ enum StreamSourcePreferenceResolver {
 
     static func qualityOptions(for sources: [SoraSource], selectedAudio: String) -> [String] {
         let key = audioKey(selectedAudio)
-        let filtered = sources.filter { audioKey($0.subOrDub) == key }
+        let filtered = key == "any" || key == "manual" ? sources : sources.filter { audioKey($0.subOrDub) == key }
         let pool = filtered.isEmpty ? sources : filtered
         var qualities = Set(pool.map { $0.quality.isEmpty ? "Auto" : $0.quality })
         qualities.insert("Auto")
@@ -82,11 +91,11 @@ enum StreamSourcePreferenceResolver {
         selectedQuality: String
     ) -> [SoraSource] {
         let key = audioKey(selectedAudio)
-        var filtered = sources.filter { audioKey($0.subOrDub) == key }
+        var filtered = key == "any" || key == "manual" ? sources : sources.filter { audioKey($0.subOrDub) == key }
         if filtered.isEmpty {
             filtered = sources
         }
-        if selectedQuality.lowercased() != "auto" {
+        if selectedQuality.lowercased() != "auto" && selectedQuality.lowercased() != "manual" {
             let exactMatches = filtered.filter {
                 !$0.quality.isEmpty && $0.quality.lowercased().contains(selectedQuality.lowercased())
             }
@@ -102,7 +111,11 @@ enum StreamSourcePreferenceResolver {
         preferredAudio: String,
         preferredQuality: String
     ) -> SoraSource? {
-        let audioMatches = sources.filter { audioKey($0.subOrDub) == audioKey(preferredAudio) }
+        if audioKey(preferredAudio) == "manual" || preferredQuality.lowercased() == "manual" {
+            return nil
+        }
+        let key = audioKey(preferredAudio)
+        let audioMatches = key == "any" ? sources : sources.filter { audioKey($0.subOrDub) == key }
         let pool = audioMatches.isEmpty ? sources : audioMatches
         guard !pool.isEmpty else { return nil }
         if preferredQuality.lowercased() == "auto" {
@@ -1425,6 +1438,11 @@ struct DetailsView: View {
 
     private func handleLoadedSourcesForPlayback(_ loadedSources: [SoraSource], episode: SoraEpisode) {
         self.sources = loadedSources
+        if shouldRequireManualSourceSelection {
+            selectedEpisode = episode
+            showSourceSheet = true
+            return
+        }
         if let preferred = preferredSource(in: loadedSources) {
             self.sources = [preferred]
             selectedEpisode = episode
@@ -1440,6 +1458,11 @@ struct DetailsView: View {
             preferredAudio: appState.settings.defaultAudio,
             preferredQuality: appState.settings.defaultQuality
         )
+    }
+
+    private var shouldRequireManualSourceSelection: Bool {
+        appState.settings.defaultAudio.lowercased() == "manual" ||
+        appState.settings.defaultQuality.lowercased() == "manual"
     }
 
     private func enqueueDownload(_ source: SoraSource, episodeNumber: Int) {

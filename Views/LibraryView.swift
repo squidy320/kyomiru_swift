@@ -560,7 +560,9 @@ struct LibraryView: View {
                     selectedContinueMedia = media
                     continuePlayerStartAt = PlaybackHistoryStore.shared.position(for: episode.id)
                     continueSources = loadedSources
-                    if let preferred = preferredSource(in: loadedSources) {
+                    if shouldRequireManualSourceSelection {
+                        showContinueSourceSheet = true
+                    } else if let preferred = preferredSource(in: loadedSources) {
                         continueSources = [preferred]
                         presentContinuePlayer()
                     } else {
@@ -591,6 +593,11 @@ struct LibraryView: View {
             preferredAudio: appState.settings.defaultAudio,
             preferredQuality: appState.settings.defaultQuality
         )
+    }
+
+    private var shouldRequireManualSourceSelection: Bool {
+        appState.settings.defaultAudio.lowercased() == "manual" ||
+        appState.settings.defaultQuality.lowercased() == "manual"
     }
 
     private func enqueueContinueDownload(_ source: SoraSource, media: AniListMedia, episodeNumber: Int) {

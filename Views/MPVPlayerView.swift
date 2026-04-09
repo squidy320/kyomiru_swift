@@ -263,11 +263,6 @@ private final class MPVPlaybackController: ObservableObject {
         displayedTime = time
         syncProgress(currentTime: time, duration: duration)
         updateActiveSkip(at: time)
-        
-        if let appState, appState.settings.autoSkipSegments, let active = activeSkip {
-            AppLog.debug(.player, "aniskip: mpv auto-skipping type=\(active.type)")
-            seek(to: active.end)
-        }
     }
 
     func handleDurationChanged(_ duration: Double) {
