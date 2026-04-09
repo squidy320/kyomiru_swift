@@ -1731,6 +1731,12 @@ final class DownloadManager: NSObject, ObservableObject {
         let folder = transportStream.deletingLastPathComponent()
         let playlist = folder.appendingPathComponent("\(transportStream.deletingPathExtension().lastPathComponent).m3u8")
 
+        // Prevent overwriting existing m3u8 with correct duration
+        if fm.fileExists(atPath: playlist.path) {
+            AppLog.debug(.downloads, "offline single-file playlist already exists path=\(playlist.path), skipping Recreation")
+            return playlist
+        }
+
         let actualDuration = duration ?? 600.0
         let targetDuration = Int(ceil(actualDuration))
 
