@@ -1630,11 +1630,10 @@ final class DownloadManager: NSObject, ObservableObject {
         }
 
         if ext == "ts", isMergedEpisodeFile(localFile, item: item) {
-            if let playlist = ensureSingleFilePlaylist(for: localFile) {
-                AppLog.debug(.downloads, "offline resolve using single-file playlist path=\(playlist.path) localFile=\(localFile.path)")
-                return playlist
-            }
-            AppLog.debug(.downloads, "offline resolve using merged episode ts (no playlist created) path=\(localFile.path)")
+            // For merged .ts files, load directly without m3u8 wrapper
+            // This avoids metadata issues with m3u8 duration parsing
+            // PlayerView will apply proper MIME type hint (video/mp2t)
+            AppLog.debug(.downloads, "offline resolve using merged ts file directly (no m3u8 wrapper) path=\(localFile.path)")
             return localFile
         }
 
