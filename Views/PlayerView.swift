@@ -211,8 +211,10 @@ private struct AVPlayerScreen: View {
         let pathExtension = (resolved.lastPathComponent as NSString).pathExtension.lowercased()
         if pathExtension == "ts" || pathExtension == "m2ts" || pathExtension == "mts" {
             assetOptions["AVURLAssetOutOfBandMIMETypeKey"] = "video/mp2t"
+            AppLog.debug(.player, "player: loading .ts file with MIME type hint isFile=\(resolved.isFileURL) path=\(resolved.lastPathComponent)")
         }
         
+        AppLog.debug(.player, "player: creating AVURLAsset resolved=\(resolved.path) isRemote=\(isRemoteStream) extension=\(pathExtension)")
         if assetOptions.isEmpty {
             asset = AVURLAsset(url: resolved)
         } else {

@@ -1155,6 +1155,7 @@ final class DownloadManager: NSObject, ObservableObject {
             refreshHLSMetrics(id: id)
             
             if outputURL.pathExtension.lowercased() == "ts" {
+                AppLog.debug(.downloads, "hls download captured duration id=\(id) totalDuration=\(totalDuration)s outputURL=\(outputURL.path)")
                 _ = ensureSingleFilePlaylist(for: outputURL, duration: totalDuration)
             }
             
@@ -1386,12 +1387,14 @@ final class DownloadManager: NSObject, ObservableObject {
         if let local = item.localFile {
             let resolved = resolvePlayableURL(localFile: local, item: item)
             if isVerifiedPlayablePath(resolved, item: item) {
+                AppLog.debug(.downloads, "playableURL resolved path=\(resolved.path) extension=\(resolved.pathExtension)")
                 return resolved
             }
             AppLog.error(.downloads, "offline resolve failed localFile=\(local.path) title=\(item.title) ep=\(item.episode)")
         }
         let resolved = resolveFallbackPlayableURL(for: item)
         if let resolved, isVerifiedPlayablePath(resolved, item: item) {
+            AppLog.debug(.downloads, "playableURL fallback resolved path=\(resolved.path) extension=\(resolved.pathExtension)")
             return resolved
         }
         AppLog.error(.downloads, "offline resolve failed no localFile title=\(item.title) ep=\(item.episode)")
@@ -1628,10 +1631,10 @@ final class DownloadManager: NSObject, ObservableObject {
 
         if ext == "ts", isMergedEpisodeFile(localFile, item: item) {
             if let playlist = ensureSingleFilePlaylist(for: localFile) {
-                AppLog.debug(.downloads, "offline resolve using single-file playlist path=\(playlist.path)")
+                AppLog.debug(.downloads, "offline resolve using single-file playlist path=\(playlist.path) localFile=\(localFile.path)")
                 return playlist
             }
-            AppLog.debug(.downloads, "offline resolve using merged episode ts path=\(localFile.path)")
+            AppLog.debug(.downloads, "offline resolve using merged episode ts (no playlist created) path=\(localFile.path)")
             return localFile
         }
 
@@ -1733,11 +1736,12 @@ final class DownloadManager: NSObject, ObservableObject {
 
         // Prevent overwriting existing m3u8 with correct duration
         if fm.fileExists(atPath: playlist.path) {
-            AppLog.debug(.downloads, "offline single-file playlist already exists path=\(playlist.path), skipping Recreation")
+            AppLog.debug(.downloads, "offline single-file playlist already exists path=\(playlist.path), skipping overwrite (duration param=\(duration ?? -1))")
             return playlist
         }
 
         let actualDuration = duration ?? 600.0
+        AppLog.debug(.downloads, "offline single-file playlist creating NEW file duration=\(actualDuration)s path=\(playlist.path)")
         let targetDuration = Int(ceil(actualDuration))
 
         let lines = [
@@ -1753,7 +1757,9 @@ final class DownloadManager: NSObject, ObservableObject {
         let text = lines.joined(separator: "\n")
         do {
             try text.data(using: .utf8)?.write(to: playlist, options: .atomic)
-            AppLog.debug(.downloads, "offline single-file playlist generated path=\(playlist.path) duration=\(actualDuration)")
+            AppLog.debug(.downloads, "offline single-file playlist generated path=\(playlist.path) duration=\(actualDuration)s targetDuration=\(Int(ceil(actualDuration)))s version=3")
+            let fileSize = try fm.attributesOfItem(atPath: playlist.path)[.size] as? NSNumber
+            AppLog.debug(.downloads, "offline single-file playlist written fileSize=\(fileSize?.int64Value ?? 0) bytes")
             return playlist
         } catch {
             AppLog.error(.downloads, "offline single-file playlist write failed path=\(playlist.path) error=\(error.localizedDescription)")
