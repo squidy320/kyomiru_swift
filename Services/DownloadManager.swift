@@ -1630,10 +1630,13 @@ final class DownloadManager: NSObject, ObservableObject {
         }
 
         if ext == "ts", isMergedEpisodeFile(localFile, item: item) {
-            // For merged .ts files, load directly without m3u8 wrapper
-            // This avoids metadata issues with m3u8 duration parsing
-            // PlayerView will apply proper MIME type hint (video/mp2t)
-            AppLog.debug(.downloads, "offline resolve using merged ts file directly (no m3u8 wrapper) path=\(localFile.path)")
+            // For merged .ts files, require m3u8 wrapper for AVPlayer to parse correctly
+            // AVPlayer needs the playlist to understand duration and stream structure
+            if let playlist = ensureSingleFilePlaylist(for: localFile) {
+                AppLog.debug(.downloads, "offline resolve using m3u8 wrapper for merged .ts path=\(playlist.path)")
+                return playlist
+            }
+            AppLog.debug(.downloads, "offline resolve m3u8 creation failed, returning raw .ts path=\(localFile.path)")
             return localFile
         }
 
@@ -1727,6 +1730,15 @@ final class DownloadManager: NSObject, ObservableObject {
         return false
     }
 
+    private func readAVAssetDuration(from fileURL: URL) -> Double? {
+        let asset = AVURLAsset(url: fileURL, options: ["AVURLAssetOutOfBandMIMETypeKey": "video/mp2t"])
+        let duration = asset.duration
+        guard duration.isValid && !duration.value.isNaN else { return nil }
+        let seconds = CMTimeGetSeconds(duration)
+        guard seconds.isFinite && seconds > 0 else { return nil }
+        return seconds
+    }
+
     private func ensureSingleFilePlaylist(for transportStream: URL, duration: Double? = nil) -> URL? {
         guard fm.fileExists(atPath: transportStream.path) else { return nil }
 
@@ -1739,16 +1751,26 @@ final class DownloadManager: NSObject, ObservableObject {
             return playlist
         }
 
-        let actualDuration = duration ?? 600.0
-        AppLog.debug(.downloads, "offline single-file playlist creating NEW file duration=\(actualDuration)s path=\(playlist.path)")
-        let targetDuration = Int(ceil(actualDuration))
+        // Try to read duration from .ts file if not provided
+        var actualDuration = duration
+        if actualDuration == nil {
+            actualDuration = readAVAssetDuration(from: transportStream)
+            if let dur = actualDuration {
+                AppLog.debug(.downloads, "offline single-file playlist read duration from file duration=\(dur)s")
+            }
+        }
+        
+        // Fall back to default if still no duration
+        let finalDuration = actualDuration ?? 600.0
+        AppLog.debug(.downloads, "offline single-file playlist creating NEW file duration=\(finalDuration)s path=\(playlist.path)")
+        let targetDuration = Int(ceil(finalDuration))
 
         let lines = [
             "#EXTM3U",
             "#EXT-X-VERSION:3",
             "#EXT-X-PLAYLIST-TYPE:VOD",
             "#EXT-X-TARGETDURATION:\(targetDuration)",
-            "#EXTINF:\(actualDuration),",
+            "#EXTINF:\(finalDuration),",
             transportStream.lastPathComponent,
             "#EXT-X-ENDLIST"
         ]
@@ -1756,7 +1778,7 @@ final class DownloadManager: NSObject, ObservableObject {
         let text = lines.joined(separator: "\n")
         do {
             try text.data(using: .utf8)?.write(to: playlist, options: .atomic)
-            AppLog.debug(.downloads, "offline single-file playlist generated path=\(playlist.path) duration=\(actualDuration)s targetDuration=\(Int(ceil(actualDuration)))s version=3")
+            AppLog.debug(.downloads, "offline single-file playlist generated path=\(playlist.path) duration=\(finalDuration)s targetDuration=\(targetDuration)s version=3")
             let fileSize = try fm.attributesOfItem(atPath: playlist.path)[.size] as? NSNumber
             AppLog.debug(.downloads, "offline single-file playlist written fileSize=\(fileSize?.int64Value ?? 0) bytes")
             return playlist
