@@ -89,7 +89,7 @@ public struct AniZipClient {
         for (_, episode) in episodes {
             if episode.episodeNumber == episodeNum || episode.absoluteEpisodeNumber == episodeNum {
                 // Return the season offset (episodes before this season started)
-                if let seasonNum = episode.seasonNumber, let absNum = episode.absoluteEpisodeNumber {
+                if episode.seasonNumber != nil, let absNum = episode.absoluteEpisodeNumber {
                     // Rough offset: absoluteEpisodeNumber - episodeNumber = offset
                     let offset = absNum - (episode.episodeNumber ?? 1)
                     return offset
