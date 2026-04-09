@@ -65,6 +65,30 @@ private struct AniSkipInterval: Decodable {
     let endTime: Double
 }
 
+private func replaceKeyURI(in line: String, with localName: String) -> String {
+    guard let range = line.range(of: "URI=") else { return line }
+    let prefix = line[..<range.upperBound]
+    let suffix = line[range.upperBound...]
+    if suffix.hasPrefix("\"") {
+        if let end = suffix.dropFirst().firstIndex(of: "\"") {
+            let tail = suffix[end...]
+            let quote = "\""
+            return prefix + quote + localName + quote + tail
+        }
+    } else if let end = suffix.firstIndex(of: ",") {
+        let tail = suffix[end...]
+        return prefix + localName + tail
+    }
+    return prefix + localName
+}
+
+private func replaceQuotedURI(in line: String, with localName: String) -> String {
+    guard let uriRange = line.range(of: #"URI="[^"]*""#, options: .regularExpression) else {
+        return replaceKeyURI(in: line, with: localName)
+    }
+    return line.replacingCharacters(in: uriRange, with: #"URI="\#(localName)""#)
+}
+
 actor OfflineDownloadManager {
     typealias ProgressHandler = @Sendable (Double) -> Void
     private struct KeySpec: Hashable {
@@ -445,29 +469,6 @@ actor OfflineDownloadManager {
         return Data(iv)
     }
 
-    private func replaceKeyURI(in line: String, with localName: String) -> String {
-        guard let range = line.range(of: "URI=") else { return line }
-        let prefix = line[..<range.upperBound]
-        let suffix = line[range.upperBound...]
-        if suffix.hasPrefix("\"") {
-            if let end = suffix.dropFirst().firstIndex(of: "\"") {
-                let tail = suffix[end...]
-                let quote = "\""
-                return prefix + quote + localName + quote + tail
-            }
-        } else if let end = suffix.firstIndex(of: ",") {
-            let tail = suffix[end...]
-            return prefix + localName + tail
-        }
-        return prefix + localName
-    }
-
-    private func replaceQuotedURI(in line: String, with localName: String) -> String {
-        guard let uriRange = line.range(of: #"URI="[^"]*""#, options: .regularExpression) else {
-            return replaceKeyURI(in: line, with: localName)
-        }
-        return line.replacingCharacters(in: uriRange, with: #"URI="\#(localName)""#)
-    }
 }
 
 private extension Data {
