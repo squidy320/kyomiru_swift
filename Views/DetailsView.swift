@@ -1132,7 +1132,8 @@ struct DetailsView: View {
                         quality: "Local",
                         subOrDub: "Sub",
                         format: format.isEmpty ? "mp4" : format,
-                        headers: [:]
+                        headers: [:],
+                        subtitleTracks: local.subtitleTracks
                     )
                     sources = [source]
                     presentSelectedEpisode()
@@ -1472,6 +1473,7 @@ struct DetailsView: View {
                 episode: episodeNumber,
                 url: source.url,
                 headers: source.headers,
+                subtitleTracks: source.subtitleTracks,
                 media: detailItem
             )
         } else {
@@ -1479,6 +1481,7 @@ struct DetailsView: View {
                 title: media.title.best,
                 episode: episodeNumber,
                 url: source.url,
+                subtitleTracks: source.subtitleTracks,
                 media: detailItem
             )
         }

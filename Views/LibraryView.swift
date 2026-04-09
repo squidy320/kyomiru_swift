@@ -543,7 +543,8 @@ struct LibraryView: View {
                         quality: "Local",
                         subOrDub: "Sub",
                         format: format.isEmpty ? "mp4" : format,
-                        headers: [:]
+                        headers: [:],
+                        subtitleTracks: local.subtitleTracks
                     )
                     selectedContinueEpisode = episode
                     selectedContinueMedia = media
@@ -625,6 +626,7 @@ struct LibraryView: View {
                 episode: episodeNumber,
                 url: source.url,
                 headers: source.headers,
+                subtitleTracks: source.subtitleTracks,
                 media: mediaItem
             )
         } else {
@@ -632,6 +634,7 @@ struct LibraryView: View {
                 title: media.title.best,
                 episode: episodeNumber,
                 url: source.url,
+                subtitleTracks: source.subtitleTracks,
                 media: mediaItem
             )
         }

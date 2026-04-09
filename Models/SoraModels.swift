@@ -1,5 +1,29 @@
 import Foundation
 
+struct SoraSubtitleTrack: Identifiable, Equatable, Codable, Hashable {
+    let id: String
+    let url: URL
+    let label: String
+    let languageCode: String?
+    let format: String
+
+    init(
+        id: String? = nil,
+        url: URL,
+        label: String,
+        languageCode: String? = nil,
+        format: String? = nil
+    ) {
+        self.id = id ?? url.absoluteString
+        self.url = url
+        self.label = label
+        self.languageCode = languageCode
+        let explicitFormat = format?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let inferred = url.pathExtension.lowercased()
+        self.format = (explicitFormat?.isEmpty == false ? explicitFormat! : inferred.isEmpty ? "unknown" : inferred)
+    }
+}
+
 struct SoraAnimeMatch: Identifiable, Equatable {
     let id: String
     let title: String
@@ -70,4 +94,23 @@ struct SoraSource: Identifiable, Equatable {
     let subOrDub: String
     let format: String
     let headers: [String: String]
+    let subtitleTracks: [SoraSubtitleTrack]
+
+    init(
+        id: String,
+        url: URL,
+        quality: String,
+        subOrDub: String,
+        format: String,
+        headers: [String: String],
+        subtitleTracks: [SoraSubtitleTrack] = []
+    ) {
+        self.id = id
+        self.url = url
+        self.quality = quality
+        self.subOrDub = subOrDub
+        self.format = format
+        self.headers = headers
+        self.subtitleTracks = subtitleTracks
+    }
 }

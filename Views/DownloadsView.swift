@@ -182,21 +182,7 @@ private extension DownloadsView {
     }
 
     func totalSize(for items: [DownloadItem]) -> Int64 {
-        let fm = FileManager.default
-        var total: Int64 = 0
-        for item in items {
-            if let url = item.localFile ?? DownloadManager.shared.playableURL(for: item) {
-                if let attrs = try? fm.attributesOfItem(atPath: url.path),
-                   let size = attrs[.size] as? NSNumber {
-                    total += size.int64Value
-                    continue
-                }
-            }
-            if let bytes = item.totalBytes {
-                total += bytes
-            }
-        }
-        return total
+        DownloadManager.shared.storageBytes(for: items)
     }
 
     func formatBytes(_ bytes: Int64) -> String {
@@ -645,7 +631,8 @@ private struct DownloadsDetailView: View {
                     quality: "Local",
                     subOrDub: "Sub",
                     format: format.isEmpty ? "mp4" : format,
-                    headers: [:]
+                    headers: [:],
+                    subtitleTracks: item.subtitleTracks
                 )
                 let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
                 PlayerView(

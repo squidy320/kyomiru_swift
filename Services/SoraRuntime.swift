@@ -442,17 +442,18 @@ final class SoraRuntime {
         AppLog.debug(.network, "sources scrape start episode=\(episode.number)")
         do {
             let result = try await moduleService.sources(episodeURL: episode.playURL)
+            let subtitleTracks = subtitleTracks(from: result.subtitles)
 
             var sources: [SoraSource] = []
             if let sourceDicts = result.sources {
                 for dict in sourceDicts {
-                    if let source = sourceFromJS(dict: dict, referer: episode.playURL) {
+                    if let source = sourceFromJS(dict: dict, referer: episode.playURL, subtitleTracks: subtitleTracks) {
                         sources.append(source)
                     }
                 }
             } else if let urls = result.streams {
                 for url in urls {
-                    if let source = buildSource(urlString: url, referer: episode.playURL) {
+                    if let source = buildSource(urlString: url, referer: episode.playURL, subtitleTracks: subtitleTracks) {
                         sources.append(source)
                     }
                 }
@@ -508,7 +509,8 @@ final class SoraRuntime {
         urlString: String,
         referer: URL,
         headers: [String: String] = [:],
-        displayText: String? = nil
+        displayText: String? = nil,
+        subtitleTracks: [SoraSubtitleTrack] = []
     ) -> SoraSource? {
         guard let url = URL(string: urlString) else { return nil }
         let quality = qualityFrom(urlString: displayText ?? urlString)
@@ -522,7 +524,8 @@ final class SoraRuntime {
             quality: quality,
             subOrDub: audio,
             format: format.isEmpty ? "m3u8" : format,
-            headers: merged
+            headers: merged,
+            subtitleTracks: subtitleTracks
         )
     }
 
@@ -544,7 +547,7 @@ final class SoraRuntime {
         return "Sub"
     }
 
-    private func sourceFromJS(dict: [String: Any], referer: URL) -> SoraSource? {
+    private func sourceFromJS(dict: [String: Any], referer: URL, subtitleTracks: [SoraSubtitleTrack]) -> SoraSource? {
         let originalURLString = (dict["streamUrl"] as? String) ??
             (dict["url"] as? String) ??
             (dict["stream"] as? String) ??
@@ -564,8 +567,54 @@ final class SoraRuntime {
             urlString: originalURLString,
             referer: referer,
             headers: headers,
-            displayText: displayText
+            displayText: displayText,
+            subtitleTracks: subtitleTracks
         )
+    }
+
+    private func subtitleTracks(from rawValues: [String]?) -> [SoraSubtitleTrack] {
+        guard let rawValues else { return [] }
+        var seen = Set<String>()
+        var tracks: [SoraSubtitleTrack] = []
+        for (index, rawValue) in rawValues.enumerated() {
+            guard let url = URL(string: rawValue), seen.insert(url.absoluteString).inserted else { continue }
+            let fileName = url.deletingPathExtension().lastPathComponent
+            let inferredLabel = inferSubtitleLabel(from: fileName, fallbackIndex: index)
+            let language = inferSubtitleLanguage(from: fileName)
+            tracks.append(
+                SoraSubtitleTrack(
+                    id: "\(url.absoluteString)|\(index)",
+                    url: url,
+                    label: inferredLabel,
+                    languageCode: language
+                )
+            )
+        }
+        return tracks
+    }
+
+    private func inferSubtitleLabel(from fileName: String, fallbackIndex: Int) -> String {
+        let cleaned = fileName
+            .replacingOccurrences(of: #"[_\-.]+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.isEmpty {
+            return fallbackIndex == 0 ? "Subtitles" : "Subtitles \(fallbackIndex + 1)"
+        }
+        return cleaned.capitalized
+    }
+
+    private func inferSubtitleLanguage(from fileName: String) -> String? {
+        let lower = fileName.lowercased()
+        if lower.contains("english") || lower.contains(" eng") || lower.hasPrefix("eng") {
+            return "en"
+        }
+        if lower.contains("arabic") || lower.contains(" ara") || lower.hasPrefix("ara") {
+            return "ar"
+        }
+        if lower.contains("spanish") || lower.contains("spa") {
+            return "es"
+        }
+        return nil
     }
 
     private func extractLinks(from html: String) -> [URL] {

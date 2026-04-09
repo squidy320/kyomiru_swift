@@ -11,6 +11,7 @@ private enum MPVPlaybackCommand {
     case seek(Double)
     case setPaused(Bool)
     case setRate(Double)
+    case command([String])
     case commandString(String)
     case setSpeedProperty(String)
 }
@@ -23,6 +24,7 @@ private struct MPVQueuedPlaybackCommand: Identifiable {
 private struct MPVResolvedSource: Equatable {
     let url: URL
     let headers: [String: String]
+    let subtitleTracks: [SoraSubtitleTrack]
 }
 
 @MainActor
@@ -33,7 +35,11 @@ private func resolvedMPVSource(
 ) -> MPVResolvedSource? {
     guard let source = sources.first else { return nil }
     let resolvedURL = PlaybackService.resolvePlayableURL(for: source.url, title: mediaTitle, episode: episodeNumber)
-    return MPVResolvedSource(url: resolvedURL, headers: resolvedURL.isFileURL ? [:] : source.headers)
+    return MPVResolvedSource(
+        url: resolvedURL,
+        headers: resolvedURL.isFileURL ? [:] : source.headers,
+        subtitleTracks: source.subtitleTracks
+    )
 }
 
 private func mpvSkipTitle(for segment: AniSkipSegment) -> String {
@@ -102,6 +108,7 @@ private final class MPVPlaybackController: ObservableObject {
     private var pendingSeekTime: Double?
     private var pendingSeekIssuedAt: Date?
     private var previousIdleTimerDisabled = false
+    private var subtitlePreparationTask: Task<Void, Never>?
 
     init(context: Context) {
         self.context = context
@@ -125,6 +132,7 @@ private final class MPVPlaybackController: ObservableObject {
 
     func cleanup() {
         autoHideTask?.cancel()
+        subtitlePreparationTask?.cancel()
         setIdleTimerDisabled(false)
     }
 
@@ -375,6 +383,28 @@ private final class MPVPlaybackController: ObservableObject {
         } else {
             displayedTime = 0
             PlaybackHistoryStore.shared.clearEpisode(episodeId: context.episode.id)
+        }
+        if let currentSource {
+            prepareSubtitles(for: currentSource)
+        }
+    }
+
+    private func prepareSubtitles(for source: MPVResolvedSource) {
+        subtitlePreparationTask?.cancel()
+        guard !source.subtitleTracks.isEmpty else { return }
+
+        let subtitleTracks = source.subtitleTracks
+        let headers = source.headers
+        subtitlePreparationTask = Task { @MainActor [weak self] in
+            let prepared = await SubtitlePreparationService.shared.prepareTracks(subtitleTracks, headers: headers)
+            guard !Task.isCancelled, let self else { return }
+            for (index, track) in prepared.enumerated() {
+                self.sendCommand(.command([
+                    "sub-add",
+                    track.fileURL.path,
+                    index == 0 ? "select" : "auto"
+                ]))
+            }
         }
     }
 
@@ -1314,6 +1344,8 @@ private final class MPVViewController: UIViewController {
                 setFlagProperty(name: "pause", value: paused)
             case .setRate(let rate):
                 setDoubleProperty(name: "speed", value: rate)
+            case .command(let values):
+                sendCommand(values)
             case .commandString(let command):
                 command.withCString { cCommand in
                     _ = mpv_command_string(mpvHandle, cCommand)
@@ -1395,6 +1427,7 @@ private final class MPVViewController: UIViewController {
         }
 
         sendCommand(["loadfile", source.url.absoluteString, "replace"])
+        prepareSubtitles(for: source)
     }
 
     private func startObserving() {

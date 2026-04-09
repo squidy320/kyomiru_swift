@@ -258,7 +258,7 @@ actor OfflineDownloadManager {
                 try data.write(to: localURL, options: .atomic)
                 completed += 1
                 writeProgress()
-                let replaced = line.replacingOccurrences(of: "URI=\"", with: "URI=\"\(localName)")
+                let replaced = replaceQuotedURI(in: line, with: localName)
                 rewrittenLines.append(replaced)
                 continue
             }
@@ -461,6 +461,13 @@ actor OfflineDownloadManager {
         }
         return prefix + localName
     }
+
+    private func replaceQuotedURI(in line: String, with localName: String) -> String {
+        guard let uriRange = line.range(of: #"URI="[^"]*""#, options: .regularExpression) else {
+            return replaceKeyURI(in: line, with: localName)
+        }
+        return line.replacingCharacters(in: uriRange, with: #"URI="\#(localName)""#)
+    }
 }
 
 private extension Data {
@@ -486,6 +493,7 @@ struct DownloadItem: Identifiable, Equatable {
     let episode: Int
     let url: URL
     let headers: [String: String]?
+    var subtitleTracks: [SoraSubtitleTrack]
     var progress: Double
     var localFile: URL?
     var status: String
@@ -493,6 +501,9 @@ struct DownloadItem: Identifiable, Equatable {
     var downloadedBytes: Int64?
     var totalBytes: Int64?
     var speedBytesPerSec: Double?
+    var hlsFolderPath: String?
+    var hlsPlaylistPath: String?
+    var hlsOriginalPlaylistText: String?
     var mediaId: Int?
     var malId: Int?
     var posterURL: URL?
@@ -856,7 +867,7 @@ final class DownloadManager: NSObject, ObservableObject {
         try replaceItem(at: outputURL, with: tempPlaylist, move: false)
     }
 
-    func enqueue(title: String, episode: Int, url: URL, media: MediaItem? = nil) {
+    func enqueue(title: String, episode: Int, url: URL, subtitleTracks: [SoraSubtitleTrack] = [], media: MediaItem? = nil) {
         let id = "\(title)|\(episode)|\(url.absoluteString)"
         if items.contains(where: { $0.id == id }) {
             AppLog.debug(.downloads, "download already queued id=\(id)")
@@ -868,6 +879,7 @@ final class DownloadManager: NSObject, ObservableObject {
             episode: episode,
             url: url,
             headers: nil,
+            subtitleTracks: subtitleTracks,
             progress: 0,
             localFile: nil,
             status: "Queued",
@@ -875,6 +887,9 @@ final class DownloadManager: NSObject, ObservableObject {
             downloadedBytes: nil,
             totalBytes: nil,
             speedBytesPerSec: nil,
+            hlsFolderPath: nil,
+            hlsPlaylistPath: nil,
+            hlsOriginalPlaylistText: nil,
             mediaId: media?.externalId,
             malId: nil,
             posterURL: media?.posterImageURL,
@@ -887,7 +902,7 @@ final class DownloadManager: NSObject, ObservableObject {
         startDownload(for: item)
     }
 
-    func enqueueHLS(title: String, episode: Int, url: URL, headers: [String: String], media: MediaItem? = nil) {
+    func enqueueHLS(title: String, episode: Int, url: URL, headers: [String: String], subtitleTracks: [SoraSubtitleTrack] = [], media: MediaItem? = nil) {
         let id = "\(title)|\(episode)|\(url.absoluteString)"
         if items.contains(where: { $0.id == id }) {
             AppLog.debug(.downloads, "hls already queued id=\(id)")
@@ -899,6 +914,7 @@ final class DownloadManager: NSObject, ObservableObject {
             episode: episode,
             url: url,
             headers: headers,
+            subtitleTracks: subtitleTracks,
             progress: 0,
             localFile: nil,
             status: "Queued",
@@ -906,6 +922,9 @@ final class DownloadManager: NSObject, ObservableObject {
             downloadedBytes: nil,
             totalBytes: nil,
             speedBytesPerSec: nil,
+            hlsFolderPath: nil,
+            hlsPlaylistPath: nil,
+            hlsOriginalPlaylistText: nil,
             mediaId: media?.externalId,
             malId: nil,
             posterURL: media?.posterImageURL,
@@ -1092,6 +1111,7 @@ final class DownloadManager: NSObject, ObservableObject {
             if let playlist = ensurePlaylist(forFolder: hlsFolder, prefix: nil),
                fm.fileExists(atPath: playlist.path) {
                 AppLog.debug(.downloads, "hls local playlist exists id=\(id) path=\(playlist.path)")
+                updateCompletedHLSMetadata(id: id, folder: hlsFolder, playlist: playlist)
                 setState(id: id, state: .completed, localFile: playlist)
                 cleanupActiveWork(id: id)
                 return
@@ -1114,6 +1134,7 @@ final class DownloadManager: NSObject, ObservableObject {
             )
             updateProgress(id: id, progress: 1)
             refreshHLSMetrics(id: id)
+            updateCompletedHLSMetadata(id: id, folder: hlsFolder, playlist: output)
             setState(id: id, state: .completed, localFile: output)
             cleanupActiveWork(id: id)
             AppLog.debug(.downloads, "hls local bundle complete id=\(id) output=\(output.path)")
@@ -1288,6 +1309,9 @@ final class DownloadManager: NSObject, ObservableObject {
                 items[idx].downloadedBytes = fileSize(at: compiledURL)
                 items[idx].totalBytes = items[idx].downloadedBytes
                 items[idx].speedBytesPerSec = nil
+                items[idx].hlsFolderPath = nil
+                items[idx].hlsPlaylistPath = nil
+                items[idx].hlsOriginalPlaylistText = nil
             }
             setState(id: itemId, state: .completed, localFile: compiledURL)
             cleanupActiveWork(id: itemId)
@@ -1357,6 +1381,22 @@ final class DownloadManager: NSObject, ObservableObject {
             $0.episode == episode &&
             normalizeTitle($0.title) == key
         })
+    }
+
+    func storageBytes(for item: DownloadItem) -> Int64 {
+        if item.isHls, let folder = canonicalHLSFolderIfAvailable(localFile: item.localFile, item: item) {
+            let total = totalBytesOnDisk(at: folder)
+            if total > 0 { return total }
+        }
+        if let localFile = item.localFile, fm.fileExists(atPath: localFile.path) {
+            let size = fileSize(at: localFile)
+            if size > 0 { return size }
+        }
+        return item.totalBytes ?? item.downloadedBytes ?? 0
+    }
+
+    func storageBytes(for items: [DownloadItem]) -> Int64 {
+        items.reduce(0) { $0 + storageBytes(for: $1) }
     }
 
     func queueSummary() -> QueueSummary {
@@ -1448,11 +1488,43 @@ final class DownloadManager: NSObject, ObservableObject {
                !fm.fileExists(atPath: legacyHLSFolder(title: items[idx].title, episode: items[idx].episode).path) {
                 items[idx].isHls = false
                 didChange = true
+            } else if items[idx].isHls,
+                      let folder = canonicalHLSFolderIfAvailable(localFile: items[idx].localFile, item: items[idx]) {
+                let playlist = folder.appendingPathComponent("playlist.m3u8")
+                items[idx].hlsFolderPath = folder.path
+                items[idx].hlsPlaylistPath = playlist.path
+                if fm.fileExists(atPath: playlist.path) {
+                    items[idx].localFile = playlist
+                    if let text = try? String(contentsOf: playlist), !text.isEmpty {
+                        items[idx].hlsOriginalPlaylistText = text
+                    }
+                }
+                let bundleSize = totalBytesOnDisk(at: folder)
+                if bundleSize > 0 {
+                    items[idx].downloadedBytes = bundleSize
+                    items[idx].totalBytes = bundleSize
+                }
+                didChange = true
             }
         }
         if didChange {
             saveIndex()
         }
+    }
+
+    private func updateCompletedHLSMetadata(id: String, folder: URL, playlist: URL) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        objectWillChange.send()
+        let bundleSize = totalBytesOnDisk(at: folder)
+        items[idx].localFile = playlist
+        items[idx].hlsFolderPath = folder.path
+        items[idx].hlsPlaylistPath = playlist.path
+        items[idx].hlsOriginalPlaylistText = try? String(contentsOf: playlist)
+        if bundleSize > 0 {
+            items[idx].downloadedBytes = bundleSize
+            items[idx].totalBytes = bundleSize
+        }
+        saveIndex()
     }
 
     private func aniSkipIndexURL() -> URL {
@@ -1471,7 +1543,8 @@ final class DownloadManager: NSObject, ObservableObject {
 
     private func refreshHLSMetrics(id: String) {
         guard let item = item(for: id) else { return }
-        let hlsFolder = localHLSFolder(title: item.title, episode: item.episode)
+        let hlsFolder = canonicalHLSFolderIfAvailable(localFile: item.localFile, item: item)
+            ?? localHLSFolder(title: item.title, episode: item.episode)
         let mergedTs = localMergedHLSFileURL(for: item.title, episode: item.episode)
         let downloaded = totalBytesOnDisk(at: hlsFolder) + fileSize(at: mergedTs)
         updateTransferStats(id: id, written: downloaded > 0 ? downloaded : nil, expected: item.totalBytes)
@@ -1513,7 +1586,7 @@ final class DownloadManager: NSObject, ObservableObject {
 
         if item.isHls {
             if let folder = canonicalHLSFolderIfAvailable(localFile: localFile, item: item),
-               let playlist = ensurePlaylist(forFolder: folder, prefix: nil) {
+               let playlist = canonicalHLSPlaylist(for: item, folder: folder) {
                 AppLog.debug(.downloads, "offline resolve using playlist path=\(playlist.path)")
                 return playlist
             }
@@ -1583,7 +1656,7 @@ final class DownloadManager: NSObject, ObservableObject {
         _ = migrateLegacyHLSIfNeeded(item: item)
         let folder = localHLSFolder(title: item.title, episode: item.episode)
         if fm.fileExists(atPath: folder.path) {
-            if let playlist = ensurePlaylist(forFolder: folder, prefix: nil) {
+            if let playlist = canonicalHLSPlaylist(for: item, folder: folder) {
                 AppLog.debug(.downloads, "offline fallback using playlist path=\(playlist.path)")
                 return playlist
             }
@@ -1766,6 +1839,89 @@ final class DownloadManager: NSObject, ObservableObject {
         return nil
     }
 
+    private func canonicalHLSPlaylist(for item: DownloadItem, folder: URL) -> URL? {
+        let storedPlaylist = folder.appendingPathComponent("playlist.m3u8")
+        if fm.fileExists(atPath: storedPlaylist.path) {
+            let repaired = repairStoredHLSPlaylistIfNeeded(at: storedPlaylist, folder: folder)
+            if hasLocalPlaylistSegments(repaired) {
+                return repaired
+            }
+        }
+
+        if let restored = restoreOriginalHLSPlaylistIfPossible(item: item, folder: folder),
+           hasLocalPlaylistSegments(restored) {
+            return restored
+        }
+
+        return ensurePlaylist(forFolder: folder, prefix: nil)
+    }
+
+    private func restoreOriginalHLSPlaylistIfPossible(item: DownloadItem, folder: URL) -> URL? {
+        guard let originalText = item.hlsOriginalPlaylistText,
+              !originalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let playlist = folder.appendingPathComponent("playlist.m3u8")
+        do {
+            try originalText.data(using: .utf8)?.write(to: playlist, options: .atomic)
+            return repairStoredHLSPlaylistIfNeeded(at: playlist, folder: folder)
+        } catch {
+            AppLog.error(.downloads, "offline hls playlist restore failed path=\(playlist.path) error=\(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func repairStoredHLSPlaylistIfNeeded(at playlist: URL, folder: URL) -> URL {
+        guard var text = try? String(contentsOf: playlist) else { return playlist }
+        let initFile = findInitSegment(in: folder)
+        var didChange = false
+
+        if let initFile,
+           text.contains("#EXT-X-MAP:"),
+           text.contains("URI=\"\(initFile.lastPathComponent)\"") == false {
+            let lines = text
+                .split(separator: "\n", omittingEmptySubsequences: false)
+                .map(String.init)
+            let repairedLines = lines.map { line -> String in
+                guard line.hasPrefix("#EXT-X-MAP:") else { return line }
+                return replaceQuotedURI(in: line, with: initFile.lastPathComponent)
+            }
+            text = repairedLines.joined(separator: "\n")
+            didChange = true
+        }
+
+        if didChange {
+            do {
+                try text.data(using: .utf8)?.write(to: playlist, options: .atomic)
+            } catch {
+                AppLog.error(.downloads, "offline hls playlist repair failed path=\(playlist.path) error=\(error.localizedDescription)")
+            }
+        }
+        return playlist
+    }
+
+    private func isSyntheticGeneratedPlaylist(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return lower.contains("#ext-x-media-sequence:0")
+            && lower.contains("#ext-x-targetduration:10")
+            && lower.contains("#extinf:10.0,")
+            && lower.contains("segment_")
+    }
+
+    private func findInitSegment(in folder: URL) -> URL? {
+        guard let enumerator = fm.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else {
+            return nil
+        }
+        for case let fileURL as URL in enumerator {
+            let ext = fileURL.pathExtension.lowercased()
+            if fileURL.deletingPathExtension().lastPathComponent == "init",
+               (ext == "mp4" || ext == "m4s" || ext == "mov") {
+                return fileURL
+            }
+        }
+        return nil
+    }
+
     @discardableResult
     private func migrateLegacyHLSIfNeeded(item: DownloadItem) -> URL? {
         guard item.isHls else { return nil }
@@ -1856,6 +2012,7 @@ final class DownloadManager: NSObject, ObservableObject {
             episode: episode,
             url: fileURL,
             headers: nil,
+            subtitleTracks: [],
             progress: 1.0,
             localFile: fileURL,
             status: "Completed",
@@ -1863,6 +2020,9 @@ final class DownloadManager: NSObject, ObservableObject {
             downloadedBytes: size,
             totalBytes: size,
             speedBytesPerSec: nil,
+            hlsFolderPath: isHls ? fileURL.deletingLastPathComponent().path : nil,
+            hlsPlaylistPath: isHls ? fileURL.path : nil,
+            hlsOriginalPlaylistText: isHls ? (try? String(contentsOf: fileURL)) : nil,
             mediaId: media.externalId,
             malId: nil,
             posterURL: media.posterImageURL,
@@ -1938,6 +2098,10 @@ private struct PersistedDownload: Codable {
     let downloadedBytes: Int64?
     let totalBytes: Int64?
     let headers: [String: String]?
+    let subtitleTracks: [SoraSubtitleTrack]?
+    let hlsFolderPath: String?
+    let hlsPlaylistPath: String?
+    let hlsOriginalPlaylistText: String?
     let mediaId: Int?
     let malId: Int?
     let posterURL: String?
@@ -1956,6 +2120,10 @@ private struct PersistedDownload: Codable {
         downloadedBytes = item.downloadedBytes
         totalBytes = item.totalBytes
         headers = item.headers
+        subtitleTracks = item.subtitleTracks.isEmpty ? nil : item.subtitleTracks
+        hlsFolderPath = item.hlsFolderPath
+        hlsPlaylistPath = item.hlsPlaylistPath
+        hlsOriginalPlaylistText = item.hlsOriginalPlaylistText
         mediaId = item.mediaId
         malId = item.malId
         posterURL = item.posterURL?.absoluteString
@@ -1970,6 +2138,7 @@ private struct PersistedDownload: Codable {
             episode: episode,
             url: URL(string: url)!,
             headers: headers,
+            subtitleTracks: subtitleTracks ?? [],
             progress: progress,
             localFile: localFile.flatMap(URL.init(string:)),
             status: status,
@@ -1977,6 +2146,9 @@ private struct PersistedDownload: Codable {
             downloadedBytes: downloadedBytes,
             totalBytes: totalBytes,
             speedBytesPerSec: nil,
+            hlsFolderPath: hlsFolderPath,
+            hlsPlaylistPath: hlsPlaylistPath,
+            hlsOriginalPlaylistText: hlsOriginalPlaylistText,
             mediaId: mediaId,
             malId: malId,
             posterURL: posterURL.flatMap(URL.init(string:)),

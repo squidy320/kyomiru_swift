@@ -128,12 +128,16 @@ private struct AVPlayerScreen: View {
     @State private var didRequestRestoreAfterPictureInPicture = false
     @State private var wasPlayingBeforeHoldSpeed = false
     @State private var previousPlaybackRate: Float = 1.0
+    @State private var preparedSubtitleTracks: [PreparedSubtitleTrack] = []
+    @State private var activeSubtitleText: String?
+    @State private var subtitlePreparationTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
             if let player {
                 AVPlayerViewControllerRepresentable(
                     player: player,
+                    subtitleText: activeSubtitleText,
                     skipButtonTitle: overlaySkipButtonTitle,
                     onSkipTapped: handleOverlaySkipAction,
                     onHoldSpeedChanged: handleHoldSpeedChanged,
@@ -230,6 +234,7 @@ private struct AVPlayerScreen: View {
         let avPlayer = AVPlayer(playerItem: item)
         avPlayer.automaticallyWaitsToMinimizeStalling = true
         player = avPlayer
+        prepareSubtitles(for: source)
 
         addObservers(to: avPlayer, item: item)
         avPlayer.play()
@@ -272,6 +277,10 @@ private struct AVPlayerScreen: View {
         didRequestRestoreAfterPictureInPicture = false
         wasPlayingBeforeHoldSpeed = false
         previousPlaybackRate = 1.0
+        subtitlePreparationTask?.cancel()
+        subtitlePreparationTask = nil
+        preparedSubtitleTracks = []
+        activeSubtitleText = nil
         isBuffering = true
         player.pause()
         player.replaceCurrentItem(with: nil)
@@ -359,6 +368,7 @@ private struct AVPlayerScreen: View {
                 applyPendingResumeIfNeeded(reason: "playbackAdvanced")
             }
             updateActiveSkip(at: seconds)
+            updateActiveSubtitle(at: seconds)
 
             if isSeeking { return }
             let duration = player.currentItem?.duration.seconds ?? 0
@@ -618,10 +628,51 @@ private struct AVPlayerScreen: View {
         didRequestRestoreAfterPictureInPicture = false
     }
 
+    private func prepareSubtitles(for source: SoraSource) {
+        subtitlePreparationTask?.cancel()
+        preparedSubtitleTracks = []
+        activeSubtitleText = nil
+        guard !source.subtitleTracks.isEmpty else { return }
+
+        let subtitleTracks = source.subtitleTracks
+        let headers = source.headers
+        subtitlePreparationTask = Task {
+            let prepared = await SubtitlePreparationService.shared.prepareTracks(subtitleTracks, headers: headers)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                preparedSubtitleTracks = prepared
+                let currentSeconds = player?.currentTime().seconds ?? 0
+                if currentSeconds.isFinite {
+                    updateActiveSubtitle(at: currentSeconds)
+                }
+            }
+        }
+    }
+
+    private func updateActiveSubtitle(at seconds: Double) {
+        guard !preparedSubtitleTracks.isEmpty else {
+            if activeSubtitleText != nil {
+                activeSubtitleText = nil
+            }
+            return
+        }
+        let tracks = preparedSubtitleTracks
+        Task {
+            let text = await SubtitlePreparationService.shared.defaultText(at: seconds, tracks: tracks)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                if activeSubtitleText != text {
+                    activeSubtitleText = text
+                }
+            }
+        }
+    }
+
 }
 
 private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentable {
     let player: AVPlayer
+    let subtitleText: String?
     let skipButtonTitle: String?
     let onSkipTapped: () -> Void
     let onHoldSpeedChanged: (Bool) -> Void
@@ -651,6 +702,8 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         }
         context.coordinator.installSkipButtonIfNeeded(in: controller)
         context.coordinator.installHoldSpeedRecognizerIfNeeded(in: controller)
+        context.coordinator.installSubtitleOverlayIfNeeded(in: controller)
+        context.coordinator.updateSubtitleText(subtitleText)
         context.coordinator.updateSkipButtonTitle(skipButtonTitle)
         return controller
     }
@@ -668,6 +721,8 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         uiViewController.delegate = context.coordinator
         context.coordinator.installSkipButtonIfNeeded(in: uiViewController)
         context.coordinator.installHoldSpeedRecognizerIfNeeded(in: uiViewController)
+        context.coordinator.installSubtitleOverlayIfNeeded(in: uiViewController)
+        context.coordinator.updateSubtitleText(subtitleText)
         context.coordinator.updateSkipButtonTitle(skipButtonTitle)
     }
 
@@ -683,6 +738,8 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
         private weak var progressSlider: UISlider?
         private weak var holdRecognizer: UILongPressGestureRecognizer?
         private weak var hostingController: AVPlayerViewController?
+        private weak var subtitleContainer: UIVisualEffectView?
+        private weak var subtitleLabel: UILabel?
         private var syncTask: Task<Void, Never>?
         private var placementConstraints: [NSLayoutConstraint] = []
         private var isSkipButtonEnabled = false
@@ -764,6 +821,56 @@ private struct AVPlayerViewControllerRepresentable: UIViewControllerRepresentabl
             recognizer.delegate = self
             controller.view.addGestureRecognizer(recognizer)
             holdRecognizer = recognizer
+        }
+
+        func installSubtitleOverlayIfNeeded(in controller: AVPlayerViewController) {
+            hostingController = controller
+            guard subtitleContainer == nil || subtitleLabel == nil else { return }
+            guard let overlay = controller.contentOverlayView ?? controller.view else { return }
+
+            let container = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+            container.translatesAutoresizingMaskIntoConstraints = false
+            container.clipsToBounds = true
+            container.layer.cornerRadius = 14
+            container.layer.cornerCurve = .continuous
+            container.isHidden = true
+            container.alpha = 0
+
+            let label = UILabel()
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.textColor = .white
+            label.textAlignment = .center
+            label.font = .systemFont(ofSize: 17, weight: .semibold)
+            label.numberOfLines = 0
+            label.shadowColor = UIColor.black.withAlphaComponent(0.85)
+            label.shadowOffset = CGSize(width: 0, height: 1)
+
+            container.contentView.addSubview(label)
+            overlay.addSubview(container)
+
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo: container.contentView.leadingAnchor, constant: 16),
+                label.trailingAnchor.constraint(equalTo: container.contentView.trailingAnchor, constant: -16),
+                label.topAnchor.constraint(equalTo: container.contentView.topAnchor, constant: 10),
+                label.bottomAnchor.constraint(equalTo: container.contentView.bottomAnchor, constant: -10),
+                container.leadingAnchor.constraint(greaterThanOrEqualTo: overlay.leadingAnchor, constant: 24),
+                container.trailingAnchor.constraint(lessThanOrEqualTo: overlay.trailingAnchor, constant: -24),
+                container.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+                container.bottomAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.bottomAnchor, constant: -86),
+                container.widthAnchor.constraint(lessThanOrEqualTo: overlay.widthAnchor, multiplier: 0.88)
+            ])
+
+            subtitleContainer = container
+            subtitleLabel = label
+        }
+
+        func updateSubtitleText(_ text: String?) {
+            guard let subtitleContainer, let subtitleLabel else { return }
+            let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let hasText = !(trimmed?.isEmpty ?? true)
+            subtitleLabel.text = trimmed
+            subtitleContainer.isHidden = !hasText
+            subtitleContainer.alpha = hasText ? 1 : 0
         }
 
         private func ensureSyncTask(for controller: AVPlayerViewController) {
