@@ -401,6 +401,7 @@ struct LibraryView: View {
 
     private func runLibraryBackgroundWork(sections: [AniListLibrarySection], generation: Int? = nil) async {
         guard generation == nil || generation == libraryLoadGeneration else { return }
+        await prefetchAvailability(sections: sections, generation: generation)
         await prefetchContinueWatchingMetadata(sections: sections, generation: generation)
         await prefetchLibraryImages(sections: sections)
     }

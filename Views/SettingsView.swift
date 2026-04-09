@@ -329,6 +329,7 @@ private struct PlayerSettingsScreen: View {
     @State private var moduleJSONDraft = ""
     @State private var editorBehavior: StreamingProvider = .custom
     @State private var editorMessage: String?
+    @State private var isSavingModule = false
 
     var body: some View {
         SettingsDetailScroll(title: "Player") {
@@ -441,7 +442,7 @@ private struct PlayerSettingsScreen: View {
             NavigationStack {
                 Form {
                     Section("Module") {
-                        TextField("Display Name", text: $moduleNameDraft)
+                        TextField("Display Name (Optional)", text: $moduleNameDraft)
                         Picker("Behavior", selection: $editorBehavior) {
                             Text("AnimePahe").tag(StreamingProvider.animePahe)
                             Text("AnimeKai").tag(StreamingProvider.animeKai)
@@ -449,10 +450,13 @@ private struct PlayerSettingsScreen: View {
                         }
                         .disabled(editingModule?.isBuiltIn == true)
                     }
-                    Section("Manifest JSON") {
+                    Section("Manifest JSON or URL") {
                         TextEditor(text: $moduleJSONDraft)
                             .frame(minHeight: 280)
                             .font(.system(.body, design: .monospaced))
+                        Text("Paste raw manifest JSON or a manifest URL ending in `.json`.")
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.textSecondary)
                     }
                 }
                 .navigationTitle(editingModule == nil ? "Add Module" : "Edit Module")
@@ -461,7 +465,10 @@ private struct PlayerSettingsScreen: View {
                         Button("Cancel") { showModuleEditor = false }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Save") { saveEditedModule() }
+                        Button(isSavingModule ? "Saving..." : "Save") {
+                            Task { await saveEditedModule() }
+                        }
+                        .disabled(isSavingModule)
                     }
                 }
             }
@@ -491,16 +498,21 @@ private struct PlayerSettingsScreen: View {
         showModuleEditor = true
     }
 
-    private func saveEditedModule() {
+    private func saveEditedModule() async {
+        isSavingModule = true
+        defer { isSavingModule = false }
         do {
+            let resolved = try await resolveModuleDraft()
             let saved = try StreamingModuleStore.shared.upsertModule(
                 moduleID: editingModule?.id,
                 name: moduleNameDraft,
                 behavior: editorBehavior,
-                manifestJSON: moduleJSONDraft,
-                manifestURLString: editingModule?.manifestURLString
+                manifestJSON: resolved.manifestJSON,
+                manifestURLString: resolved.manifestURLString
             )
             extensionRecords = appState.services.streamingExtensionManager.installedRecords()
+            moduleNameDraft = saved.title
+            moduleJSONDraft = saved.manifestJSON
             if editingModule == nil {
                 appState.settings.streamingModuleID = saved.id
             }
@@ -508,6 +520,30 @@ private struct PlayerSettingsScreen: View {
         } catch {
             editorMessage = error.localizedDescription
         }
+    }
+
+    private func resolveModuleDraft() async throws -> (manifestJSON: String, manifestURLString: String?) {
+        let trimmed = moduleJSONDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw StreamingModuleStoreError.invalidJSON
+        }
+
+        if let url = URL(string: trimmed),
+           let scheme = url.scheme?.lowercased(),
+           ["http", "https"].contains(scheme) {
+            var request = URLRequest(url: url)
+            request.setValue("application/json,text/plain,*/*", forHTTPHeaderField: "Accept")
+            let (data, response) = try await URLSession.custom.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+                throw URLError(.badServerResponse)
+            }
+            guard let manifestJSON = String(data: data, encoding: .utf8) else {
+                throw StreamingModuleStoreError.invalidJSON
+            }
+            return (manifestJSON, url.absoluteString)
+        }
+
+        return (trimmed, editingModule?.manifestURLString)
     }
 
     private var availablePlayerBackends: [PlayerBackend] {
