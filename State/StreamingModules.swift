@@ -161,7 +161,11 @@ final class StreamingModuleStore {
     func selectedModuleID() -> String {
         seedIfNeeded()
         let selected = defaults.string(forKey: selectedModuleKey)
-        return module(id: selected)?.id ?? animePaheID
+        let available = availableModulesWithoutSeeding()
+        if let selected, available.contains(where: { $0.id == selected }) {
+            return selected
+        }
+        return available.first?.id ?? animePaheID
     }
 
     func setSelectedModuleID(_ id: String) {
@@ -246,14 +250,15 @@ final class StreamingModuleStore {
     }
 
     private func migrateSelectedModuleIfNeeded() {
+        let availableIDs = Set(availableModulesWithoutSeeding().map(\.id))
         if let selected = defaults.string(forKey: selectedModuleKey),
-           module(id: selected) != nil {
+           availableIDs.contains(selected) {
             return
         }
 
         let legacy = defaults.string(forKey: legacySelectedProviderKey)
         let migrated = migrateMatchProvider(legacy)
-        defaults.set(migrated, forKey: selectedModuleKey)
+        defaults.set(availableIDs.contains(migrated) ? migrated : (availableModulesWithoutSeeding().first?.id ?? animePaheID), forKey: selectedModuleKey)
     }
 
     private func builtInModules() -> [StreamingModule] {
@@ -331,6 +336,13 @@ final class StreamingModuleStore {
             return "{}"
         }
         return text
+    }
+
+    private func availableModulesWithoutSeeding() -> [StreamingModule] {
+        guard let decoded = decodedModules(), !decoded.isEmpty else {
+            return builtInModules()
+        }
+        return decoded
     }
 
     private func validatedMetadata(from manifestJSON: String) throws -> ServiceMetadata {
