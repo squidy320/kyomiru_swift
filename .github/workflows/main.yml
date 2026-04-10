@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+concurrency:
+  group: kyomiru-main-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -131,10 +135,21 @@ jobs:
           mv source.json.tmp source.json
 
       - name: Commit source.json
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Update source.json [skip ci]"
-          file_pattern: source.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- source.json; then
+            echo "source.json unchanged; skipping commit."
+            exit 0
+          fi
+
+          git add source.json
+          git commit -m "Update source.json [skip ci]"
+
+          git fetch origin main
+          git pull --rebase origin main
+          git push origin HEAD:main
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
