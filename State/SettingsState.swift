@@ -72,11 +72,10 @@ final class SettingsState: ObservableObject {
 
     var playerBackend: PlayerBackend {
         get {
-            let stored = PlayerBackend(rawValue: playerBackendRaw) ?? .avPlayer
-            return stored == .mpv ? .avPlayer : stored
+            PlayerBackend(rawValue: playerBackendRaw) ?? .avPlayer
         }
         set {
-            playerBackendRaw = (newValue == .mpv ? PlayerBackend.avPlayer : newValue).rawValue
+            playerBackendRaw = newValue.rawValue
             objectWillChange.send()
         }
     }
