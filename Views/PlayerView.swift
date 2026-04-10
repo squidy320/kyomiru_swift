@@ -88,7 +88,46 @@ struct PlayerView: View {
     }
 
     private var effectiveBackend: PlayerBackend {
-        forceAVPlayerForSession ? .avPlayer : appState.settings.playerBackend
+        if forceAVPlayerForSession {
+            return .avPlayer
+        }
+
+        let preferredBackend = appState.settings.playerBackend
+        if preferredBackend == .avPlayer,
+           shouldPreferMPVForLocalPlayback {
+            AppLog.debug(.player, "player: switching local downloaded transport stream playback to mpv")
+            return .mpv
+        }
+
+        return preferredBackend
+    }
+
+    private var shouldPreferMPVForLocalPlayback: Bool {
+        guard let source = sources.first else { return false }
+        let resolved = PlaybackService.resolvePlayableURL(
+            for: source.url,
+            title: mediaTitle,
+            episode: episode.number
+        )
+        guard resolved.isFileURL else { return false }
+
+        let pathExtension = resolved.pathExtension.lowercased()
+        if ["ts", "m2ts", "mts"].contains(pathExtension) {
+            return true
+        }
+
+        if pathExtension != "m3u8" {
+            return false
+        }
+
+        let localDirectory = resolved.deletingLastPathComponent()
+        return (try? FileManager.default.contentsOfDirectory(
+            at: localDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ))?.contains(where: { candidate in
+            ["ts", "m2ts", "mts"].contains(candidate.pathExtension.lowercased())
+        }) ?? false
     }
 }
 
