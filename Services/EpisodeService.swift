@@ -265,6 +265,7 @@ final class EpisodeService {
             return lhs.sourceNumber < rhs.sourceNumber
         }
         let expected = media.episodes ?? 0
+        let isReleasing = (media.status ?? "").uppercased() == "RELEASING"
         let rawMin = sorted.first?.sourceNumber ?? 1
         let rawMax = sorted.last?.sourceNumber ?? rawMin
         let seasonMarker = TitleMatcher.extractSeasonMarkerNumber(from: media.title.best) ?? 1
@@ -296,7 +297,8 @@ final class EpisodeService {
                     sorted.count > aniZipOffset
 
                 if canApplyAniZipSlice {
-                    let slice = Array(sorted.dropFirst(aniZipOffset).prefix(expected))
+                    let seasonEpisodes = Array(sorted.dropFirst(aniZipOffset))
+                    let slice = cappedSeasonEpisodes(seasonEpisodes, expected: expected, isReleasing: isReleasing)
                     if !slice.isEmpty {
                         AppLog.debug(.matching, "ani.zip season offset applied mediaId=\(media.id) offset=\(aniZipOffset) count=\(slice.count)")
                         return enumerateDisplayNumbers(slice)
@@ -329,7 +331,8 @@ final class EpisodeService {
                 sorted.count > offset
 
             if canApplySeasonSlice {
-                let slice = Array(sorted.dropFirst(offset).prefix(expected))
+                let seasonEpisodes = Array(sorted.dropFirst(offset))
+                let slice = cappedSeasonEpisodes(seasonEpisodes, expected: expected, isReleasing: isReleasing)
                 if !slice.isEmpty {
                     AppLog.debug(.matching, "TMDB season-local offset applied mediaId=\(media.id) season=\(tmdbMatch.seasonNumber) offset=\(offset) count=\(slice.count)")
                     return enumerateDisplayNumbers(slice)
@@ -344,7 +347,8 @@ final class EpisodeService {
         if expected > 0, seasonMarker > 1, rawMin == 1 {
             let offset = expected * (seasonMarker - 1)
             if sorted.count > offset {
-                let slice = Array(sorted.dropFirst(offset).prefix(expected))
+                let seasonEpisodes = Array(sorted.dropFirst(offset))
+                let slice = cappedSeasonEpisodes(seasonEpisodes, expected: expected, isReleasing: isReleasing)
                 if !slice.isEmpty {
                     AppLog.debug(.matching, "Heuristic season offset applied mediaId=\(media.id) season=\(seasonMarker) offset=\(offset)")
                     return enumerateDisplayNumbers(slice)
@@ -365,6 +369,16 @@ final class EpisodeService {
         return sorted.map {
             SoraEpisode(id: $0.id, sourceNumber: $0.sourceNumber, displayNumber: $0.sourceNumber, playURL: $0.playURL)
         }
+    }
+
+    private func cappedSeasonEpisodes(
+        _ episodes: [SoraEpisode],
+        expected: Int,
+        isReleasing: Bool
+    ) -> [SoraEpisode] {
+        guard expected > 0 else { return episodes }
+        guard !isReleasing else { return episodes }
+        return Array(episodes.prefix(expected))
     }
 
     private func calculateOffsetFromAniZip(episodes: [String: AniZipEpisode]) -> Int {
