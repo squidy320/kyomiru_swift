@@ -3,6 +3,7 @@ import UIKit
 
 private enum SettingsDestination: Hashable {
     case player
+    case extensions
     case appearance
     case account
     case storage
@@ -115,7 +116,10 @@ struct SettingsView: View {
             .navigationDestination(for: SettingsDestination.self) { destination in
                 switch destination {
                 case .player:
-                    PlayerSettingsScreen(
+                    PlayerSettingsScreen()
+                    .environmentObject(appState)
+                case .extensions:
+                    ExtensionsSettingsScreen(
                         extensionRecords: $extensionRecords,
                         isRefreshingExtensions: $isRefreshingExtensions,
                         onRefreshExtensions: { force in
@@ -210,6 +214,14 @@ struct SettingsView: View {
                 title: "Player",
                 value: "\(appState.settings.streamingModule.title) / \(appState.settings.playerBackend.title)",
                 destination: .player
+            ),
+            SettingsRowItem(
+                id: "extensions",
+                icon: "puzzlepiece.extension.fill",
+                iconColor: .green,
+                title: "Extensions",
+                value: "\(extensionRecords.count) installed",
+                destination: .extensions
             )
         ]
     }
@@ -319,17 +331,6 @@ struct SettingsView: View {
 
 private struct PlayerSettingsScreen: View {
     @EnvironmentObject private var appState: AppState
-    @Binding var extensionRecords: [StreamingExtensionRecord]
-    @Binding var isRefreshingExtensions: Bool
-    let onRefreshExtensions: (Bool) async -> Void
-    let onApplyExtensionUpdate: (String) async -> Void
-    @State private var showModuleEditor = false
-    @State private var editingModule: StreamingModule?
-    @State private var moduleNameDraft = ""
-    @State private var moduleJSONDraft = ""
-    @State private var editorBehavior: StreamingProvider = .custom
-    @State private var editorMessage: String?
-    @State private var isSavingModule = false
 
     var body: some View {
         SettingsDetailScroll(title: "Player") {
@@ -394,7 +395,49 @@ private struct PlayerSettingsScreen: View {
                 }
                 .pickerStyle(.segmented)
             }
+        }
+        .onAppear {
+#if targetEnvironment(macCatalyst)
+            if appState.settings.playerBackend != .avPlayer {
+                appState.settings.playerBackend = .avPlayer
+            }
+#endif
+        }
+    }
 
+    private var availablePlayerBackends: [PlayerBackend] {
+#if targetEnvironment(macCatalyst)
+        [.avPlayer]
+#else
+        PlayerBackend.allCases.filter(\.isAvailableInCurrentBuild)
+#endif
+    }
+
+    private var playerBackendSummary: String {
+#if targetEnvironment(macCatalyst)
+        return "Mac Catalyst currently uses AVPlayer."
+#else
+        return appState.settings.playerBackend.summary
+#endif
+    }
+}
+
+private struct ExtensionsSettingsScreen: View {
+    @EnvironmentObject private var appState: AppState
+    @Binding var extensionRecords: [StreamingExtensionRecord]
+    @Binding var isRefreshingExtensions: Bool
+    let onRefreshExtensions: (Bool) async -> Void
+    let onApplyExtensionUpdate: (String) async -> Void
+    @State private var showModuleEditor = false
+    @State private var editingModule: StreamingModule?
+    @State private var moduleNameDraft = ""
+    @State private var moduleJSONDraft = ""
+    @State private var editorBehavior: StreamingProvider = .custom
+    @State private var editorMessage: String?
+    @State private var isSavingModule = false
+
+    var body: some View {
+        SettingsDetailScroll(title: "Extensions") {
             LunaSettingsSection(title: "Extensions", subtitle: "Installed Luna source manifests and script updates.") {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
@@ -481,13 +524,6 @@ private struct PlayerSettingsScreen: View {
         } message: {
             Text(editorMessage ?? "")
         }
-        .onAppear {
-#if targetEnvironment(macCatalyst)
-            if appState.settings.playerBackend != .avPlayer {
-                appState.settings.playerBackend = .avPlayer
-            }
-#endif
-        }
     }
 
     private func beginEditingModule(_ module: StreamingModule?) {
@@ -544,22 +580,6 @@ private struct PlayerSettingsScreen: View {
         }
 
         return (trimmed, editingModule?.manifestURLString)
-    }
-
-    private var availablePlayerBackends: [PlayerBackend] {
-#if targetEnvironment(macCatalyst)
-        [.avPlayer]
-#else
-        PlayerBackend.allCases.filter(\.isAvailableInCurrentBuild)
-#endif
-    }
-
-    private var playerBackendSummary: String {
-#if targetEnvironment(macCatalyst)
-        return "Mac Catalyst currently uses AVPlayer."
-#else
-        return appState.settings.playerBackend.summary
-#endif
     }
 }
 
