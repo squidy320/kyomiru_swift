@@ -596,9 +596,7 @@ private struct DownloadsDetailView: View {
     let mediaItem: MediaItem?
     @StateObject private var manager = DownloadManager.shared
     @EnvironmentObject private var appState: AppState
-    @State private var selectedItem: DownloadItem?
-    @State private var showPlayer = false
-    @State private var playURL: URL?
+    @State private var activePlayback: DownloadPlaybackSession?
     @State private var playbackError: String?
     @State private var episodeMetadata: [Int: EpisodeMetadata] = [:]
     @State private var showImportPicker = false
@@ -622,45 +620,32 @@ private struct DownloadsDetailView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showPlayer) {
-            if let item = selectedItem, let fileURL = playURL {
-                let format = fileURL.pathExtension.lowercased()
-                let source = SoraSource(
-                    id: "local|\(item.id)",
-                    url: fileURL,
-                    quality: "Local",
-                    subOrDub: "Sub",
-                    format: format.isEmpty ? "mp4" : format,
-                    headers: [:],
-                    subtitleTracks: item.subtitleTracks
-                )
-                let episode = SoraEpisode(id: item.id, number: item.episode, playURL: fileURL)
-                PlayerView(
-                    episode: episode,
-                    sources: [source],
-                    mediaId: mediaId,
-                    malId: nil,
-                    mediaTitle: title,
-                    onRestoreAfterPictureInPicture: {
-                        showPlayer = true
-                    }
-                )
-            } else {
-                VStack(spacing: 12) {
-                    Text("Unable to play this download.")
-                        .foregroundColor(.white)
-                    Button("Close") {
-                        showPlayer = false
-                    }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(Color.white.opacity(0.12)))
+        .fullScreenCover(item: $activePlayback) { session in
+            let format = session.fileURL.pathExtension.lowercased()
+            let source = SoraSource(
+                id: "local|\(session.item.id)",
+                url: session.fileURL,
+                quality: "Local",
+                subOrDub: "Sub",
+                format: format.isEmpty ? "mp4" : format,
+                headers: [:],
+                subtitleTracks: session.item.subtitleTracks
+            )
+            let episode = SoraEpisode(
+                id: session.item.id,
+                number: session.item.episode,
+                playURL: session.fileURL
+            )
+            PlayerView(
+                episode: episode,
+                sources: [source],
+                mediaId: mediaId,
+                malId: nil,
+                mediaTitle: title,
+                onRestoreAfterPictureInPicture: {
+                    activePlayback = session
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black.ignoresSafeArea())
-            }
+            )
         }
         .alert("Playback Error", isPresented: Binding(
             get: { playbackError != nil },
@@ -1126,9 +1111,7 @@ private struct DownloadsDetailView: View {
             playbackError = "Missing local file for this episode."
             return
         }
-        selectedItem = latestItem
-        playURL = resolved
-        showPlayer = true
+        activePlayback = DownloadPlaybackSession(item: latestItem, fileURL: resolved)
     }
 
     private func compile(_ item: DownloadItem) {
@@ -1145,6 +1128,15 @@ private struct DownloadsDetailView: View {
 
     private func normalizedTitle(_ value: String) -> String {
         value.lowercased().filter { $0.isLetter || $0.isNumber }
+    }
+}
+
+private struct DownloadPlaybackSession: Identifiable {
+    let item: DownloadItem
+    let fileURL: URL
+
+    var id: String {
+        "\(item.id)|\(fileURL.path)"
     }
 }
 
