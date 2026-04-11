@@ -241,8 +241,9 @@ struct DetailsView: View {
     private var modalContent: some View {
         detailContent
         .navigationBarBackButtonHidden(!isPad)
-        .navigationTitle(isPad ? "" : media.title.best)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .task(id: media.id) {
             startInitialLoad()
         }
@@ -403,24 +404,6 @@ struct DetailsView: View {
         } message: {
             Text(downloadMessage ?? "")
         }
-        .toolbar {
-            if !isPad {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: UIConstants.toolbarIconSize, height: UIConstants.toolbarIconSize)
-                            .background(
-                                Circle().fill(Color.black.opacity(0.4))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
         .overlay(alignment: .bottom) {
             if isLoadingSources {
                 GlassCard {
@@ -554,7 +537,6 @@ struct DetailsView: View {
         let width = size.width
         let height = size.height
         let insetTop = safeArea.top
-        let topFeatherHeight = max(24.0, insetTop * 0.6)
         let fallbackBackdrop = tmdbHeroLookupComplete ? (media.bannerURL ?? media.coverURL) : nil
         return ZStack {
             Group {
@@ -573,17 +555,6 @@ struct DetailsView: View {
             }
             .frame(width: width, height: height + insetTop)
             .clipped()
-            .mask(
-                VStack(spacing: 0) {
-                    LinearGradient(
-                        colors: [Color.clear, Color.black],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: topFeatherHeight)
-                    Color.black
-                }
-            )
 
             LinearGradient(
                 colors: [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
@@ -611,7 +582,6 @@ struct DetailsView: View {
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
-            let topFeatherHeight = max(24.0, insetTop * 0.6)
             let fallbackBackdrop = tmdbHeroLookupComplete ? (media.bannerURL ?? media.coverURL) : nil
             ZStack(alignment: .bottomLeading) {
                 Group {
@@ -630,17 +600,6 @@ struct DetailsView: View {
                 }
                 .frame(width: width, height: height + insetTop)
                 .clipped()
-                .mask(
-                    VStack(spacing: 0) {
-                        LinearGradient(
-                            colors: [Color.clear, Color.black],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: topFeatherHeight)
-                        Color.black
-                    }
-                )
 
                 LinearGradient(
                     colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
@@ -686,6 +645,24 @@ struct DetailsView: View {
                 }
                 .padding(.horizontal, UIConstants.standardPadding)
                 .padding(.bottom, 24)
+
+                if !isPad {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: UIConstants.toolbarIconSize, height: UIConstants.toolbarIconSize)
+                            .background(
+                                Circle().fill(Color.black.opacity(0.4))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, UIConstants.standardPadding)
+                    .padding(.top, insetTop + 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
             }
             .frame(width: width, height: height + insetTop)
             .clipped()

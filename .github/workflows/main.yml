@@ -147,6 +147,7 @@ jobs:
           git add source.json
           git commit -m "Update source.json [skip ci]"
 
+          git stash push --include-untracked --message "ci-temp-before-push" || true
           git fetch origin main
           git pull --rebase origin main
           git push origin HEAD:main

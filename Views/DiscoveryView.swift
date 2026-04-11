@@ -39,6 +39,7 @@ struct DiscoveryView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
                         heroHeader
+                            .ignoresSafeArea(edges: .top)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
                             SearchField(placeholder: "Search anime...", text: $query)
@@ -119,14 +120,12 @@ struct DiscoveryView: View {
                         .padding(.horizontal, screenPadding)
                         .padding(.top, -12)
                     }
-                    .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
                 .refreshable {
                     await loadDiscovery(forceRefresh: true)
                 }
-                .navigationTitle(PlatformSupport.prefersTabletLayout ? "" : "Discovery")
-                .navigationBarTitleDisplayMode(.inline)
+                .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(item: $navigateMedia) { media in
                     DetailsView(media: media)
                 }
@@ -204,7 +203,6 @@ struct DiscoveryView: View {
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
-            let topFeatherHeight = max(24.0, insetTop * 0.6)
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let heroTrending, let url = heroTrending.backdropURL {
@@ -219,17 +217,6 @@ struct DiscoveryView: View {
                 }
                 .frame(width: width, height: height + insetTop)
                 .clipped()
-                .mask(
-                    VStack(spacing: 0) {
-                        LinearGradient(
-                            colors: [Color.clear, Color.black],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: topFeatherHeight)
-                        Color.black
-                    }
-                )
 
                 LinearGradient(
                     colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
