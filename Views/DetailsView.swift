@@ -145,6 +145,7 @@ struct DetailsView: View {
     let media: AniListMedia
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var episodes: [SoraEpisode] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -188,6 +189,7 @@ struct DetailsView: View {
     @State private var downloadMessage: String?
     @State private var initialLoadTask: Task<Void, Never>?
     @State private var isInitialLoadInProgress = true
+    @State private var lastEpisodeRefreshAt: Date?
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
     private var useComfortableLayout: Bool { appState.settings.useComfortableLayout }
     private var screenSpacing: CGFloat { UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0) }
@@ -272,6 +274,13 @@ struct DetailsView: View {
         .toolbar(.hidden, for: .navigationBar)
         .task(id: media.id) {
             startInitialLoad()
+        }
+        .onAppear {
+            refreshEpisodesIfNeededOnResume()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            refreshEpisodesIfNeededOnResume()
         }
         .fullScreenCover(isPresented: $showPlayer) {
             if let episode = selectedEpisode, !sources.isEmpty {
@@ -976,6 +985,7 @@ struct DetailsView: View {
             episodeMetadata = metadata
             episodeRatings = ratings
             streamingEpisodes = loadedStreamingEpisodes
+            lastEpisodeRefreshAt = Date()
             isLoading = false
         } catch is CancellationError {
             guard loadGeneration == episodeLoadGeneration else { return }
@@ -1139,6 +1149,17 @@ struct DetailsView: View {
         _ = await (episodesTask, relatedTask, heroTask)
         if !Task.isCancelled {
             isInitialLoadInProgress = false
+        }
+    }
+
+    private func refreshEpisodesIfNeededOnResume() {
+        guard !isInitialLoadInProgress else { return }
+        guard !isLoadingSources, !showPlayer else { return }
+        if let lastEpisodeRefreshAt, Date().timeIntervalSince(lastEpisodeRefreshAt) < 60 {
+            return
+        }
+        Task {
+            await loadEpisodes(forceRefresh: true)
         }
     }
 
