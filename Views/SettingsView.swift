@@ -550,7 +550,7 @@ private struct PlayerSettingsScreen: View {
 #if targetEnvironment(macCatalyst)
         [.avPlayer]
 #else
-        PlayerBackend.allCases.filter { $0 != .ksplayer && $0.isAvailableInCurrentBuild }
+        PlayerBackend.allCases.filter(\.isAvailableInCurrentBuild)
 #endif
     }
 

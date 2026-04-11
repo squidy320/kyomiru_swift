@@ -234,6 +234,7 @@ struct DetailsView: View {
                         .padding(.bottom, UIConstants.bottomBarHeight)
                     }
                 }
+                .ignoresSafeArea(edges: .top)
             }
         }
     }

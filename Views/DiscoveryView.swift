@@ -122,6 +122,7 @@ struct DiscoveryView: View {
                     }
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
+                .ignoresSafeArea(edges: .top)
                 .refreshable {
                     await loadDiscovery(forceRefresh: true)
                 }
