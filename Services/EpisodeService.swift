@@ -50,8 +50,11 @@ final class EpisodeService {
         cacheStore.removeKeys(withPrefix: "episodes:v1:\(media.id):")
     }
 
-    func loadEpisodes(media: AniListMedia) async throws -> MatchLoadResult {
+    func loadEpisodes(media: AniListMedia, forceRefresh: Bool = false) async throws -> MatchLoadResult {
         AppLog.debug(.network, "episodes load start mediaId=\(media.id)")
+        if forceRefresh {
+            invalidateCachedEpisodes(for: media)
+        }
         let module = StreamingModuleStore.shared.currentModule()
         let provider = module.behavior
         let runtime = SoraRuntime(module: module)
@@ -60,7 +63,7 @@ final class EpisodeService {
            let storedMatch = stored.asSoraMatch() {
             AppLog.debug(.matching, "using stored match mediaId=\(media.id) session=\(storedMatch.session) provider=\(provider.title) manual=\(stored.isManual)")
             do {
-                let episodes = try await runtime.episodes(for: storedMatch)
+                let episodes = try await runtime.episodes(for: storedMatch, forceRefresh: forceRefresh)
                 let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media, provider: provider)
                 if isPlausibleEpisodeMatch(match: storedMatch, episodes: adjusted, media: media, provider: provider) {
                     AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
@@ -72,7 +75,7 @@ final class EpisodeService {
                 AppLog.debug(.matching, "stored match rejected mediaId=\(media.id) session=\(storedMatch.session) manual=\(stored.isManual) count=\(adjusted.count)")
                 matchStore.clear(mediaId: media.id)
                 invalidateCachedEpisodes(for: media)
-                return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, moduleID: module.id, provider: provider, replaceExisting: false)
+                return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, moduleID: module.id, provider: provider, replaceExisting: false, forceRefresh: forceRefresh)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -82,11 +85,11 @@ final class EpisodeService {
                 }
                 matchStore.clear(mediaId: media.id)
                 invalidateCachedEpisodes(for: media)
-                return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, moduleID: module.id, provider: provider, replaceExisting: false)
+                return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, moduleID: module.id, provider: provider, replaceExisting: false, forceRefresh: forceRefresh)
             }
         }
 
-        return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, moduleID: module.id, provider: provider, replaceExisting: true)
+        return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, moduleID: module.id, provider: provider, replaceExisting: true, forceRefresh: forceRefresh)
     }
 
     private func loadAutoMatchedEpisodes(
@@ -94,7 +97,8 @@ final class EpisodeService {
         runtime: SoraRuntime,
         moduleID: String,
         provider: StreamingProvider,
-        replaceExisting: Bool
+        replaceExisting: Bool,
+        forceRefresh: Bool
     ) async throws -> MatchLoadResult {
         if replaceExisting == false {
             AppLog.debug(.matching, "stored match fallback to auto mediaId=\(media.id) provider=\(provider.title)")
@@ -123,7 +127,7 @@ final class EpisodeService {
         }
         for match in rankedCandidates.prefix(probeLimit) {
             do {
-                let episodes = try await runtime.episodes(for: match)
+                let episodes = try await runtime.episodes(for: match, forceRefresh: forceRefresh)
                 let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media, provider: provider)
                 guard isPlausibleEpisodeMatch(match: match, episodes: adjusted, media: media, provider: provider) else {
                     AppLog.debug(.matching, "auto match candidate rejected mediaId=\(media.id) session=\(match.session) provider=\(provider.title) count=\(adjusted.count) score=\(match.matchScore ?? 0)")

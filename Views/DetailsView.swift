@@ -940,14 +940,14 @@ struct DetailsView: View {
         )
     }
 
-    private func loadEpisodes() async {
+    private func loadEpisodes(forceRefresh: Bool = false) async {
         episodeLoadGeneration += 1
         let loadGeneration = episodeLoadGeneration
         let shouldShowInlineLoading = episodes.isEmpty
         isLoading = shouldShowInlineLoading
         errorMessage = nil
         do {
-            let result = try await fetchEpisodesDetached(for: media)
+            let result = try await fetchEpisodesDetached(for: media, forceRefresh: forceRefresh)
             guard loadGeneration == episodeLoadGeneration else { return }
             episodes = result.episodes
             if let cached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: result.episodes) {
@@ -1058,12 +1058,12 @@ struct DetailsView: View {
         }
     }
 
-    private func fetchEpisodesDetached(for media: AniListMedia) async throws -> EpisodeService.MatchLoadResult {
+    private func fetchEpisodesDetached(for media: AniListMedia, forceRefresh: Bool) async throws -> EpisodeService.MatchLoadResult {
         let episodeService = appState.services.episodeService
         return try await withCheckedThrowingContinuation { continuation in
             Task.detached(priority: .userInitiated) {
                 do {
-                    let result = try await episodeService.loadEpisodes(media: media)
+                    let result = try await episodeService.loadEpisodes(media: media, forceRefresh: forceRefresh)
                     continuation.resume(returning: result)
                 } catch {
                     continuation.resume(throwing: error)
@@ -1082,7 +1082,7 @@ struct DetailsView: View {
             if !episodes.isEmpty {
                 isInitialLoadInProgress = false
             }
-            async let episodesTask: Void = loadEpisodes()
+            async let episodesTask: Void = loadEpisodes(forceRefresh: true)
             async let relatedTask: Void = loadRelated()
             async let heroTask: Void = loadHeroArtwork()
             _ = await (episodesTask, relatedTask, heroTask)
@@ -1133,7 +1133,7 @@ struct DetailsView: View {
             isInitialLoadInProgress = true
         }
 
-        async let episodesTask: Void = loadEpisodes()
+        async let episodesTask: Void = loadEpisodes(forceRefresh: true)
         async let relatedTask: Void = loadRelated()
         async let heroTask: Void = loadHeroArtwork()
         _ = await (episodesTask, relatedTask, heroTask)

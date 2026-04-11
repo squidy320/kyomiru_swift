@@ -332,9 +332,11 @@ final class SoraRuntime {
         return best
     }
 
-    func episodes(for match: SoraAnimeMatch) async throws -> [SoraEpisode] {
+    func episodes(for match: SoraAnimeMatch, forceRefresh: Bool = false) async throws -> [SoraEpisode] {
         let cacheKey = episodeCacheKey(for: match)
-        if let cached = cachedEpisodes(forKey: cacheKey) {
+        if forceRefresh {
+            cacheStore.remove(key: cacheKey)
+        } else if let cached = cachedEpisodes(forKey: cacheKey) {
             AppLog.debug(.network, "episodes list cache hit session=\(match.session) count=\(cached.count)")
             return cached
         }
