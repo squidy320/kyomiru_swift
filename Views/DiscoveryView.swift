@@ -3,15 +3,11 @@ import UIKit
 import Kingfisher
 
 struct DiscoveryView: View {
-    @State private var query = ""
     @EnvironmentObject private var appState: AppState
     @AppStorage("library.sort") private var librarySortRaw: String = LibrarySortOption.lastUpdated.rawValue
     @State private var sections: [AniListDiscoverySection] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var isSearching = false
-    @State private var searchResults: [AniListMedia] = []
-    @State private var searchTask: Task<Void, Never>?
     @State private var heroIndex = 0
     @State private var imdbTrending: [TrendingItem] = []
     @State private var heroTrending: TrendingItem?
@@ -43,16 +39,6 @@ struct DiscoveryView: View {
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
                             GenreFilterCarousel(genres: GenreFilterCarousel.defaultGenres)
-
-                            if isSearching {
-                                GlassCard {
-                                    Text("Searching AniList...")
-                                        .foregroundColor(Theme.textSecondary)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            } else if !trimmedQuery().isEmpty {
-                                searchResultsSection
-                            }
 
                             if isLoading {
                                 GlassCard {
@@ -125,15 +111,20 @@ struct DiscoveryView: View {
                 .refreshable {
                     await loadDiscovery(forceRefresh: true)
                 }
-                .searchable(
-                    text: $query,
-                    placement: .navigationBarDrawer(displayMode: .automatic),
-                    prompt: "Search anime..."
-                )
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .toolbarColorScheme(.dark, for: .navigationBar)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink {
+                            SearchView(context: .discovery)
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
                 .navigationDestination(item: $navigateMedia) { media in
                     DetailsView(media: media)
                 }
@@ -149,9 +140,6 @@ struct DiscoveryView: View {
             if sections.isEmpty {
                 await loadDiscovery(forceRefresh: false)
             }
-        }
-        .onChange(of: query) { _, _ in
-            runSearch()
         }
         .onChange(of: sections) { _, _ in
             if heroIndex >= heroItems().count {
@@ -344,74 +332,9 @@ struct DiscoveryView: View {
         )
     }
 
-    private var searchResultsSection: some View {
-        VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-            Text("Search Results")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundColor(.white)
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: UIConstants.interCardSpacing) {
-                    ForEach(searchResults, id: \.id) { media in
-                    NavigationLink {
-                        DetailsView(media: media)
-                    } label: {
-                        MediaPosterCard(
-                            title: media.title.best,
-                            subtitle: media.format ?? "Result",
-                            imageURL: media.coverURL,
-                            media: media,
-                            score: media.averageScore,
-                            statusBadge: statusBadge(for: media),
-                            cornerBadge: nil,
-                            enablesTMDBArtworkLookup: true
-                        )
-                        .frame(width: UIConstants.posterCardWidth)
-                    }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, UIConstants.tinyPadding)
-                .padding(.vertical, UIConstants.heroTopPadding)
-            }
-            .scrollClipDisabled()
-        }
-    }
 }
 
 private extension DiscoveryView {
-    func trimmedQuery() -> String {
-        query.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    func runSearch() {
-        searchTask?.cancel()
-        let term = trimmedQuery()
-        if term.isEmpty {
-            searchResults = []
-            isSearching = false
-            return
-        }
-        isSearching = true
-        searchTask = Task {
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            if Task.isCancelled { return }
-            do {
-                let results = try await appState.services.aniListClient.searchAnime(query: term)
-                if Task.isCancelled { return }
-                await MainActor.run {
-                    searchResults = results
-                    isSearching = false
-                }
-            } catch {
-                if Task.isCancelled { return }
-                await MainActor.run {
-                    searchResults = []
-                    isSearching = false
-                }
-            }
-        }
-    }
-
     func heroItems() -> [AniListMedia] {
         if let trending = sections.first(where: { $0.id == "trending" }) {
             return Array(trending.items.prefix(5))

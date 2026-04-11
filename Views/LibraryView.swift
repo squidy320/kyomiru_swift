@@ -9,7 +9,6 @@ struct LibraryView: View {
     @State private var availabilityById: [Int: AniListEpisodeAvailability] = [:]
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var filterText: String = ""
     @State private var continueThumbs: [Int: URL] = [:]
     @State private var continueEpisodeTitles: [Int: String] = [:]
     @State private var continueEpisodes: [Int: [SoraEpisode]] = [:]
@@ -114,10 +113,10 @@ struct LibraryView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             } else {
-                                ForEach(filteredSections()) { section in
+                                ForEach(displaySections()) { section in
                                     LibrarySection(
                                         section: section,
-                                        filterText: filterText,
+                                        filterText: "",
                                         availabilityById: availabilityById
                                     )
                                 }
@@ -137,14 +136,29 @@ struct LibraryView: View {
                 .refreshable {
                     await loadLibrary(forceRefresh: true)
                 }
-                .navigationTitle(PlatformSupport.prefersTabletLayout ? "" : "Library")
+                .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
-                .searchable(
-                    text: $filterText,
-                    placement: .navigationBarDrawer(displayMode: .automatic),
-                    prompt: "Search in library..."
-                )
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
                 .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink {
+                            SearchView(
+                                context: .library(
+                                    snapshot: LibrarySearchSnapshot(
+                                        sections: sections,
+                                        availabilityById: availabilityById,
+                                        sortOption: librarySettings.sortOption,
+                                        formatFilter: librarySettings.formatFilter,
+                                        orderedCatalogs: librarySettings.orderedCatalogs
+                                    )
+                                )
+                            )
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.white)
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Picker("Sort By", selection: Binding(
@@ -277,7 +291,11 @@ struct LibraryView: View {
         }
     }
 
-    private func filteredSections() -> [AniListLibrarySection] {
+    private func displaySections() -> [AniListLibrarySection] {
+        filteredSections(for: "")
+    }
+
+    private func filteredSections(for filterText: String) -> [AniListLibrarySection] {
         let trimmed = filterText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let sectionMap = Dictionary(grouping: sections, by: { statusForSection($0.title) })
             .compactMapValues { $0.first }
@@ -844,7 +862,7 @@ private struct LibraryProfileHero: View {
     }
 }
 
-private struct LibrarySection: View {
+struct LibrarySection: View {
     let section: AniListLibrarySection
     let filterText: String
     let availabilityById: [Int: AniListEpisodeAvailability]
