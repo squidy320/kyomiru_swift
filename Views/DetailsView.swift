@@ -207,42 +207,54 @@ struct DetailsView: View {
             } else if isPad {
                 ipadEpisodeLayout
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        detailHeroHeader
-                            .applyIf(!isPad) { view in
-                                view.ignoresSafeArea(edges: .top)
-                            }
-                        
-                        VStack(alignment: .leading, spacing: screenSpacing) {
-                            actionRow
+                ZStack(alignment: .top) {
+                    phoneFixedHeroBanner
+                        .ignoresSafeArea(edges: .top)
 
-                            if isLoading && episodes.isEmpty {
-                                GlassCard {
-                                    Text("Loading episodes...")
-                                        .foregroundColor(Theme.textSecondary)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            } else {
-                                if let errorMessage {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Color.clear
+                                .frame(height: detailHeroHeight(for: UIScreen.main.bounds.height) - 110)
+
+                            VStack(alignment: .leading, spacing: screenSpacing) {
+                                phoneHeroContentBlock
+
+                                actionRow
+
+                                if isLoading && episodes.isEmpty {
                                     GlassCard {
-                                        Text(errorMessage)
+                                        Text("Loading episodes...")
                                             .foregroundColor(Theme.textSecondary)
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                     }
+                                } else {
+                                    if let errorMessage {
+                                        GlassCard {
+                                            Text(errorMessage)
+                                                .foregroundColor(Theme.textSecondary)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                    }
+                                    episodeList
+                                    RelationsCarouselView(sections: relatedSections)
                                 }
-                                episodeList
-                                RelationsCarouselView(sections: relatedSections)
                             }
+                            .padding(.horizontal, screenPadding)
+                            .padding(.top, UIConstants.smallPadding)
+                            .padding(.bottom, UIConstants.bottomBarHeight)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color.black.opacity(0.08), Color.black],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
                         }
-                        .padding(.horizontal, screenPadding)
-                        .padding(.top, UIConstants.smallPadding)
-                        .padding(.bottom, UIConstants.bottomBarHeight)
                     }
-                }
-                .ignoresSafeArea(edges: .top)
-                .refreshable {
-                    await refreshDetailContent()
+                    .ignoresSafeArea(edges: .top)
+                    .refreshable {
+                        await refreshDetailContent()
+                    }
                 }
             }
         }
@@ -452,13 +464,12 @@ struct DetailsView: View {
 
     private var ipadEpisodeLayout: some View {
         GeometryReader { proxy in
-            let heroHeight = detailHeroHeight(for: proxy.size.height)
             ZStack(alignment: .bottomLeading) {
-                detailHeroBackdropFull(size: proxy.size, safeArea: proxy.safeAreaInsets, heroHeight: heroHeight)
+                detailHeroBackdropFull(size: proxy.size, safeArea: proxy.safeAreaInsets)
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                        Spacer(minLength: max(heroHeight - 150, 220))
+                        Spacer(minLength: proxy.size.height * 0.35)
 
                         ipadMetaBlock
 
@@ -573,8 +584,9 @@ struct DetailsView: View {
         .scrollClipDisabled()
     }
 
-    private func detailHeroBackdropFull(size: CGSize, safeArea: EdgeInsets, heroHeight: CGFloat) -> some View {
+    private func detailHeroBackdropFull(size: CGSize, safeArea: EdgeInsets) -> some View {
         let width = size.width
+        let height = size.height
         let insetTop = safeArea.top
         let fallbackBackdrop = media.bannerURL ?? media.coverURL
         return ZStack {
@@ -582,12 +594,12 @@ struct DetailsView: View {
                 if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
                     CachedImage(
                         url: url,
-                        targetSize: CGSize(width: width, height: heroHeight + insetTop)
+                        targetSize: CGSize(width: width, height: height + insetTop)
                     ) { image in
                         image
                             .resizable()
                             .scaledToFill()
-                            .frame(width: width, height: heroHeight + insetTop, alignment: .bottom)
+                            .frame(width: width, height: height + insetTop, alignment: .bottom)
                     } placeholder: {
                         Theme.surface
                     }
@@ -595,7 +607,7 @@ struct DetailsView: View {
                     Theme.surface
                 }
             }
-            .frame(width: width, height: heroHeight + insetTop)
+            .frame(width: width, height: height + insetTop)
             .clipped()
 
             LinearGradient(
@@ -603,7 +615,7 @@ struct DetailsView: View {
                 startPoint: .bottom,
                 endPoint: .top
             )
-            .frame(width: width, height: heroHeight + insetTop)
+            .frame(width: width, height: height + insetTop)
 
             LinearGradient(
                 colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
@@ -613,9 +625,8 @@ struct DetailsView: View {
             .frame(width: width, height: max(44, insetTop + 34))
             .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: width, height: heroHeight + insetTop)
+        .frame(width: width, height: height + insetTop)
         .clipped()
-        .frame(maxHeight: .infinity, alignment: .top)
         .offset(y: -insetTop)
     }
 
@@ -725,6 +736,109 @@ struct DetailsView: View {
 #if targetEnvironment(macCatalyst)
         .toolbar(.hidden, for: .navigationBar)
 #endif
+    }
+
+    private var phoneFixedHeroBanner: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let insetTop = proxy.safeAreaInsets.top
+            let fallbackBackdrop = media.bannerURL ?? media.coverURL
+            ZStack(alignment: .topLeading) {
+                Group {
+                    if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
+                        CachedImage(
+                            url: url,
+                            targetSize: CGSize(width: width, height: height + insetTop)
+                        ) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: width, height: height + insetTop, alignment: .bottom)
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
+                        Theme.surface
+                    }
+                }
+                .frame(width: width, height: height + insetTop)
+                .clipped()
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: max(44, insetTop + 34))
+                .frame(maxHeight: .infinity, alignment: .top)
+
+                LinearGradient(
+                    colors: [Color.clear, Color.black.opacity(0.9)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: 160)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: UIConstants.toolbarIconSize, height: UIConstants.toolbarIconSize)
+                        .background(
+                            Circle().fill(Color.black.opacity(0.4))
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, UIConstants.standardPadding)
+                .padding(.top, insetTop + 12)
+            }
+            .frame(width: width, height: height + insetTop)
+            .clipped()
+            .offset(y: -insetTop)
+        }
+        .frame(height: detailHeroHeight(for: UIScreen.main.bounds.height))
+    }
+
+    private var phoneHeroContentBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let logo = tmdbHeroLogoURL {
+                CachedImage(
+                    url: logo,
+                    targetSize: CGSize(width: 320, height: 120)
+                ) { image in
+                    image.resizable().scaledToFit()
+                } placeholder: {
+                    Color.clear
+                }
+                .frame(maxWidth: 220)
+            } else {
+                Text(media.title.best)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+            }
+
+            phoneHeroMetaBlock
+        }
+        .padding(.bottom, 8)
     }
 
     private func detailHeroHeight(for screenHeight: CGFloat) -> CGFloat {
