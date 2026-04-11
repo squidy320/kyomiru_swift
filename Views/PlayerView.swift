@@ -5,6 +5,12 @@ import AVKit
 import UIKit
 #endif
 
+#if canImport(Libmpv)
+private let mpvBackendAvailable = true
+#else
+private let mpvBackendAvailable = false
+#endif
+
 struct PlayerView: View {
     let episode: SoraEpisode
     let sources: [SoraSource]
@@ -93,7 +99,8 @@ struct PlayerView: View {
         }
 
         let preferredBackend = appState.settings.playerBackend
-        if preferredBackend == .avPlayer,
+        if mpvBackendAvailable,
+           preferredBackend == .avPlayer,
            shouldPreferMPVForLocalPlayback {
             AppLog.debug(.player, "player: switching local downloaded transport stream playback to mpv")
             return .mpv

@@ -1,5 +1,11 @@
 import SwiftUI
 
+#if canImport(Libmpv)
+private let mpvBackendAvailable = true
+#else
+private let mpvBackendAvailable = false
+#endif
+
 final class SettingsState: ObservableObject {
     @AppStorage("settings.streamingProvider") private var streamingProviderRaw: String = StreamingProvider.animePahe.rawValue
     @AppStorage("settings.streamingModuleID") private var streamingModuleIDRaw: String = StreamingModuleStore.shared.selectedModuleID()
@@ -72,10 +78,18 @@ final class SettingsState: ObservableObject {
 
     var playerBackend: PlayerBackend {
         get {
-            PlayerBackend(rawValue: playerBackendRaw) ?? .avPlayer
+            let stored = PlayerBackend(rawValue: playerBackendRaw) ?? .avPlayer
+            if stored == .mpv, !mpvBackendAvailable {
+                return .avPlayer
+            }
+            return stored
         }
         set {
-            playerBackendRaw = newValue.rawValue
+            if newValue == .mpv, !mpvBackendAvailable {
+                playerBackendRaw = PlayerBackend.avPlayer.rawValue
+            } else {
+                playerBackendRaw = newValue.rawValue
+            }
             objectWillChange.send()
         }
     }
@@ -175,6 +189,15 @@ enum PlayerBackend: String, CaseIterable, Identifiable {
     case ksplayer
 
     var id: String { rawValue }
+
+    var isAvailableInCurrentBuild: Bool {
+        switch self {
+        case .avPlayer, .ksplayer:
+            return true
+        case .mpv:
+            return mpvBackendAvailable
+        }
+    }
 
     var title: String {
         switch self {
