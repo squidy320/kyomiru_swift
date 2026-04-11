@@ -174,7 +174,8 @@ struct DiscoveryView: View {
                     media: nil,
                     pills: [],
                     tags: [],
-                    height: UIConstants.heroHeight
+                    height: UIConstants.heroHeight,
+                    fullBleed: true
                 )
             )
         }
@@ -193,7 +194,6 @@ struct DiscoveryView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
             .frame(height: UIConstants.heroHeight)
-            .padding(.top, UIConstants.heroTopPadding)
             .onReceive(heroTimer) { _ in
                 guard !items.isEmpty else { return }
                 if appState.settings.reduceMotion {
@@ -231,25 +231,27 @@ struct DiscoveryView: View {
                 .clipped()
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    colors: [Color.black.opacity(0.98), Color.black.opacity(0.72), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
-                .frame(width: width, height: height + insetTop)
+                .frame(width: width, height: (height + insetTop) * 0.58)
+                .frame(maxHeight: .infinity, alignment: .bottom)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    colors: [Color.black.opacity(0.72), Color.black.opacity(0.24), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: height + insetTop)
+                .frame(width: width, height: (height + insetTop) * 0.24)
+                .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
+                    colors: [Color.black.opacity(0.34), Color.black.opacity(0.14), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: max(44, insetTop + 34))
+                .frame(width: width, height: max(36, insetTop + 20))
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -337,7 +339,8 @@ struct DiscoveryView: View {
             media: heroMedia,
             pills: pills,
             tags: tags,
-            height: UIConstants.heroHeight
+            height: UIConstants.heroHeight,
+            fullBleed: true
         )
     }
 

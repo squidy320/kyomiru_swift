@@ -14,6 +14,7 @@ struct HeroHeader: View {
     let pills: [HeroPill]
     let tags: [String]
     var height: CGFloat = 260
+    var fullBleed: Bool = false
     @EnvironmentObject private var appState: AppState
     @State private var tmdbBackdropURL: URL?
     @State private var tmdbLookupComplete = false
@@ -23,8 +24,11 @@ struct HeroHeader: View {
         let contentSpacing: CGFloat = useComfortableLayout ? 10 : 8
         let contentPadding: CGFloat = useComfortableLayout ? 22 : 18
         let resolvedURL = tmdbBackdropURL ?? (tmdbLookupComplete ? imageURL : nil)
+        let topFeather = max(18, height * 0.12)
+        let bottomFeather = max(34, height * 0.24)
+        let cornerRadius = fullBleed ? 0.0 : 26.0
         ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Theme.surface)
                 .frame(height: height)
                 .overlay(
@@ -44,15 +48,44 @@ struct HeroHeader: View {
                         }
                     }
                 )
+                .mask(
+                    VStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [Color.clear, Color.black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: topFeather)
+
+                        Color.black
+
+                        LinearGradient(
+                            colors: [Color.black, Color.clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: bottomFeather)
+                    }
+                )
                 .clipped()
 
             LinearGradient(
-                colors: [Color.black.opacity(0.9), Color.black.opacity(0.5), Color.clear],
+                colors: [Color.black.opacity(0.97), Color.black.opacity(0.72), Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )
-            .frame(height: height * 0.75)
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .frame(height: height * 0.52)
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.58), Color.black.opacity(0.18), Color.clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: height * 0.22)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
 
             VStack(alignment: .leading, spacing: contentSpacing) {
                 Text(title)
@@ -83,7 +116,7 @@ struct HeroHeader: View {
             }
             .padding(contentPadding)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .transaction { transaction in
             if appState.settings.reduceMotion {
                 transaction.animation = nil

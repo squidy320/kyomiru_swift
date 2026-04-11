@@ -280,10 +280,14 @@ struct DetailsView: View {
 
     private var modalContent: some View {
         detailContent
-        .navigationBarBackButtonHidden(!isPad)
+        .navigationBarBackButtonHidden(isPad)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .navigationBar)
+        .applyIf(isPad) { view in
+            view.toolbar(.hidden, for: .navigationBar)
+        }
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .task(id: media.id) {
             startInitialLoad()
         }
@@ -710,23 +714,6 @@ struct DetailsView: View {
                 .padding(.horizontal, UIConstants.standardPadding)
                 .padding(.bottom, 24)
 
-                if !isPad {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: UIConstants.toolbarIconSize, height: UIConstants.toolbarIconSize)
-                            .background(
-                                Circle().fill(Color.black.opacity(0.4))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, UIConstants.standardPadding)
-                    .padding(.top, insetTop + 12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }
             }
             .frame(width: width, height: height + insetTop)
             .clipped()
@@ -795,20 +782,6 @@ struct DetailsView: View {
                 .frame(width: width, height: 160)
                 .frame(maxHeight: .infinity, alignment: .bottom)
 
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: UIConstants.toolbarIconSize, height: UIConstants.toolbarIconSize)
-                        .background(
-                            Circle().fill(Color.black.opacity(0.4))
-                        )
-                }
-                .buttonStyle(.plain)
-                .padding(.leading, UIConstants.standardPadding)
-                .padding(.top, insetTop + 12)
             }
             .frame(width: width, height: height + insetTop)
             .clipped()
