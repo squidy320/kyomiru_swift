@@ -956,6 +956,9 @@ struct DetailsView: View {
         isLoading = shouldShowInlineLoading
         errorMessage = nil
         do {
+            if forceRefresh {
+                appState.services.metadataService.invalidateTMDBCaches(for: media)
+            }
             let result = try await fetchEpisodesDetached(for: media, forceRefresh: forceRefresh)
             guard loadGeneration == episodeLoadGeneration else { return }
             episodes = result.episodes

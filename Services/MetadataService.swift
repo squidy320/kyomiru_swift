@@ -547,6 +547,8 @@ final class MetadataService {
     }
 
     private func invalidateTMDBCaches(for mediaId: Int) {
+        MetadataCacheManager().clear(aniListId: mediaId)
+        cacheStore.removeKeys(withPrefix: "tmdb:match:v10:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v6:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v6:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v7:\(mediaId)")
