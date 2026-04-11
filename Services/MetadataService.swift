@@ -108,6 +108,18 @@ final class MetadataService {
         self.tmdbMatcher = tmdbMatcher ?? TMDBMatchingService(cacheStore: cacheStore, session: session)
     }
 
+    func cachedHeroArtwork(for media: AniListMedia) -> (backdrop: URL?, logo: URL?) {
+        let metadata = cachedTMDBMetadata(for: media)
+        let backdrop = metadata?.heroBackdropURL ?? metadata?.backdropURL ?? metadata?.posterURL
+        let cachedLogoURL = cachedLogo(forKey: logoCacheKey(for: media.id)) ?? nil
+        let logo = metadata?.logoURL ?? cachedLogoURL
+        return (backdrop, logo)
+    }
+
+    func invalidateTMDBCaches(for media: AniListMedia) {
+        invalidateTMDBCaches(for: media.id)
+    }
+
     func fetchTMDBMetadata(for media: AniListMedia) async -> TMDBMetadata? {
         let cacheKey = metadataCacheKey(for: media.id)
         switch cachedMetadata(forKey: cacheKey) {
@@ -478,6 +490,15 @@ final class MetadataService {
             return .negative
         }
         return .missing
+    }
+
+    private func cachedTMDBMetadata(for media: AniListMedia) -> TMDBMetadata? {
+        switch cachedMetadata(forKey: metadataCacheKey(for: media.id)) {
+        case .hit(let metadata):
+            return metadata
+        case .negative, .missing:
+            return nil
+        }
     }
 
     private func writeNegativeMetadataCache(forKey key: String) {

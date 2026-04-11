@@ -200,7 +200,7 @@ struct DetailsView: View {
     private var detailContent: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if isInitialLoadInProgress {
+            if shouldShowInitialLoadingScreen {
                 loadingScreen
             } else if isPad {
                 ipadEpisodeLayout
@@ -215,19 +215,20 @@ struct DetailsView: View {
                         VStack(alignment: .leading, spacing: screenSpacing) {
                             actionRow
 
-                            if isLoading {
+                            if isLoading && episodes.isEmpty {
                                 GlassCard {
                                     Text("Loading episodes...")
                                         .foregroundColor(Theme.textSecondary)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
-                            } else if let errorMessage {
-                                GlassCard {
-                                    Text(errorMessage)
-                                        .foregroundColor(Theme.textSecondary)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
                             } else {
+                                if let errorMessage {
+                                    GlassCard {
+                                        Text(errorMessage)
+                                            .foregroundColor(Theme.textSecondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                }
                                 episodeList
                                 RelationsCarouselView(sections: relatedSections)
                             }
@@ -238,8 +239,15 @@ struct DetailsView: View {
                     }
                 }
                 .ignoresSafeArea(edges: .top)
+                .refreshable {
+                    await refreshDetailContent()
+                }
             }
         }
+    }
+
+    private var shouldShowInitialLoadingScreen: Bool {
+        isInitialLoadInProgress && episodes.isEmpty && errorMessage == nil
     }
 
     private var loadingScreen: some View {
@@ -448,25 +456,29 @@ struct DetailsView: View {
 
                         ipadGenreChips
 
-                        if isLoading {
+                        if isLoading && episodes.isEmpty {
                             GlassCard {
                                 Text("Loading episodes...")
                                     .foregroundColor(Theme.textSecondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                        } else if let errorMessage {
-                            GlassCard {
-                                Text(errorMessage)
-                                    .foregroundColor(Theme.textSecondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
                         } else {
+                            if let errorMessage {
+                                GlassCard {
+                                    Text(errorMessage)
+                                        .foregroundColor(Theme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
                             ipadEpisodeCarousel
                             RelationsCarouselView(sections: relatedSections)
                         }
                     }
                     .padding(.horizontal, UIConstants.standardPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
+                }
+                .refreshable {
+                    await refreshDetailContent()
                 }
             }
         }
@@ -555,7 +567,7 @@ struct DetailsView: View {
         let width = size.width
         let height = size.height
         let insetTop = safeArea.top
-        let fallbackBackdrop = tmdbHeroLookupComplete ? (media.bannerURL ?? media.coverURL) : nil
+        let fallbackBackdrop = media.bannerURL ?? media.coverURL
         return ZStack {
             Group {
                 if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
@@ -580,6 +592,14 @@ struct DetailsView: View {
                 endPoint: .top
             )
             .frame(width: width, height: height + insetTop)
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(width: width, height: max(44, insetTop + 34))
+            .frame(maxHeight: .infinity, alignment: .top)
         }
         .frame(width: width, height: height + insetTop)
         .clipped()
@@ -591,7 +611,7 @@ struct DetailsView: View {
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
-            let fallbackBackdrop = tmdbHeroLookupComplete ? (media.bannerURL ?? media.coverURL) : nil
+            let fallbackBackdrop = media.bannerURL ?? media.coverURL
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
@@ -623,6 +643,14 @@ struct DetailsView: View {
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: max(44, insetTop + 34))
+                .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
                     colors: [Color.clear, Color.black.opacity(0.9)],
@@ -915,7 +943,8 @@ struct DetailsView: View {
     private func loadEpisodes() async {
         episodeLoadGeneration += 1
         let loadGeneration = episodeLoadGeneration
-        isLoading = true
+        let shouldShowInlineLoading = episodes.isEmpty
+        isLoading = shouldShowInlineLoading
         errorMessage = nil
         do {
             let result = try await fetchEpisodesDetached(for: media)
@@ -1049,12 +1078,66 @@ struct DetailsView: View {
             AppLog.debug(.ui, "details view load mediaId=\(media.id)")
             isInitialLoadInProgress = true
             tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
+            hydrateInitialCachedState()
+            if !episodes.isEmpty {
+                isInitialLoadInProgress = false
+            }
             async let episodesTask: Void = loadEpisodes()
             async let relatedTask: Void = loadRelated()
             async let heroTask: Void = loadHeroArtwork()
             _ = await (episodesTask, relatedTask, heroTask)
             guard !Task.isCancelled else { return }
             isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
+            isInitialLoadInProgress = false
+        }
+    }
+
+    private func hydrateInitialCachedState() {
+        if let cachedEpisodes = appState.services.episodeService.cachedEpisodes(for: media) {
+            episodes = cachedEpisodes.episodes
+            if let cachedMetadata = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: cachedEpisodes.episodes) {
+                episodeMetadata = cachedMetadata
+            }
+            if let cachedStreaming = appState.services.aniListClient.cachedStreamingEpisodesSnapshot(mediaId: media.id) {
+                streamingEpisodes = cachedStreaming
+            }
+        }
+
+        if let cachedRelated = appState.services.aniListClient.cachedRelatedSectionsSnapshot(mediaId: media.id) {
+            relatedSections = cachedRelated
+        }
+
+        let cachedArtwork = appState.services.metadataService.cachedHeroArtwork(for: media)
+        if tmdbHeroBackdropURL == nil {
+            tmdbHeroBackdropURL = cachedArtwork.backdrop
+        }
+        if tmdbHeroLogoURL == nil {
+            tmdbHeroLogoURL = cachedArtwork.logo
+        }
+        if tmdbHeroBackdropURL != nil || tmdbHeroLogoURL != nil {
+            tmdbHeroLookupComplete = true
+        }
+
+        isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
+    }
+
+    private func refreshDetailContent() async {
+        initialLoadTask?.cancel()
+        let hadVisibleContent = !episodes.isEmpty
+        appState.services.metadataService.invalidateTMDBCaches(for: media)
+        appState.services.episodeService.invalidateCachedEpisodes(for: media)
+        appState.services.aniListClient.invalidateDetailCaches(mediaId: media.id)
+
+        errorMessage = nil
+        if !hadVisibleContent {
+            isInitialLoadInProgress = true
+        }
+
+        async let episodesTask: Void = loadEpisodes()
+        async let relatedTask: Void = loadRelated()
+        async let heroTask: Void = loadHeroArtwork()
+        _ = await (episodesTask, relatedTask, heroTask)
+        if !Task.isCancelled {
             isInitialLoadInProgress = false
         }
     }

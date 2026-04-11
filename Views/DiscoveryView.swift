@@ -4,7 +4,6 @@ import Kingfisher
 
 struct DiscoveryView: View {
     @State private var query = ""
-    @State private var showSearchField = false
     @EnvironmentObject private var appState: AppState
     @AppStorage("library.sort") private var librarySortRaw: String = LibrarySortOption.lastUpdated.rawValue
     @State private var sections: [AniListDiscoverySection] = []
@@ -43,9 +42,6 @@ struct DiscoveryView: View {
                             .ignoresSafeArea(edges: .top)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
-                            if showSearchField {
-                                SearchField(placeholder: "Search anime...", text: $query)
-                            }
                             GenreFilterCarousel(genres: GenreFilterCarousel.defaultGenres)
 
                             if isSearching {
@@ -129,31 +125,18 @@ struct DiscoveryView: View {
                 .refreshable {
                     await loadDiscovery(forceRefresh: true)
                 }
-                .toolbar(.hidden, for: .navigationBar)
+                .searchable(
+                    text: $query,
+                    placement: .navigationBarDrawer(displayMode: .automatic),
+                    prompt: "Search anime..."
+                )
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
                 .navigationDestination(item: $navigateMedia) { media in
                     DetailsView(media: media)
                 }
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            if !isPad {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showSearchField.toggle()
-                        if !showSearchField {
-                            query = ""
-                        }
-                    }
-                } label: {
-                    Image(systemName: showSearchField ? "xmark" : "magnifyingglass")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 40, height: 40)
-                        .background(Circle().fill(Color.black.opacity(0.38)))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, topSafeAreaInset + 12)
-                .padding(.trailing, UIConstants.standardPadding)
             }
         }
         .task {
@@ -180,13 +163,6 @@ struct DiscoveryView: View {
         }
     }
 
-    private var topSafeAreaInset: CGFloat {
-        guard let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
-              let window = windowScene.windows.first(where: { $0.isKeyWindow }) else {
-            return 0
-        }
-        return window.safeAreaInsets.top
-    }
     private var heroCarousel: AnyView {
         let items = heroItems()
         if items.isEmpty {
@@ -264,6 +240,14 @@ struct DiscoveryView: View {
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: max(44, insetTop + 34))
+                .frame(maxHeight: .infinity, alignment: .top)
 
                 VStack(alignment: .leading, spacing: 10) {
                     if let logo = heroTrending?.logoURL {

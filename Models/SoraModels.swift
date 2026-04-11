@@ -64,7 +64,7 @@ struct SoraAnimeMatch: Identifiable, Equatable {
     }
 }
 
-struct SoraEpisode: Identifiable, Equatable {
+struct SoraEpisode: Identifiable, Equatable, Codable {
     let id: String
     let sourceNumber: Int
     let displayNumber: Int

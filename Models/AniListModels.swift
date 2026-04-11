@@ -146,7 +146,7 @@ struct AniListDiscoverySection: Identifiable, Equatable {
     let items: [AniListMedia]
 }
 
-struct AniListRelatedSection: Identifiable, Equatable {
+struct AniListRelatedSection: Identifiable, Equatable, Codable {
     let id: String
     let title: String
     let items: [AniListMedia]

@@ -191,7 +191,7 @@ final class AppServices {
         self.ratingService = RatingService(cacheStore: cacheStore, tmdbMatcher: tmdbMatchingService)
         self.downloadManager = DownloadManager.shared
         self.libraryStore = MediaTracker()
-        self.episodeService = EpisodeService(tmdbMatcher: tmdbMatchingService)
+        self.episodeService = EpisodeService(tmdbMatcher: tmdbMatchingService, cacheStore: cacheStore)
         self.streamingExtensionManager = StreamingExtensionManager()
     }
 }

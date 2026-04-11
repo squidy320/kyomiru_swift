@@ -409,6 +409,32 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         cachedLibrarySectionsFromDisk(token: token, allowStale: allowStale)
     }
 
+    func cachedRelatedSectionsSnapshot(mediaId: Int) -> [AniListRelatedSection]? {
+        if let cached = cachedRelatedSections[mediaId], cached.expires > Date() {
+            return cached.sections
+        }
+        let cacheKey = "anilist:related-sections:v1:\(mediaId)"
+        guard let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 30),
+              let decoded = try? JSONDecoder().decode([AniListRelatedSection].self, from: data) else {
+            return nil
+        }
+        cachedRelatedSections[mediaId] = (decoded, Date().addingTimeInterval(60 * 30))
+        return decoded
+    }
+
+    func cachedStreamingEpisodesSnapshot(mediaId: Int) -> [AniListStreamingEpisode]? {
+        if let cached = cachedStreamingEpisodes[mediaId], cached.expires > Date() {
+            return cached.episodes
+        }
+        let cacheKey = "anilist:streaming:v1:\(mediaId)"
+        guard let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 6),
+              let decoded = try? JSONDecoder().decode([AniListStreamingEpisode].self, from: data) else {
+            return nil
+        }
+        cachedStreamingEpisodes[mediaId] = (decoded, Date().addingTimeInterval(60 * 30))
+        return decoded
+    }
+
     func clearLibraryCache(token: String) {
         cachedLibrarySections = nil
         let key = "library:\(token.prefix(8))"
@@ -426,6 +452,13 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
             cachedAvailability.removeAll()
             AppLog.debug(.cache, "tracking caches cleared all")
         }
+    }
+
+    func invalidateDetailCaches(mediaId: Int) {
+        cachedRelatedSections.removeValue(forKey: mediaId)
+        cachedStreamingEpisodes.removeValue(forKey: mediaId)
+        cacheStore.remove(key: "anilist:related-sections:v1:\(mediaId)")
+        cacheStore.remove(key: "anilist:streaming:v1:\(mediaId)")
     }
 
     private func cachedTrendingFromDisk() -> [AniListMedia]? {
@@ -927,6 +960,9 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
                 }
                 if !sections.isEmpty {
                     cachedRelatedSections[mediaId] = (sections, Date().addingTimeInterval(60 * 30))
+                    if let encoded = try? JSONEncoder().encode(sections) {
+                        cacheStore.writeJSON(encoded, forKey: "anilist:related-sections:v1:\(mediaId)")
+                    }
                     AppLog.debug(.network, "related sections request success mediaId=\(mediaId) count=\(sections.count)")
                     return sections
                 }
@@ -969,6 +1005,9 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
                 AniListRelatedSection(id: "related", title: "Related", items: items)
             ]
             cachedRelatedSections[mediaId] = (sections, Date().addingTimeInterval(60 * 30))
+            if let encoded = try? JSONEncoder().encode(sections) {
+                cacheStore.writeJSON(encoded, forKey: "anilist:related-sections:v1:\(mediaId)")
+            }
             AppLog.debug(.network, "related sections fallback success mediaId=\(mediaId) count=\(sections.count)")
             return sections
         }

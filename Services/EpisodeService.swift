@@ -14,15 +14,40 @@ enum EpisodeMatchValidationError: LocalizedError {
 final class EpisodeService {
     private let matchStore = MatchStore.shared
     private let tmdbMatcher: TMDBMatchingService
+    private let cacheStore: CacheStore
 
-    init(tmdbMatcher: TMDBMatchingService = TMDBMatchingService(cacheStore: CacheStore())) {
+    init(
+        tmdbMatcher: TMDBMatchingService = TMDBMatchingService(cacheStore: CacheStore()),
+        cacheStore: CacheStore = CacheStore()
+    ) {
         self.tmdbMatcher = tmdbMatcher
+        self.cacheStore = cacheStore
     }
 
     struct MatchLoadResult {
         let match: SoraAnimeMatch
         let episodes: [SoraEpisode]
         let isManual: Bool
+    }
+
+    private struct CachedEpisodeList: Codable {
+        let match: StoredMatch
+        let episodes: [SoraEpisode]
+    }
+
+    func cachedEpisodes(for media: AniListMedia) -> MatchLoadResult? {
+        let moduleID = StreamingModuleStore.shared.selectedModuleID()
+        let cacheKey = cachedEpisodesKey(for: media.id, moduleID: moduleID)
+        guard let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 12),
+              let cached = try? JSONDecoder().decode(CachedEpisodeList.self, from: data),
+              let match = cached.match.asSoraMatch() else {
+            return nil
+        }
+        return MatchLoadResult(match: match, episodes: cached.episodes, isManual: cached.match.isManual)
+    }
+
+    func invalidateCachedEpisodes(for media: AniListMedia) {
+        cacheStore.removeKeys(withPrefix: "episodes:v1:\(media.id):")
     }
 
     func loadEpisodes(media: AniListMedia) async throws -> MatchLoadResult {
@@ -39,11 +64,14 @@ final class EpisodeService {
                 let adjusted = await applySeasonOffsetIfNeeded(episodes: episodes, media: media, provider: provider)
                 if isPlausibleEpisodeMatch(match: storedMatch, episodes: adjusted, media: media, provider: provider) {
                     AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
-                    return MatchLoadResult(match: storedMatch, episodes: adjusted, isManual: stored.isManual)
+                    let result = MatchLoadResult(match: storedMatch, episodes: adjusted, isManual: stored.isManual)
+                    cache(result: result, mediaId: media.id, moduleID: module.id, behavior: provider)
+                    return result
                 }
 
                 AppLog.debug(.matching, "stored match rejected mediaId=\(media.id) session=\(storedMatch.session) manual=\(stored.isManual) count=\(adjusted.count)")
                 matchStore.clear(mediaId: media.id)
+                invalidateCachedEpisodes(for: media)
                 return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, moduleID: module.id, provider: provider, replaceExisting: false)
             } catch is CancellationError {
                 throw CancellationError()
@@ -53,6 +81,7 @@ final class EpisodeService {
                     throw CancellationError()
                 }
                 matchStore.clear(mediaId: media.id)
+                invalidateCachedEpisodes(for: media)
                 return try await loadAutoMatchedEpisodes(media: media, runtime: runtime, moduleID: module.id, provider: provider, replaceExisting: false)
             }
         }
@@ -102,7 +131,9 @@ final class EpisodeService {
                 }
                 matchStore.set(match: match, mediaId: media.id, isManual: false, moduleID: moduleID, behavior: provider)
                 AppLog.debug(.network, "episodes load success mediaId=\(media.id) count=\(adjusted.count)")
-                return MatchLoadResult(match: match, episodes: adjusted, isManual: false)
+                let result = MatchLoadResult(match: match, episodes: adjusted, isManual: false)
+                cache(result: result, mediaId: media.id, moduleID: moduleID, behavior: provider)
+                return result
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -176,11 +207,44 @@ final class EpisodeService {
         }
         matchStore.set(match: match, mediaId: media.id, isManual: true, moduleID: module.id, behavior: provider)
         AppLog.debug(.network, "manual match validated mediaId=\(media.id) session=\(match.session) count=\(adjusted.count)")
-        return MatchLoadResult(match: match, episodes: adjusted, isManual: true)
+        let result = MatchLoadResult(match: match, episodes: adjusted, isManual: true)
+        cache(result: result, mediaId: media.id, moduleID: module.id, behavior: provider)
+        return result
     }
 
     func clearManualMatch(media: AniListMedia) {
         matchStore.clear(mediaId: media.id)
+        invalidateCachedEpisodes(for: media)
+    }
+
+    private func cache(
+        result: MatchLoadResult,
+        mediaId: Int,
+        moduleID: String,
+        behavior: StreamingProvider
+    ) {
+        let stored = StoredMatch(
+            mediaId: mediaId,
+            session: result.match.session,
+            title: result.match.title,
+            imageURL: result.match.imageURL?.absoluteString,
+            detailURL: result.match.detailURL?.absoluteString,
+            year: result.match.year,
+            format: result.match.format,
+            episodeCount: result.match.episodeCount,
+            provider: behavior.rawValue,
+            moduleID: moduleID,
+            isManual: result.isManual,
+            updatedAt: Date().timeIntervalSince1970
+        )
+        let payload = CachedEpisodeList(match: stored, episodes: result.episodes)
+        if let data = try? JSONEncoder().encode(payload) {
+            cacheStore.writeJSON(data, forKey: cachedEpisodesKey(for: mediaId, moduleID: moduleID))
+        }
+    }
+
+    private func cachedEpisodesKey(for mediaId: Int, moduleID: String) -> String {
+        "episodes:v1:\(mediaId):module:\(moduleID)"
     }
 
     private func applySeasonOffsetIfNeeded(

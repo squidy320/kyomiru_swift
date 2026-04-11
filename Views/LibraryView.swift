@@ -10,7 +10,6 @@ struct LibraryView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var filterText: String = ""
-    @State private var showSearchField = false
     @State private var continueThumbs: [Int: URL] = [:]
     @State private var continueEpisodeTitles: [Int: String] = [:]
     @State private var continueEpisodes: [Int: [SoraEpisode]] = [:]
@@ -52,10 +51,6 @@ struct LibraryView: View {
                             title: "Library",
                             subtitle: "Currently watching and synced lists"
                         )
-
-                        if showSearchField {
-                            SearchField(placeholder: "Search in library...", text: $filterText)
-                        }
 
                         if !continueWatchingItems().isEmpty {
                             VStack(alignment: .leading, spacing: screenSpacing) {
@@ -144,26 +139,12 @@ struct LibraryView: View {
                 }
                 .navigationTitle(PlatformSupport.prefersTabletLayout ? "" : "Library")
                 .navigationBarTitleDisplayMode(.inline)
+                .searchable(
+                    text: $filterText,
+                    placement: .navigationBarDrawer(displayMode: .automatic),
+                    prompt: "Search in library..."
+                )
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showSearchField.toggle()
-                                if !showSearchField {
-                                    filterText = ""
-                                }
-                            }
-                        } label: {
-                            Image(systemName: showSearchField ? "xmark" : "magnifyingglass")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: UIConstants.toolbarIconSize, height: UIConstants.toolbarIconSize)
-                                .background(
-                                    Circle().fill(Color.white.opacity(0.08))
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Picker("Sort By", selection: Binding(
