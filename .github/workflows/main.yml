@@ -134,6 +134,16 @@ jobs:
             source.json > source.json.tmp
           mv source.json.tmp source.json
 
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.buildmeta.outputs.tag }}
+          name: ${{ steps.buildmeta.outputs.tag }}
+          body: ${{ steps.buildmeta.outputs.commit_msg }}
+          files: |
+            Kyomiru_Unsigned.ipa
+            Kyomiru-Sideload-Build.zip
+
       - name: Commit source.json
         run: |
           git config user.name "github-actions[bot]"
@@ -151,13 +161,3 @@ jobs:
           git fetch origin main
           git pull --rebase origin main
           git push origin HEAD:main
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.buildmeta.outputs.tag }}
-          name: ${{ steps.buildmeta.outputs.tag }}
-          body: ${{ steps.buildmeta.outputs.commit_msg }}
-          files: |
-            Kyomiru_Unsigned.ipa
-            Kyomiru-Sideload-Build.zip
