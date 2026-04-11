@@ -438,24 +438,11 @@ private struct ExtensionsSettingsScreen: View {
 
     var body: some View {
         SettingsDetailScroll(title: "Extensions") {
-            LunaSettingsSection(title: "Extensions", subtitle: "Installed Luna source manifests and script updates.") {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text(isRefreshingExtensions ? "Checking for updates..." : "Installed Sources")
-                            .foregroundColor(.white)
-                        Spacer()
-                        Button("Add Module") {
-                            beginEditingModule(nil)
-                        }
-                        .buttonStyle(.bordered)
-                        Button(isRefreshingExtensions ? "Checking..." : "Check Updates") {
-                            Task { await onRefreshExtensions(true) }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isRefreshingExtensions)
-                    }
+            VStack(alignment: .leading, spacing: 14) {
+                extensionToolbar
 
-                    ForEach(extensionRecords) { record in
+                ForEach(extensionRecords) { record in
+                    GlassCard(cornerRadius: 20) {
                         StreamingExtensionCard(
                             record: record,
                             isRefreshingExtensions: isRefreshingExtensions,
@@ -526,6 +513,46 @@ private struct ExtensionsSettingsScreen: View {
         }
     }
 
+    private var extensionToolbar: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.18))
+                        .frame(width: 34, height: 34)
+                    if isRefreshingExtensions {
+                        ProgressView()
+                            .tint(.green)
+                            .scaleEffect(0.85)
+                    } else {
+                        Image(systemName: "puzzlepiece.extension.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.green)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Installed Sources")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                    Text("\(extensionRecords.count) modules")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Theme.textSecondary)
+                }
+            }
+
+            Spacer()
+
+            compactToolbarButton(icon: "arrow.clockwise", tint: .white, isDisabled: isRefreshingExtensions) {
+                Task { await onRefreshExtensions(true) }
+            }
+
+            compactToolbarButton(icon: "plus", tint: .green, isDisabled: false) {
+                beginEditingModule(nil)
+            }
+        }
+    }
+
     private func beginEditingModule(_ module: StreamingModule?) {
         editingModule = module
         moduleNameDraft = module?.title ?? ""
@@ -580,6 +607,30 @@ private struct ExtensionsSettingsScreen: View {
         }
 
         return (trimmed, editingModule?.manifestURLString)
+    }
+
+    private func compactToolbarButton(
+        icon: String,
+        tint: Color,
+        isDisabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(isDisabled ? Theme.textSecondary : tint)
+                .frame(width: 36, height: 36)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.07))
+                )
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.09), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
     }
 }
 
@@ -904,66 +955,104 @@ private struct StreamingExtensionCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(record.title)
-                            .foregroundColor(.white)
-                        if isActive {
-                            statusTag("Active")
-                        }
-                        if record.hasUpdate {
-                            statusTag("Update")
-                        }
-                        if record.isBuiltIn {
-                            statusTag("Built-in")
-                        }
-                    }
-                    Text("Installed \(record.installedVersion)" + (record.remoteVersion.map { " - Remote \($0)" } ?? ""))
-                        .font(.system(size: 12))
-                        .foregroundColor(Theme.textSecondary)
-                }
-
-                Spacer()
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(iconTint.opacity(0.18))
+                    .frame(width: 40, height: 40)
+                Image(systemName: iconName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(iconTint)
             }
 
-            Text(record.scriptURL.absoluteString)
-                .font(.system(size: 11))
-                .foregroundColor(Theme.textSecondary)
-                .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(record.title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
 
-            HStack {
-                Button(isActive ? "Selected" : "Use", action: onSelect)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isActive)
+                HStack(spacing: 6) {
+                    if isActive {
+                        statusGlyph(icon: "checkmark.circle.fill", tint: .green)
+                    }
+                    if record.hasUpdate {
+                        statusGlyph(icon: "arrow.down.circle.fill", tint: .orange)
+                    }
+                    if record.isBuiltIn {
+                        statusGlyph(icon: "lock.fill", tint: .blue)
+                    }
+                    if record.sourceURL != nil {
+                        statusGlyph(icon: "arrow.clockwise.circle.fill", tint: .white.opacity(0.75))
+                    }
+                }
+            }
 
-                Button("Edit", action: onEdit)
-                    .buttonStyle(.bordered)
+            Spacer()
+
+            if isActive {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.green)
+            } else {
+                Button(action: onSelect) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Color.green))
+                }
+                .buttonStyle(.plain)
+            }
+
+            Menu {
+                Button("Edit", systemImage: "pencil", action: onEdit)
 
                 if record.sourceURL != nil {
-                    Button(record.hasUpdate ? "Update" : "Refresh", action: onApply)
-                        .buttonStyle(.bordered)
+                    Button(record.hasUpdate ? "Update" : "Refresh", systemImage: record.hasUpdate ? "arrow.down.circle" : "arrow.clockwise", action: onApply)
                         .disabled(isRefreshingExtensions)
                 }
 
                 if !record.isBuiltIn {
-                    Button("Delete", role: .destructive, action: onDelete)
-                        .buttonStyle(.bordered)
+                    Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
                 }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.8))
+                    .frame(width: 28, height: 28)
             }
+            .disabled(isRefreshingExtensions && record.sourceURL != nil)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
         .platformHoverLift(reduceMotion: appState.settings.reduceMotion)
     }
 
-    private func statusTag(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .bold))
-            .foregroundColor(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(Color.white.opacity(0.08)))
+    private var iconName: String {
+        switch record.behavior {
+        case .animeKai:
+            return "bolt.fill"
+        case .animePahe:
+            return "play.square.stack.fill"
+        case .custom:
+            return "puzzlepiece.extension.fill"
+        }
+    }
+
+    private var iconTint: Color {
+        switch record.behavior {
+        case .animeKai:
+            return .orange
+        case .animePahe:
+            return .cyan
+        case .custom:
+            return .green
+        }
+    }
+
+    private func statusGlyph(icon: String, tint: Color) -> some View {
+        Image(systemName: icon)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(tint)
     }
 }
 
