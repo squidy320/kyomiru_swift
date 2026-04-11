@@ -112,6 +112,12 @@ final class MetadataService {
         let cacheKey = metadataCacheKey(for: media.id)
         switch cachedMetadata(forKey: cacheKey) {
         case .hit(let cachedResult):
+            if cachedResult.logoURL != nil {
+                let logoCacheKey = logoCacheKey(for: media.id)
+                if let logoData = try? JSONEncoder().encode(TMDBLogoCacheEntry(url: cachedResult.logoURL)) {
+                    cacheStore.writeJSON(logoData, forKey: logoCacheKey)
+                }
+            }
             return cachedResult
         case .negative:
             return nil
@@ -142,6 +148,7 @@ final class MetadataService {
                 if let data = try? JSONEncoder().encode(details) {
                     self.cacheStore.writeJSON(data, forKey: cacheKey)
                 }
+                self.writeLogo(details.logoURL, forKey: self.logoCacheKey(for: media.id))
                 return details
             }
         }
@@ -163,6 +170,11 @@ final class MetadataService {
     }
 
     func logoURL(for media: AniListMedia) async -> URL? {
+        if let metadata = await fetchTMDBMetadata(for: media),
+           let logo = metadata.logoURL {
+            return logo
+        }
+
         let cacheKey = logoCacheKey(for: media.id)
         if let cached = cachedLogo(forKey: cacheKey) {
             return cached
@@ -219,7 +231,7 @@ final class MetadataService {
             return nil
         }
 
-        guard let details = await fetchTMDBDetails(showId: context.showId, mediaType: context.mediaType, apiKey: apiKey, includeLogo: false) else {
+        guard let details = await fetchTMDBDetails(showId: context.showId, mediaType: context.mediaType, apiKey: apiKey, includeLogo: true) else {
             return nil
         }
         let seasonPosterURL: URL?
@@ -477,16 +489,16 @@ final class MetadataService {
 
     private func metadataCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:media:v13:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
+            return "tmdb:media:v14:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
         }
-        return "tmdb:media:v13:\(mediaId)"
+        return "tmdb:media:v14:\(mediaId)"
     }
 
     private func logoCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:logo:v3:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId)"
+            return "tmdb:logo:v4:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId)"
         }
-        return "tmdb:logo:v3:\(mediaId)"
+        return "tmdb:logo:v4:\(mediaId)"
     }
 
     private func cachedLogo(forKey key: String) -> URL?? {

@@ -187,6 +187,7 @@ struct DetailsView: View {
     @State private var importMessage: String?
     @State private var downloadMessage: String?
     @State private var initialLoadTask: Task<Void, Never>?
+    @State private var isInitialLoadInProgress = true
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
     private var useComfortableLayout: Bool { appState.settings.useComfortableLayout }
     private var screenSpacing: CGFloat { UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0) }
@@ -199,7 +200,9 @@ struct DetailsView: View {
     private var detailContent: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if isPad {
+            if isInitialLoadInProgress {
+                loadingScreen
+            } else if isPad {
                 ipadEpisodeLayout
             } else {
                 ScrollView {
@@ -237,6 +240,20 @@ struct DetailsView: View {
                 .ignoresSafeArea(edges: .top)
             }
         }
+    }
+
+    private var loadingScreen: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .tint(.white)
+                .scaleEffect(1.25)
+
+            Text("Loading details...")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.white.opacity(0.92))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.ignoresSafeArea())
     }
 
     private var modalContent: some View {
@@ -567,15 +584,6 @@ struct DetailsView: View {
         .frame(width: width, height: height + insetTop)
         .clipped()
         .offset(y: -insetTop)
-        .task(id: media.id) {
-            tmdbHeroLookupComplete = false
-            tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
-            tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
-            tmdbHeroLookupComplete = true
-            let fallback = media.bannerURL ?? media.coverURL
-            let urls = [tmdbHeroBackdropURL, fallback].compactMap { $0 }
-            await ImageCache.shared.prefetch(urls: urls)
-        }
     }
 
     private var detailHeroHeader: some View {
@@ -668,17 +676,8 @@ struct DetailsView: View {
             .frame(width: width, height: height + insetTop)
             .clipped()
             .offset(y: -insetTop)
-            .task(id: media.id) {
-                tmdbHeroLookupComplete = false
-                tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
-                tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
-                tmdbHeroLookupComplete = true
-                let fallback = media.bannerURL ?? media.coverURL
-                let urls = [tmdbHeroBackdropURL, fallback].compactMap { $0 }
-                await ImageCache.shared.prefetch(urls: urls)
-            }
         }
-        .frame(height: UIScreen.main.bounds.height * 0.5)
+        .frame(height: min(UIScreen.main.bounds.height * 0.58, 520))
 #if targetEnvironment(macCatalyst)
         .toolbar(.hidden, for: .navigationBar)
 #endif
@@ -922,38 +921,33 @@ struct DetailsView: View {
             let result = try await fetchEpisodesDetached(for: media)
             guard loadGeneration == episodeLoadGeneration else { return }
             episodes = result.episodes
-            isLoading = false
-
             if let cached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: result.episodes) {
                 episodeMetadata = cached
             }
 
-            Task { @MainActor in
-                let meta = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: result.episodes)
-                guard loadGeneration == episodeLoadGeneration else { return }
-                episodeMetadata = meta
-            }
-            Task { @MainActor in
-                let firstEpisodeNumber = result.episodes.map(\.number).min()
-                let ratings = await appState.services.ratingService.ratingsForSeason(
-                    media: media,
-                    seasonNumber: 1,
-                    firstEpisodeNumber: firstEpisodeNumber
-                )
-                guard loadGeneration == episodeLoadGeneration else { return }
-                episodeRatings = ratings
-            }
-            Task { @MainActor in
+            async let metadataTask = appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: result.episodes)
+            async let ratingsTask = appState.services.ratingService.ratingsForSeason(
+                media: media,
+                seasonNumber: 1,
+                firstEpisodeNumber: result.episodes.map(\.number).min()
+            )
+            async let streamingEpisodesTask: [AniListStreamingEpisode] = {
                 do {
-                    let loadedEpisodes = try await appState.services.aniListClient.streamingEpisodes(mediaId: media.id)
-                    guard loadGeneration == episodeLoadGeneration else { return }
-                    streamingEpisodes = loadedEpisodes
+                    return try await appState.services.aniListClient.streamingEpisodes(mediaId: media.id)
                 } catch {
-                    guard loadGeneration == episodeLoadGeneration else { return }
                     AppLog.error(.network, "streaming episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
-                    streamingEpisodes = []
+                    return []
                 }
-            }
+            }()
+
+            let metadata = await metadataTask
+            let ratings = await ratingsTask
+            let loadedStreamingEpisodes = await streamingEpisodesTask
+            guard loadGeneration == episodeLoadGeneration else { return }
+            episodeMetadata = metadata
+            episodeRatings = ratings
+            streamingEpisodes = loadedStreamingEpisodes
+            isLoading = false
         } catch is CancellationError {
             guard loadGeneration == episodeLoadGeneration else { return }
             isLoading = false
@@ -1053,13 +1047,31 @@ struct DetailsView: View {
         initialLoadTask?.cancel()
         initialLoadTask = Task { @MainActor in
             AppLog.debug(.ui, "details view load mediaId=\(media.id)")
+            isInitialLoadInProgress = true
             tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
-            await loadEpisodes()
-            guard !Task.isCancelled else { return }
-            await loadRelated()
+            async let episodesTask: Void = loadEpisodes()
+            async let relatedTask: Void = loadRelated()
+            async let heroTask: Void = loadHeroArtwork()
+            _ = await (episodesTask, relatedTask, heroTask)
             guard !Task.isCancelled else { return }
             isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
+            isInitialLoadInProgress = false
         }
+    }
+
+    private func loadHeroArtwork() async {
+        tmdbHeroLookupComplete = false
+        async let backdropTask = appState.services.metadataService.heroBackdropURL(for: media)
+        async let logoTask = appState.services.metadataService.logoURL(for: media)
+        let backdrop = await backdropTask
+        let logo = await logoTask
+        guard !Task.isCancelled else { return }
+        tmdbHeroBackdropURL = backdrop
+        tmdbHeroLogoURL = logo
+        tmdbHeroLookupComplete = true
+        let fallback = media.bannerURL ?? media.coverURL
+        let urls = [backdrop, fallback, logo].compactMap { $0 }
+        await ImageCache.shared.prefetch(urls: urls)
     }
 
     private func performTMDBMatchSearch(query: String) {
@@ -1090,9 +1102,7 @@ struct DetailsView: View {
         episodeMetadata = [:]
         episodeRatings = [:]
         await loadEpisodes()
-        tmdbHeroBackdropURL = await appState.services.metadataService.heroBackdropURL(for: media)
-        tmdbHeroLogoURL = await appState.services.metadataService.logoURL(for: media)
-        tmdbHeroLookupComplete = true
+        await loadHeroArtwork()
     }
 
     private func selectEpisode(_ episode: SoraEpisode) {

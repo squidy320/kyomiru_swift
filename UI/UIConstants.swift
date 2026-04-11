@@ -18,16 +18,16 @@ public struct UIConstants {
     static var heroHeight: CGFloat {
         let width = windowBounds.width
         if PlatformSupport.prefersTabletLayout { return 420 }
-        if width <= 375 { return 300 }
-        if width <= 414 { return 330 }
-        return 350
+        if width <= 375 { return 360 }
+        if width <= 414 { return 390 }
+        return 420
     }
     static var heroHeightCompact: CGFloat {
         let width = windowBounds.width
         if PlatformSupport.prefersTabletLayout { return 320 }
-        if width <= 375 { return 220 }
-        if width <= 414 { return 240 }
-        return 260
+        if width <= 375 { return 250 }
+        if width <= 414 { return 270 }
+        return 290
     }
     static var libraryProfileHeroHeight: CGFloat {
         let width = windowBounds.width
