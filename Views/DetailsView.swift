@@ -452,12 +452,13 @@ struct DetailsView: View {
 
     private var ipadEpisodeLayout: some View {
         GeometryReader { proxy in
+            let heroHeight = detailHeroHeight(for: proxy.size.height)
             ZStack(alignment: .bottomLeading) {
-                detailHeroBackdropFull(size: proxy.size, safeArea: proxy.safeAreaInsets)
+                detailHeroBackdropFull(size: proxy.size, safeArea: proxy.safeAreaInsets, heroHeight: heroHeight)
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: UIConstants.interCardSpacing) {
-                        Spacer(minLength: proxy.size.height * 0.35)
+                        Spacer(minLength: max(heroHeight - 150, 220))
 
                         ipadMetaBlock
 
@@ -572,9 +573,8 @@ struct DetailsView: View {
         .scrollClipDisabled()
     }
 
-    private func detailHeroBackdropFull(size: CGSize, safeArea: EdgeInsets) -> some View {
+    private func detailHeroBackdropFull(size: CGSize, safeArea: EdgeInsets, heroHeight: CGFloat) -> some View {
         let width = size.width
-        let height = size.height
         let insetTop = safeArea.top
         let fallbackBackdrop = media.bannerURL ?? media.coverURL
         return ZStack {
@@ -582,9 +582,12 @@ struct DetailsView: View {
                 if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
                     CachedImage(
                         url: url,
-                        targetSize: CGSize(width: width, height: height + insetTop)
+                        targetSize: CGSize(width: width, height: heroHeight + insetTop)
                     ) { image in
-                        image.resizable().scaledToFill()
+                        image
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: width, height: heroHeight + insetTop, alignment: .bottom)
                     } placeholder: {
                         Theme.surface
                     }
@@ -592,7 +595,7 @@ struct DetailsView: View {
                     Theme.surface
                 }
             }
-            .frame(width: width, height: height + insetTop)
+            .frame(width: width, height: heroHeight + insetTop)
             .clipped()
 
             LinearGradient(
@@ -600,7 +603,7 @@ struct DetailsView: View {
                 startPoint: .bottom,
                 endPoint: .top
             )
-            .frame(width: width, height: height + insetTop)
+            .frame(width: width, height: heroHeight + insetTop)
 
             LinearGradient(
                 colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
@@ -610,8 +613,9 @@ struct DetailsView: View {
             .frame(width: width, height: max(44, insetTop + 34))
             .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(width: width, height: height + insetTop)
+        .frame(width: width, height: heroHeight + insetTop)
         .clipped()
+        .frame(maxHeight: .infinity, alignment: .top)
         .offset(y: -insetTop)
     }
 
@@ -628,7 +632,10 @@ struct DetailsView: View {
                             url: url,
                             targetSize: CGSize(width: width, height: height + insetTop)
                         ) { image in
-                            image.resizable().scaledToFill()
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: width, height: height + insetTop, alignment: .bottom)
                         } placeholder: {
                             Theme.surface
                         }
@@ -714,10 +721,17 @@ struct DetailsView: View {
             .clipped()
             .offset(y: -insetTop)
         }
-        .frame(height: min(UIScreen.main.bounds.height * 0.58, 520))
+        .frame(height: detailHeroHeight(for: UIScreen.main.bounds.height))
 #if targetEnvironment(macCatalyst)
         .toolbar(.hidden, for: .navigationBar)
 #endif
+    }
+
+    private func detailHeroHeight(for screenHeight: CGFloat) -> CGFloat {
+        if isPad {
+            return min(max(screenHeight * 0.5, 360), 560)
+        }
+        return min(max(screenHeight * 0.5, 380), 500)
     }
 
     private var actionRow: some View {

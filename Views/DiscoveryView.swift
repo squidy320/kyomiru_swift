@@ -216,7 +216,10 @@ struct DiscoveryView: View {
                 Group {
                     if let heroTrending, let url = heroTrending.backdropURL {
                         CachedImage(url: url) { image in
-                            image.resizable().scaledToFill()
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: width, height: height + insetTop, alignment: .bottom)
                         } placeholder: {
                             Theme.surface
                         }

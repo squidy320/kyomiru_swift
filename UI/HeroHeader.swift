@@ -34,7 +34,10 @@ struct HeroHeader: View {
                                 url: resolved,
                                 targetSize: CGSize(width: UIScreen.main.bounds.width, height: height)
                             ) { img in
-                                img.resizable().scaledToFill()
+                                img
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(height: height, alignment: .bottom)
                             } placeholder: {
                                 Theme.surface
                             }

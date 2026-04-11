@@ -16,11 +16,11 @@ public struct UIConstants {
     static let interCardSpacing: CGFloat = 12
     static let bottomBarHeight: CGFloat = 72
     static var heroHeight: CGFloat {
-        let width = windowBounds.width
-        if PlatformSupport.prefersTabletLayout { return 420 }
-        if width <= 375 { return 360 }
-        if width <= 414 { return 390 }
-        return 420
+        let height = windowBounds.height
+        if PlatformSupport.prefersTabletLayout {
+            return min(max(height * 0.5, 420), 560)
+        }
+        return min(max(height * 0.48, 360), 460)
     }
     static var heroHeightCompact: CGFloat {
         let width = windowBounds.width
