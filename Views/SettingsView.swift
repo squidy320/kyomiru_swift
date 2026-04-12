@@ -409,7 +409,7 @@ private struct PlayerSettingsScreen: View {
 #if targetEnvironment(macCatalyst)
         [.avPlayer]
 #else
-        PlayerBackend.allCases.filter(\.isAvailableInCurrentBuild)
+        PlayerBackend.allCases
 #endif
     }
 
