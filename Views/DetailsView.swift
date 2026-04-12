@@ -306,45 +306,7 @@ struct DetailsView: View {
         .padding(.horizontal, screenPadding)
         .padding(.top, UIConstants.smallPadding)
         .padding(.bottom, UIConstants.bottomBarHeight)
-        .background(
-            Group {
-                if bannerAtmosphereEnabled {
-                    ZStack(alignment: .bottom) {
-                        activeHeroAtmosphere.baseBackground
-
-                        LinearGradient(
-                            colors: [
-                                activeHeroAtmosphere.baseBackground,
-                                activeHeroAtmosphere.bottomFeather.opacity(0.18),
-                                activeHeroAtmosphere.bottomFeather.opacity(0.36),
-                                activeHeroAtmosphere.bottomFeather.opacity(0.54),
-                                activeHeroAtmosphere.bottomFeather.opacity(0.70)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .ignoresSafeArea()
-                    }
-                } else {
-                    ZStack(alignment: .bottom) {
-                        Theme.baseBackground
-
-                        LinearGradient(
-                            colors: [
-                                Theme.baseBackground,
-                                Color.black.opacity(0.28),
-                                Color.black.opacity(0.52),
-                                Color.black.opacity(0.76),
-                                Color.black.opacity(0.90)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .ignoresSafeArea()
-                    }
-                }
-            }
-        )
+        .background(Theme.baseBackground)
     }
 
     private var modalContent: some View {
