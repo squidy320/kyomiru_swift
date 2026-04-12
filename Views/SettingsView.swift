@@ -651,6 +651,12 @@ private struct AppearanceSettingsScreen: View {
                     }
                     .pickerStyle(.segmented)
 
+                    Toggle("Banner Atmosphere", isOn: Binding(
+                        get: { appState.settings.enableBannerAtmosphere },
+                        set: { appState.settings.enableBannerAtmosphere = $0 }
+                    ))
+                    .foregroundColor(.white)
+
                     ColorPicker(
                         "Accent Color",
                         selection: Binding(

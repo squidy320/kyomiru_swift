@@ -18,6 +18,7 @@ final class SettingsState: ObservableObject {
     @AppStorage("settings.playerSkipIntervalSeconds") private var playerSkipIntervalRaw: Double = 85
     @AppStorage("settings.playerHoldSpeed") private var playerHoldSpeedRaw: Double = PlayerHoldSpeed.twoX.rawValue
     @AppStorage("settings.appearanceThemeMode") private var appearanceThemeModeRaw: String = AppearanceThemeMode.system.rawValue
+    @AppStorage("settings.enableBannerAtmosphere") private var enableBannerAtmosphereRaw: Bool = false
     @AppStorage("settings.reduceMotion") private var reduceMotionRaw: Bool = false
     @AppStorage("settings.useComfortableLayout") private var useComfortableLayoutRaw: Bool = true
     @AppStorage("settings.accentColor.red") private var accentColorRedRaw: Double = 0.47
@@ -146,6 +147,14 @@ final class SettingsState: ObservableObject {
         get { reduceMotionRaw }
         set {
             reduceMotionRaw = newValue
+            objectWillChange.send()
+        }
+    }
+
+    var enableBannerAtmosphere: Bool {
+        get { enableBannerAtmosphereRaw }
+        set {
+            enableBannerAtmosphereRaw = newValue
             objectWillChange.send()
         }
     }

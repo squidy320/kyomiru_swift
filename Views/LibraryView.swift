@@ -24,20 +24,23 @@ struct LibraryView: View {
     @State private var libraryLoadGeneration = 0
     @State private var heroAtmosphere: HeroAtmosphere = .fallback
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
+    private var activeHeroAtmosphere: HeroAtmosphere {
+        appState.settings.enableBannerAtmosphere ? heroAtmosphere : .fallback
+    }
 
     var body: some View {
         let useComfortableLayout = appState.settings.useComfortableLayout
         let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
         let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
-            heroAtmosphere.baseBackground.ignoresSafeArea()
+            activeHeroAtmosphere.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
                         LibraryProfileHero(
                             bannerURL: appState.authState.user?.bannerURL,
                             avatarURL: appState.authState.user?.avatarURL,
-                            atmosphere: heroAtmosphere,
+                            atmosphere: activeHeroAtmosphere,
                             onAvatarTap: {
                                 if appState.authState.isSignedIn {
                                     showAlertsSheet = true
@@ -136,7 +139,7 @@ struct LibraryView: View {
                     .padding(.bottom, UIConstants.bottomBarHeight)
                     .background(
                         LinearGradient(
-                            colors: [heroAtmosphere.baseBackground, heroAtmosphere.bottomFeather.opacity(0.16)],
+                            colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.16)],
                             startPoint: .top,
                             endPoint: .bottom
                         )
@@ -200,7 +203,7 @@ struct LibraryView: View {
                     }
                 }
             }
-            .background(heroAtmosphere.baseBackground.ignoresSafeArea())
+            .background(activeHeroAtmosphere.baseBackground.ignoresSafeArea())
         }
         .sheet(isPresented: $librarySettings.showSettingsSheet) {
             LibrarySettingsSheet(manager: librarySettings)

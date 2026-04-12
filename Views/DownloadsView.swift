@@ -607,10 +607,13 @@ private struct DownloadsDetailView: View {
     @State private var compileMessage: String?
     @State private var heroAtmosphere: HeroAtmosphere = .fallback
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
+    private var activeHeroAtmosphere: HeroAtmosphere {
+        appState.settings.enableBannerAtmosphere ? heroAtmosphere : .fallback
+    }
 
     var body: some View {
         ZStack {
-            heroAtmosphere.baseBackground.ignoresSafeArea()
+            activeHeroAtmosphere.baseBackground.ignoresSafeArea()
             downloadsBody
         }
         .navigationTitle(title)
@@ -917,7 +920,7 @@ private struct DownloadsDetailView: View {
             )
 
             LinearGradient(
-                colors: [heroAtmosphere.bottomFeather.opacity(0.92), heroAtmosphere.bottomFeather.opacity(0.45), Color.clear],
+                colors: [activeHeroAtmosphere.bottomFeather.opacity(0.92), activeHeroAtmosphere.bottomFeather.opacity(0.45), Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )
@@ -965,21 +968,21 @@ private struct DownloadsDetailView: View {
                 )
 
                 LinearGradient(
-                    colors: [heroAtmosphere.bottomFeather.opacity(0.95), heroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
+                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.95), activeHeroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [heroAtmosphere.topFeather.opacity(0.55), heroAtmosphere.topFeather.opacity(0.15), Color.clear],
+                    colors: [activeHeroAtmosphere.topFeather.opacity(0.55), activeHeroAtmosphere.topFeather.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [Color.clear, heroAtmosphere.baseBackground.opacity(0.92)],
+                    colors: [Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.92)],
                     startPoint: .top,
                     endPoint: .bottom
                 )

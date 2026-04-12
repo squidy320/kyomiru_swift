@@ -205,7 +205,7 @@ struct DetailsView: View {
     }
 
     private var activeHeroAtmosphere: HeroAtmosphere {
-        isPad ? .fallback : heroAtmosphere
+        (isPad || !appState.settings.enableBannerAtmosphere) ? .fallback : heroAtmosphere
     }
 
     private var detailContent: some View {

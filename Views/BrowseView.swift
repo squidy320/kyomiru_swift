@@ -14,10 +14,13 @@ struct BrowseView: View {
     @State private var heroAtmosphere: HeroAtmosphere = .fallback
     @State private var navigateMedia: AniListMedia?
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
+    private var activeHeroAtmosphere: HeroAtmosphere {
+        appState.settings.enableBannerAtmosphere ? heroAtmosphere : .fallback
+    }
 
     var body: some View {
         ZStack {
-            heroAtmosphere.baseBackground.ignoresSafeArea()
+            activeHeroAtmosphere.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -84,7 +87,7 @@ struct BrowseView: View {
                     .padding(.bottom, UIConstants.bottomBarHeight)
                     .background(
                         LinearGradient(
-                            colors: [heroAtmosphere.baseBackground, heroAtmosphere.bottomFeather.opacity(0.16)],
+                            colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.16)],
                             startPoint: .top,
                             endPoint: .bottom
                         )
@@ -97,7 +100,7 @@ struct BrowseView: View {
                     await reload()
                 }
             }
-            .background(heroAtmosphere.baseBackground.ignoresSafeArea())
+            .background(activeHeroAtmosphere.baseBackground.ignoresSafeArea())
         }
         .task {
             await loadHero()
@@ -166,7 +169,7 @@ struct BrowseView: View {
                 Spacer().frame(height: 4)
             }
         }
-        .background(heroAtmosphere.baseBackground)
+        .background(activeHeroAtmosphere.baseBackground)
     }
 
     private func browseChipLabel(text: String, isSelected: Bool) -> some View {
@@ -233,14 +236,14 @@ struct BrowseView: View {
                 )
 
                 LinearGradient(
-                    colors: [heroAtmosphere.bottomFeather.opacity(0.95), heroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
+                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.95), activeHeroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [heroAtmosphere.topFeather.opacity(0.55), heroAtmosphere.topFeather.opacity(0.15), Color.clear],
+                    colors: [activeHeroAtmosphere.topFeather.opacity(0.55), activeHeroAtmosphere.topFeather.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
