@@ -12,6 +12,7 @@ struct DiscoveryView: View {
     @State private var imdbTrending: [TrendingItem] = []
     @State private var heroTrending: TrendingItem?
     @State private var heroAnime: AniListMedia?
+    @State private var heroAtmosphere: HeroAtmosphere = .fallback
     @State private var isLoadingImdbTrending = false
     @State private var imdbAniListMap: [Int: AniListMedia] = [:]
     @State private var navigateMedia: AniListMedia?
@@ -30,7 +31,7 @@ struct DiscoveryView: View {
         let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
         let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
-            Theme.baseBackground.ignoresSafeArea()
+            heroAtmosphere.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
@@ -149,6 +150,9 @@ struct DiscoveryView: View {
         .onChange(of: librarySortRaw) { _, _ in
             Task { await loadDiscovery(forceRefresh: true) }
         }
+        .task(id: heroTrending?.backdropURL) {
+            await refreshHeroAtmosphere()
+        }
     }
 
     private var heroCarousel: AnyView {
@@ -219,7 +223,7 @@ struct DiscoveryView: View {
                 .clipped()
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.98), Color.black.opacity(0.72), Color.clear],
+                    colors: [heroAtmosphere.bottomFeather.opacity(0.98), heroAtmosphere.bottomFeather.opacity(0.72), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
@@ -227,7 +231,7 @@ struct DiscoveryView: View {
                 .frame(maxHeight: .infinity, alignment: .bottom)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.72), Color.black.opacity(0.24), Color.clear],
+                    colors: [heroAtmosphere.topFeather.opacity(0.72), heroAtmosphere.topFeather.opacity(0.24), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -235,7 +239,7 @@ struct DiscoveryView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.34), Color.black.opacity(0.14), Color.clear],
+                    colors: [heroAtmosphere.topFeather.opacity(0.34), heroAtmosphere.topFeather.opacity(0.14), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -341,6 +345,18 @@ private extension DiscoveryView {
         }
         let items = sections.first?.items ?? []
         return Array(items.prefix(5))
+    }
+
+    @MainActor
+    func refreshHeroAtmosphere() async {
+        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: heroTrending?.backdropURL)
+        if appState.settings.reduceMotion {
+            heroAtmosphere = atmosphere
+        } else {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                heroAtmosphere = atmosphere
+            }
+        }
     }
 
     func loadDiscovery(forceRefresh: Bool) async {

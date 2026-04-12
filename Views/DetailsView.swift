@@ -182,6 +182,7 @@ struct DetailsView: View {
     @State private var tmdbHeroBackdropURL: URL?
     @State private var tmdbHeroLogoURL: URL?
     @State private var tmdbHeroLookupComplete = false
+    @State private var heroAtmosphere: HeroAtmosphere = .fallback
     @State private var showImportPicker = false
     @State private var showImportReview = false
     @State private var importCandidates: [EpisodeImportCandidate] = []
@@ -199,9 +200,13 @@ struct DetailsView: View {
         screenContent
     }
 
+    private var currentHeroBackdropURL: URL? {
+        tmdbHeroBackdropURL ?? media.bannerURL ?? media.coverURL
+    }
+
     private var detailContent: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            heroAtmosphere.baseBackground.ignoresSafeArea()
             if shouldShowInitialLoadingScreen {
                 loadingScreen
             } else if isPad {
@@ -244,7 +249,7 @@ struct DetailsView: View {
                             .padding(.bottom, UIConstants.bottomBarHeight)
                             .background(
                                 LinearGradient(
-                                    colors: [Color.black.opacity(0.08), Color.black],
+                                    colors: [heroAtmosphere.bottomFeather.opacity(0.16), heroAtmosphere.baseBackground],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
@@ -275,7 +280,7 @@ struct DetailsView: View {
                 .foregroundColor(.white.opacity(0.92))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.ignoresSafeArea())
+        .background(heroAtmosphere.baseBackground.ignoresSafeArea())
     }
 
     private var modalContent: some View {
@@ -288,6 +293,9 @@ struct DetailsView: View {
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .task(id: currentHeroBackdropURL) {
+            await refreshHeroAtmosphere()
+        }
         .task(id: media.id) {
             startInitialLoad()
         }
@@ -615,14 +623,14 @@ struct DetailsView: View {
             .clipped()
 
             LinearGradient(
-                colors: [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
+                colors: [heroAtmosphere.bottomFeather.opacity(0.92), heroAtmosphere.bottomFeather.opacity(0.45), Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )
             .frame(width: width, height: height + insetTop)
 
             LinearGradient(
-                colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
+                colors: [heroAtmosphere.topFeather.opacity(0.22), heroAtmosphere.topFeather.opacity(0.08), Color.clear],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -662,21 +670,21 @@ struct DetailsView: View {
                 .clipped()
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    colors: [heroAtmosphere.bottomFeather.opacity(0.95), heroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    colors: [heroAtmosphere.topFeather.opacity(0.55), heroAtmosphere.topFeather.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
+                    colors: [heroAtmosphere.topFeather.opacity(0.20), heroAtmosphere.topFeather.opacity(0.08), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -684,7 +692,7 @@ struct DetailsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [Color.clear, Color.black.opacity(0.9)],
+                    colors: [Color.clear, heroAtmosphere.baseBackground.opacity(0.92)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -753,21 +761,21 @@ struct DetailsView: View {
                 .clipped()
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    colors: [heroAtmosphere.bottomFeather.opacity(0.95), heroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    colors: [heroAtmosphere.topFeather.opacity(0.55), heroAtmosphere.topFeather.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
+                    colors: [heroAtmosphere.topFeather.opacity(0.20), heroAtmosphere.topFeather.opacity(0.08), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -775,7 +783,7 @@ struct DetailsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [Color.clear, Color.black.opacity(0.9)],
+                    colors: [Color.clear, heroAtmosphere.baseBackground.opacity(0.92)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -1264,6 +1272,18 @@ struct DetailsView: View {
         }
         Task {
             await loadEpisodes(forceRefresh: true)
+        }
+    }
+
+    @MainActor
+    private func refreshHeroAtmosphere() async {
+        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: currentHeroBackdropURL)
+        if appState.settings.reduceMotion {
+            heroAtmosphere = atmosphere
+        } else {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                heroAtmosphere = atmosphere
+            }
         }
     }
 

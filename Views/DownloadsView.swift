@@ -604,11 +604,12 @@ private struct DownloadsDetailView: View {
     @State private var importCandidates: [EpisodeImportCandidate] = []
     @State private var importMessage: String?
     @State private var compileMessage: String?
+    @State private var heroAtmosphere: HeroAtmosphere = .fallback
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
 
     var body: some View {
         ZStack {
-            Theme.baseBackground.ignoresSafeArea()
+            heroAtmosphere.baseBackground.ignoresSafeArea()
             downloadsBody
         }
         .navigationTitle(title)
@@ -688,6 +689,9 @@ private struct DownloadsDetailView: View {
         .task {
             loadCachedMetadata()
             Task { await fetchEpisodeMetadata() }
+        }
+        .task(id: bannerURL) {
+            await refreshHeroAtmosphere()
         }
     }
 
@@ -912,7 +916,7 @@ private struct DownloadsDetailView: View {
             )
 
             LinearGradient(
-                colors: [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
+                colors: [heroAtmosphere.bottomFeather.opacity(0.92), heroAtmosphere.bottomFeather.opacity(0.45), Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )
@@ -960,21 +964,21 @@ private struct DownloadsDetailView: View {
                 )
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    colors: [heroAtmosphere.bottomFeather.opacity(0.95), heroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    colors: [heroAtmosphere.topFeather.opacity(0.55), heroAtmosphere.topFeather.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [Color.clear, Color.black.opacity(0.9)],
+                    colors: [Color.clear, heroAtmosphere.baseBackground.opacity(0.92)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -1058,6 +1062,18 @@ private struct DownloadsDetailView: View {
         let fetched = await appState.services.episodeMetadataService.fetchEpisodes(for: media, episodes: episodes)
         if !fetched.isEmpty {
             episodeMetadata = fetched
+        }
+    }
+
+    @MainActor
+    private func refreshHeroAtmosphere() async {
+        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: bannerURL)
+        if appState.settings.reduceMotion {
+            heroAtmosphere = atmosphere
+        } else {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                heroAtmosphere = atmosphere
+            }
         }
     }
 

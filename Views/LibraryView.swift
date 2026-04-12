@@ -22,6 +22,7 @@ struct LibraryView: View {
     @State private var showContinueSourceSheet = false
     @State private var showAlertsSheet = false
     @State private var libraryLoadGeneration = 0
+    @State private var heroAtmosphere: HeroAtmosphere = .fallback
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
 
     var body: some View {
@@ -29,13 +30,14 @@ struct LibraryView: View {
         let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
         let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
-            Theme.baseBackground.ignoresSafeArea()
+            heroAtmosphere.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
                         LibraryProfileHero(
                             bannerURL: appState.authState.user?.bannerURL,
                             avatarURL: appState.authState.user?.avatarURL,
+                            atmosphere: heroAtmosphere,
                             onAvatarTap: {
                                 if appState.authState.isSignedIn {
                                     showAlertsSheet = true
@@ -196,6 +198,9 @@ struct LibraryView: View {
             LibrarySettingsSheet(manager: librarySettings)
                 .presentationDetents([.medium, .large])
         }
+        .task(id: appState.authState.user?.bannerURL) {
+            await refreshHeroAtmosphere()
+        }
         .sheet(isPresented: $showAlertsSheet) {
             AlertsView()
         }
@@ -288,6 +293,18 @@ struct LibraryView: View {
         }
         .onChange(of: sections) { _, _ in
             Task { await prefetchLibraryImages(sections: sections) }
+        }
+    }
+
+    @MainActor
+    private func refreshHeroAtmosphere() async {
+        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: appState.authState.user?.bannerURL)
+        if appState.settings.reduceMotion {
+            heroAtmosphere = atmosphere
+        } else {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                heroAtmosphere = atmosphere
+            }
         }
     }
 
@@ -702,6 +719,7 @@ private struct LibraryTopBar: View {
 private struct LibraryProfileHero: View {
     let bannerURL: URL?
     let avatarURL: URL?
+    let atmosphere: HeroAtmosphere
     let onAvatarTap: () -> Void
 
     var body: some View {
@@ -768,7 +786,7 @@ private struct LibraryProfileHero: View {
 
                 VStack(spacing: 0) {
                     LinearGradient(
-                        colors: [Color.black.opacity(0.32), Color.clear],
+                        colors: [atmosphere.topFeather.opacity(0.34), Color.clear],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -777,7 +795,7 @@ private struct LibraryProfileHero: View {
                     Spacer(minLength: 0)
 
                     LinearGradient(
-                        colors: [Color.clear, Color.black.opacity(0.24), Color.black.opacity(0.84)],
+                        colors: [Color.clear, atmosphere.bottomFeather.opacity(0.28), atmosphere.baseBackground.opacity(0.90)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -785,7 +803,7 @@ private struct LibraryProfileHero: View {
                 }
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.08), Color.clear, Color.black.opacity(0.30)],
+                    colors: [atmosphere.topFeather.opacity(0.10), Color.clear, atmosphere.bottomFeather.opacity(0.30)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -800,8 +818,8 @@ private struct LibraryProfileHero: View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Theme.surface.opacity(0.95),
-                    Theme.baseBackground.opacity(0.9),
+                    atmosphere.topFeather.opacity(0.72),
+                    atmosphere.baseBackground.opacity(0.92),
                     Theme.surface.opacity(0.82)
                 ],
                 startPoint: .topLeading,

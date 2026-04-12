@@ -11,12 +11,13 @@ struct BrowseView: View {
     @State private var pendingFilters = BrowseFilterState()
     @State private var showFilters = false
     @State private var heroTrending: TrendingItem?
+    @State private var heroAtmosphere: HeroAtmosphere = .fallback
     @State private var navigateMedia: AniListMedia?
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
 
     var body: some View {
         ZStack {
-            Theme.baseBackground.ignoresSafeArea()
+            heroAtmosphere.baseBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -94,6 +95,9 @@ struct BrowseView: View {
             await loadHero()
             await reload()
         }
+        .task(id: currentHeroBackdropURL) {
+            await refreshHeroAtmosphere()
+        }
         .sheet(isPresented: $showFilters) {
             BrowseFilterSheet(
                 filters: $pendingFilters,
@@ -154,7 +158,7 @@ struct BrowseView: View {
                 Spacer().frame(height: 4)
             }
         }
-        .background(Theme.baseBackground)
+        .background(heroAtmosphere.baseBackground)
     }
 
     private func browseChipLabel(text: String, isSelected: Bool) -> some View {
@@ -221,14 +225,14 @@ struct BrowseView: View {
                 )
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    colors: [heroAtmosphere.bottomFeather.opacity(0.95), heroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    colors: [heroAtmosphere.topFeather.opacity(0.55), heroAtmosphere.topFeather.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -261,6 +265,22 @@ struct BrowseView: View {
         }
         .frame(height: height)
         .offset(y: -topInset)
+    }
+
+    private var currentHeroBackdropURL: URL? {
+        heroTrending?.backdropURL ?? items.first?.bannerURL ?? items.first?.coverURL
+    }
+
+    @MainActor
+    private func refreshHeroAtmosphere() async {
+        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: currentHeroBackdropURL)
+        if appState.settings.reduceMotion {
+            heroAtmosphere = atmosphere
+        } else {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                heroAtmosphere = atmosphere
+            }
+        }
     }
 
     private func gridLayout(for availableWidth: CGFloat) -> ([GridItem], CGSize) {

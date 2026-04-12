@@ -3,6 +3,7 @@ import UIKit
 import CryptoKit
 import Foundation
 import ImageIO
+import CoreImage
 
 enum Theme {
     private static let accentRedKey = "settings.accentColor.red"
@@ -65,6 +66,211 @@ enum Theme {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+    }
+}
+
+struct HeroAtmosphereColor: Sendable {
+    let red: Double
+    let green: Double
+    let blue: Double
+    let alpha: Double
+
+    init(red: Double, green: Double, blue: Double, alpha: Double = 1.0) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.alpha = alpha
+    }
+
+    init(uiColor: UIColor) {
+        let rgba = uiColor.rgbaComponents
+        self.red = Double(rgba.red)
+        self.green = Double(rgba.green)
+        self.blue = Double(rgba.blue)
+        self.alpha = Double(rgba.alpha)
+    }
+
+    var color: Color {
+        Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha)
+    }
+}
+
+struct HeroAtmosphere: Sendable {
+    let base: HeroAtmosphereColor
+    let top: HeroAtmosphereColor
+    let bottom: HeroAtmosphereColor
+
+    var baseBackground: Color { base.color }
+    var topFeather: Color { top.color }
+    var bottomFeather: Color { bottom.color }
+
+    static let fallback = HeroAtmosphere(
+        base: HeroAtmosphereColor(red: 0.05, green: 0.05, blue: 0.07),
+        top: HeroAtmosphereColor(red: 0.13, green: 0.14, blue: 0.18),
+        bottom: HeroAtmosphereColor(red: 0.09, green: 0.10, blue: 0.14)
+    )
+}
+
+actor HeroAtmosphereResolver {
+    static let shared = HeroAtmosphereResolver()
+
+    private let context = CIContext(options: [.workingColorSpace: NSNull()])
+    private var cache: [String: HeroAtmosphere] = [:]
+    private var tasks: [String: Task<HeroAtmosphere, Never>] = [:]
+
+    func atmosphere(for url: URL?) async -> HeroAtmosphere {
+        guard let url else { return .fallback }
+        let key = url.absoluteString
+        if let cached = cache[key] {
+            return cached
+        }
+        if let existing = tasks[key] {
+            return await existing.value
+        }
+
+        let task = Task<HeroAtmosphere, Never> {
+            let targetSize = CGSize(width: 96, height: 96)
+            let image = await ImageCache.shared.image(for: url, targetSize: targetSize, scale: 1)
+            guard let image,
+                  let color = await self.representativeColor(from: image) else {
+                return .fallback
+            }
+            return Self.makeAtmosphere(from: color)
+        }
+
+        tasks[key] = task
+        let atmosphere = await task.value
+        tasks[key] = nil
+        cache[key] = atmosphere
+        return atmosphere
+    }
+
+    private func representativeColor(from image: UIImage) -> UIColor? {
+        guard let cgImage = image.cgImage else { return nil }
+        let input = CIImage(cgImage: cgImage)
+        let extent = input.extent
+        guard !extent.isEmpty,
+              let filter = CIFilter(name: "CIAreaAverage") else { return nil }
+
+        filter.setValue(input, forKey: kCIInputImageKey)
+        filter.setValue(CIVector(cgRect: extent), forKey: kCIInputExtentKey)
+
+        guard let output = filter.outputImage else { return nil }
+        var bitmap = [UInt8](repeating: 0, count: 4)
+        context.render(
+            output,
+            toBitmap: &bitmap,
+            rowBytes: 4,
+            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
+            format: .RGBA8,
+            colorSpace: nil
+        )
+
+        return UIColor(
+            red: CGFloat(bitmap[0]) / 255.0,
+            green: CGFloat(bitmap[1]) / 255.0,
+            blue: CGFloat(bitmap[2]) / 255.0,
+            alpha: 1.0
+        )
+    }
+
+    private static func makeAtmosphere(from color: UIColor) -> HeroAtmosphere {
+        let neutralBase = UIColor(red: 0.05, green: 0.05, blue: 0.07, alpha: 1.0)
+        let neutralTop = UIColor(red: 0.12, green: 0.13, blue: 0.16, alpha: 1.0)
+        let neutralBottom = UIColor(red: 0.08, green: 0.09, blue: 0.12, alpha: 1.0)
+        let seed = color.normalizedHeroSeed()
+
+        let base = seed
+            .blended(with: neutralBase, amount: 0.74)
+            .adjustingBrightness(by: 0.78)
+        let top = seed
+            .blended(with: neutralTop, amount: 0.56)
+            .adjustingBrightness(by: 0.92)
+        let bottom = seed
+            .blended(with: neutralBottom, amount: 0.48)
+            .adjustingBrightness(by: 0.76)
+
+        return HeroAtmosphere(
+            base: HeroAtmosphereColor(uiColor: base),
+            top: HeroAtmosphereColor(uiColor: top),
+            bottom: HeroAtmosphereColor(uiColor: bottom)
+        )
+    }
+}
+
+private extension UIColor {
+    func normalizedHeroSeed() -> UIColor {
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+
+        if getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) {
+            let clampedSaturation = min(max(saturation * 1.18, 0.22), 0.68)
+            let clampedBrightness = min(max(brightness * 0.96, 0.34), 0.72)
+            return UIColor(hue: hue, saturation: clampedSaturation, brightness: clampedBrightness, alpha: 1.0)
+        }
+
+        var white: CGFloat = 0
+        if getWhite(&white, alpha: &alpha) {
+            let clampedWhite = min(max(white, 0.34), 0.64)
+            return UIColor(white: clampedWhite, alpha: 1.0)
+        }
+
+        return self
+    }
+
+    func blended(with other: UIColor, amount: CGFloat) -> UIColor {
+        let blendAmount = min(max(amount, 0), 1)
+        let base = rgbaComponents
+        let target = other.rgbaComponents
+        let inverse = 1 - blendAmount
+        return UIColor(
+            red: (base.red * inverse) + (target.red * blendAmount),
+            green: (base.green * inverse) + (target.green * blendAmount),
+            blue: (base.blue * inverse) + (target.blue * blendAmount),
+            alpha: (base.alpha * inverse) + (target.alpha * blendAmount)
+        )
+    }
+
+    func adjustingBrightness(by factor: CGFloat) -> UIColor {
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        if getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) {
+            return UIColor(
+                hue: hue,
+                saturation: saturation,
+                brightness: min(max(brightness * factor, 0), 1),
+                alpha: alpha
+            )
+        }
+
+        let rgba = rgbaComponents
+        return UIColor(
+            red: min(max(rgba.red * factor, 0), 1),
+            green: min(max(rgba.green * factor, 0), 1),
+            blue: min(max(rgba.blue * factor, 0), 1),
+            alpha: rgba.alpha
+        )
+    }
+
+    var rgbaComponents: (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        if getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+            return (red, green, blue, alpha)
+        }
+
+        var white: CGFloat = 0
+        if getWhite(&white, alpha: &alpha) {
+            return (white, white, white, alpha)
+        }
+
+        return (0, 0, 0, 1)
     }
 }
 
