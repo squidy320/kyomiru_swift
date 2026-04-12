@@ -213,25 +213,24 @@ struct DetailsView: View {
 
     private var detailContent: some View {
         ZStack {
-            Group {
-                // Atmospheric gradient background
-                if bannerAtmosphereEnabled {
-                    LinearGradient(
-                        colors: [
-                            activeHeroAtmosphere.bottomFeather.opacity(0.18),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.36),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.54),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.70),
-                            activeHeroAtmosphere.baseBackground
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea()
-                } else {
-                    Theme.baseBackground.ignoresSafeArea()
-                }
+            // Atmospheric gradient background
+            if bannerAtmosphereEnabled {
+                LinearGradient(
+                    colors: [
+                        activeHeroAtmosphere.bottomFeather.opacity(0.18),
+                        activeHeroAtmosphere.bottomFeather.opacity(0.36),
+                        activeHeroAtmosphere.bottomFeather.opacity(0.54),
+                        activeHeroAtmosphere.bottomFeather.opacity(0.70),
+                        activeHeroAtmosphere.baseBackground
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            } else {
+                Theme.baseBackground.ignoresSafeArea()
             }
+            
             if shouldShowInitialLoadingScreen {
                 loadingScreen
             } else if isPad {
