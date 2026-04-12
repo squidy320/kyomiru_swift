@@ -202,7 +202,7 @@ struct BrowseView: View {
         return GeometryReader { proxy in
             let width = proxy.size.width
             let insetTop = proxy.safeAreaInsets.top
-            let topFeatherHeight = max(24.0, insetTop * 0.6)
+            let topFeatherHeight = max(40.0, insetTop * 0.95)
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let heroTrending, let url = heroTrending.backdropURL {
@@ -247,7 +247,7 @@ struct BrowseView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: height + insetTop)
+                .frame(width: width, height: max(height * 0.34, 120))
 
                 VStack(alignment: .leading, spacing: 10) {
                     if let logo = heroTrending?.logoURL {

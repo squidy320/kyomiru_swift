@@ -24,8 +24,8 @@ struct HeroHeader: View {
         let contentSpacing: CGFloat = useComfortableLayout ? 10 : 8
         let contentPadding: CGFloat = useComfortableLayout ? 22 : 18
         let resolvedURL = tmdbBackdropURL ?? (tmdbLookupComplete ? imageURL : nil)
-        let topFeather = max(18, height * 0.12)
-        let bottomFeather = max(34, height * 0.24)
+        let topFeather = max(26, height * 0.17)
+        let bottomFeather = max(54, height * 0.34)
         let cornerRadius = fullBleed ? 0.0 : 26.0
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -70,20 +70,20 @@ struct HeroHeader: View {
                 .clipped()
 
             LinearGradient(
-                colors: [Color.black.opacity(0.97), Color.black.opacity(0.72), Color.clear],
+                colors: [Color.black.opacity(0.88), Color.black.opacity(0.48), Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )
-            .frame(height: height * 0.52)
+            .frame(height: height * 0.62)
             .frame(maxHeight: .infinity, alignment: .bottom)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
 
             LinearGradient(
-                colors: [Color.black.opacity(0.58), Color.black.opacity(0.18), Color.clear],
+                colors: [Color.black.opacity(0.42), Color.black.opacity(0.14), Color.clear],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: height * 0.22)
+            .frame(height: height * 0.28)
             .frame(maxHeight: .infinity, alignment: .top)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
 

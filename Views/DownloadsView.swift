@@ -888,7 +888,7 @@ private struct DownloadsDetailView: View {
         let width = size.width
         let height = size.height
         let insetTop = safeArea.top
-        let topFeatherHeight = max(24.0, insetTop * 0.6)
+        let topFeatherHeight = max(40.0, insetTop * 0.95)
         let fallbackBackdrop = bannerURL ?? posterURL
         return ZStack {
             Group {
@@ -936,7 +936,7 @@ private struct DownloadsDetailView: View {
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
-            let topFeatherHeight = max(24.0, insetTop * 0.6)
+        let topFeatherHeight = max(40.0, insetTop * 0.95)
             let fallbackBackdrop = bannerURL ?? posterURL
             ZStack(alignment: .bottomLeading) {
                 Group {
@@ -979,7 +979,7 @@ private struct DownloadsDetailView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: height + insetTop)
+                .frame(width: width, height: max(height * 0.34, 120))
 
                 LinearGradient(
                     colors: [Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.92)],

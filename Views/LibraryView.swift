@@ -755,8 +755,8 @@ private struct LibraryProfileHero: View {
     private func heroBackdrop(height: CGFloat) -> some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            let topFeather = max(18.0, height * 0.12)
-            let bottomFeather = max(42.0, height * 0.28)
+            let topFeather = max(28.0, height * 0.18)
+            let bottomFeather = max(60.0, height * 0.38)
 
             ZStack(alignment: .bottom) {
                 Group {
@@ -801,7 +801,7 @@ private struct LibraryProfileHero: View {
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    .frame(height: height * 0.24)
+                    .frame(height: height * 0.30)
 
                     Spacer(minLength: 0)
 
@@ -810,7 +810,7 @@ private struct LibraryProfileHero: View {
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    .frame(height: height * 0.62)
+                    .frame(height: height * 0.70)
                 }
 
                 LinearGradient(

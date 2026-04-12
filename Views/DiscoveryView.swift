@@ -238,7 +238,7 @@ struct DiscoveryView: View {
                     startPoint: .bottom,
                     endPoint: .top
                 )
-                .frame(width: width, height: (height + insetTop) * 0.58)
+                .frame(width: width, height: (height + insetTop) * 0.66)
                 .frame(maxHeight: .infinity, alignment: .bottom)
 
                 LinearGradient(
@@ -246,7 +246,7 @@ struct DiscoveryView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: (height + insetTop) * 0.24)
+                .frame(width: width, height: (height + insetTop) * 0.30)
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
@@ -254,7 +254,7 @@ struct DiscoveryView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: max(36, insetTop + 20))
+                .frame(width: width, height: max(52, insetTop + 28))
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 VStack(alignment: .leading, spacing: 10) {
