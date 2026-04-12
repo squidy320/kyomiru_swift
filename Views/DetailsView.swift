@@ -214,6 +214,7 @@ struct DetailsView: View {
     private var detailContent: some View {
         ZStack {
             Group {
+                // Atmospheric gradient background
                 if bannerAtmosphereEnabled {
                     LinearGradient(
                         colors: [
