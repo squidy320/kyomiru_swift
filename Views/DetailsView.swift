@@ -689,21 +689,21 @@ struct DetailsView: View {
                 .clipped()
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.95), activeHeroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
+                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.topFeather.opacity(0.55), activeHeroAtmosphere.topFeather.opacity(0.15), Color.clear],
+                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.topFeather.opacity(0.20), activeHeroAtmosphere.topFeather.opacity(0.08), Color.clear],
+                    colors: [Color.black.opacity(0.20), Color.black.opacity(0.08), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -711,7 +711,7 @@ struct DetailsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.92)],
+                    colors: [Color.clear, Color.black.opacity(0.9)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -780,21 +780,21 @@ struct DetailsView: View {
                 .clipped()
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.95), activeHeroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
+                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.topFeather.opacity(0.55), activeHeroAtmosphere.topFeather.opacity(0.15), Color.clear],
+                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.topFeather.opacity(0.20), activeHeroAtmosphere.topFeather.opacity(0.08), Color.clear],
+                    colors: [Color.black.opacity(0.20), Color.black.opacity(0.08), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -802,7 +802,7 @@ struct DetailsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.92)],
+                    colors: [Color.clear, Color.black.opacity(0.9)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
