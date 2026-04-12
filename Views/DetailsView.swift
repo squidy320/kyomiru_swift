@@ -210,7 +210,7 @@ struct DetailsView: View {
 
     private var detailContent: some View {
         ZStack {
-            (isPad ? Theme.baseBackground : activeHeroAtmosphere.baseBackground).ignoresSafeArea()
+            Theme.baseBackground.ignoresSafeArea()
             if shouldShowInitialLoadingScreen {
                 loadingScreen
             } else if isPad {
@@ -260,7 +260,7 @@ struct DetailsView: View {
                 .foregroundColor(.white.opacity(0.92))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background((isPad ? Theme.baseBackground : activeHeroAtmosphere.baseBackground).ignoresSafeArea())
+        .background(Theme.baseBackground.ignoresSafeArea())
     }
 
     private var phoneScrollableContent: some View {
