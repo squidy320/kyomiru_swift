@@ -213,7 +213,24 @@ struct DetailsView: View {
 
     private var detailContent: some View {
         ZStack {
-            Theme.baseBackground.ignoresSafeArea()
+            Group {
+                if bannerAtmosphereEnabled {
+                    LinearGradient(
+                        colors: [
+                            activeHeroAtmosphere.baseBackground,
+                            activeHeroAtmosphere.bottomFeather.opacity(0.18),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.36),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.54),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.70)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                } else {
+                    Theme.baseBackground.ignoresSafeArea()
+                }
+            }
             if shouldShowInitialLoadingScreen {
                 loadingScreen
             } else if isPad {
