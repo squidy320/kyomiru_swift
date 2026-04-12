@@ -689,14 +689,14 @@ struct DetailsView: View {
                 .clipped()
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    colors: [Color.black.opacity(0.62), Color.black.opacity(0.22), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -711,11 +711,11 @@ struct DetailsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [Color.clear, Color.black.opacity(0.9)],
+                    colors: [Color.clear, Color.black.opacity(0.45)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: 120)
+                .frame(width: width, height: 72)
                 .frame(maxHeight: .infinity, alignment: .bottom)
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -780,14 +780,14 @@ struct DetailsView: View {
                 .clipped()
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
+                    colors: [Color.black.opacity(0.62), Color.black.opacity(0.22), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
+                    colors: [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -802,11 +802,11 @@ struct DetailsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [Color.clear, Color.black.opacity(0.9)],
+                    colors: [Color.clear, Color.black.opacity(0.45)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: 160)
+                .frame(width: width, height: 84)
                 .frame(maxHeight: .infinity, alignment: .bottom)
 
             }
