@@ -82,6 +82,13 @@ struct BrowseView: View {
                         }
                     }
                     .padding(.bottom, UIConstants.bottomBarHeight)
+                    .background(
+                        LinearGradient(
+                            colors: [heroAtmosphere.bottomFeather.opacity(0.16), heroAtmosphere.baseBackground],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                 }
                 .navigationDestination(item: $navigateMedia) { media in
                     DetailsView(media: media)

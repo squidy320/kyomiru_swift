@@ -134,6 +134,13 @@ struct LibraryView: View {
                     .padding(.horizontal, screenPadding)
                     .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
+                    .background(
+                        LinearGradient(
+                            colors: [heroAtmosphere.bottomFeather.opacity(0.16), heroAtmosphere.baseBackground],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                 }
                 .refreshable {
                     await loadLibrary(forceRefresh: true)

@@ -204,9 +204,13 @@ struct DetailsView: View {
         tmdbHeroBackdropURL ?? media.bannerURL ?? media.coverURL
     }
 
+    private var activeHeroAtmosphere: HeroAtmosphere {
+        isPad ? .fallback : heroAtmosphere
+    }
+
     private var detailContent: some View {
         ZStack {
-            heroAtmosphere.baseBackground.ignoresSafeArea()
+            (isPad ? Theme.baseBackground : activeHeroAtmosphere.baseBackground).ignoresSafeArea()
             if shouldShowInitialLoadingScreen {
                 loadingScreen
             } else if isPad {
@@ -249,7 +253,7 @@ struct DetailsView: View {
                             .padding(.bottom, UIConstants.bottomBarHeight)
                             .background(
                                 LinearGradient(
-                                    colors: [heroAtmosphere.bottomFeather.opacity(0.16), heroAtmosphere.baseBackground],
+                                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.16), activeHeroAtmosphere.baseBackground],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
@@ -280,7 +284,7 @@ struct DetailsView: View {
                 .foregroundColor(.white.opacity(0.92))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(heroAtmosphere.baseBackground.ignoresSafeArea())
+        .background((isPad ? Theme.baseBackground : activeHeroAtmosphere.baseBackground).ignoresSafeArea())
     }
 
     private var modalContent: some View {
@@ -294,7 +298,9 @@ struct DetailsView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task(id: currentHeroBackdropURL) {
-            await refreshHeroAtmosphere()
+            if !isPad {
+                await refreshHeroAtmosphere()
+            }
         }
         .task(id: media.id) {
             startInitialLoad()
@@ -623,14 +629,14 @@ struct DetailsView: View {
             .clipped()
 
             LinearGradient(
-                colors: [heroAtmosphere.bottomFeather.opacity(0.92), heroAtmosphere.bottomFeather.opacity(0.45), Color.clear],
+                colors: [activeHeroAtmosphere.bottomFeather.opacity(0.92), activeHeroAtmosphere.bottomFeather.opacity(0.45), Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )
             .frame(width: width, height: height + insetTop)
 
             LinearGradient(
-                colors: [heroAtmosphere.topFeather.opacity(0.22), heroAtmosphere.topFeather.opacity(0.08), Color.clear],
+                colors: [activeHeroAtmosphere.topFeather.opacity(0.22), activeHeroAtmosphere.topFeather.opacity(0.08), Color.clear],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -670,21 +676,21 @@ struct DetailsView: View {
                 .clipped()
 
                 LinearGradient(
-                    colors: [heroAtmosphere.bottomFeather.opacity(0.95), heroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
+                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.95), activeHeroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [heroAtmosphere.topFeather.opacity(0.55), heroAtmosphere.topFeather.opacity(0.15), Color.clear],
+                    colors: [activeHeroAtmosphere.topFeather.opacity(0.55), activeHeroAtmosphere.topFeather.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [heroAtmosphere.topFeather.opacity(0.20), heroAtmosphere.topFeather.opacity(0.08), Color.clear],
+                    colors: [activeHeroAtmosphere.topFeather.opacity(0.20), activeHeroAtmosphere.topFeather.opacity(0.08), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -692,7 +698,7 @@ struct DetailsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [Color.clear, heroAtmosphere.baseBackground.opacity(0.92)],
+                    colors: [Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.92)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -761,21 +767,21 @@ struct DetailsView: View {
                 .clipped()
 
                 LinearGradient(
-                    colors: [heroAtmosphere.bottomFeather.opacity(0.95), heroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
+                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.95), activeHeroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [heroAtmosphere.topFeather.opacity(0.55), heroAtmosphere.topFeather.opacity(0.15), Color.clear],
+                    colors: [activeHeroAtmosphere.topFeather.opacity(0.55), activeHeroAtmosphere.topFeather.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [heroAtmosphere.topFeather.opacity(0.20), heroAtmosphere.topFeather.opacity(0.08), Color.clear],
+                    colors: [activeHeroAtmosphere.topFeather.opacity(0.20), activeHeroAtmosphere.topFeather.opacity(0.08), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -783,7 +789,7 @@ struct DetailsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [Color.clear, heroAtmosphere.baseBackground.opacity(0.92)],
+                    colors: [Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.92)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
