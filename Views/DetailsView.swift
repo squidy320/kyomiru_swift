@@ -207,6 +207,9 @@ struct DetailsView: View {
     private var activeHeroAtmosphere: HeroAtmosphere {
         (isPad || !appState.settings.enableBannerAtmosphere) ? .fallback : heroAtmosphere
     }
+    private var bannerAtmosphereEnabled: Bool {
+        !isPad && appState.settings.enableBannerAtmosphere
+    }
 
     private var detailContent: some View {
         ZStack {
@@ -287,15 +290,30 @@ struct DetailsView: View {
         .padding(.top, UIConstants.smallPadding)
         .padding(.bottom, UIConstants.bottomBarHeight)
         .background(
-            ZStack(alignment: .top) {
-                activeHeroAtmosphere.baseBackground
+            Group {
+                if bannerAtmosphereEnabled {
+                    ZStack(alignment: .top) {
+                        activeHeroAtmosphere.baseBackground
 
-                LinearGradient(
-                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.18), activeHeroAtmosphere.baseBackground],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 56)
+                        LinearGradient(
+                            colors: [activeHeroAtmosphere.bottomFeather.opacity(0.18), activeHeroAtmosphere.baseBackground],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 56)
+                    }
+                } else {
+                    ZStack(alignment: .top) {
+                        Theme.baseBackground
+
+                        LinearGradient(
+                            colors: [Color.clear, Color.black.opacity(0.92)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 96)
+                    }
+                }
             }
         )
     }
@@ -642,14 +660,18 @@ struct DetailsView: View {
             .clipped()
 
             LinearGradient(
-                colors: [activeHeroAtmosphere.bottomFeather.opacity(0.92), activeHeroAtmosphere.bottomFeather.opacity(0.45), Color.clear],
+                colors: bannerAtmosphereEnabled
+                    ? [activeHeroAtmosphere.bottomFeather.opacity(0.92), activeHeroAtmosphere.bottomFeather.opacity(0.45), Color.clear]
+                    : [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )
             .frame(width: width, height: height + insetTop)
 
             LinearGradient(
-                colors: [activeHeroAtmosphere.topFeather.opacity(0.22), activeHeroAtmosphere.topFeather.opacity(0.08), Color.clear],
+                colors: bannerAtmosphereEnabled
+                    ? [activeHeroAtmosphere.topFeather.opacity(0.22), activeHeroAtmosphere.topFeather.opacity(0.08), Color.clear]
+                    : [Color.black.opacity(0.18), Color.black.opacity(0.06), Color.clear],
                 startPoint: .top,
                 endPoint: .bottom
             )

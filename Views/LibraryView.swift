@@ -24,8 +24,12 @@ struct LibraryView: View {
     @State private var libraryLoadGeneration = 0
     @State private var heroAtmosphere: HeroAtmosphere = .fallback
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
+    private var bannerAtmosphereEnabled: Bool { appState.settings.enableBannerAtmosphere }
     private var activeHeroAtmosphere: HeroAtmosphere {
-        appState.settings.enableBannerAtmosphere ? heroAtmosphere : .fallback
+        bannerAtmosphereEnabled ? heroAtmosphere : .neutralBlack
+    }
+    private var pageBackground: Color {
+        bannerAtmosphereEnabled ? activeHeroAtmosphere.baseBackground : Theme.baseBackground
     }
 
     var body: some View {
@@ -33,7 +37,7 @@ struct LibraryView: View {
         let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
         let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
-            activeHeroAtmosphere.baseBackground.ignoresSafeArea()
+            pageBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
@@ -138,11 +142,17 @@ struct LibraryView: View {
                     .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
                     .background(
-                        LinearGradient(
-                            colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.16)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
+                        Group {
+                            if bannerAtmosphereEnabled {
+                                LinearGradient(
+                                    colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.16)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            } else {
+                                Theme.baseBackground
+                            }
+                        }
                     )
                 }
                 .refreshable {
@@ -203,7 +213,7 @@ struct LibraryView: View {
                     }
                 }
             }
-            .background(activeHeroAtmosphere.baseBackground.ignoresSafeArea())
+            .background(pageBackground.ignoresSafeArea())
         }
         .sheet(isPresented: $librarySettings.showSettingsSheet) {
             LibrarySettingsSheet(manager: librarySettings)

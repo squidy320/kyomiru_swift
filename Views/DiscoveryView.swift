@@ -25,8 +25,12 @@ struct DiscoveryView: View {
         let lookup = Dictionary(uniqueKeysWithValues: sections.map { ($0.id, $0) })
         return order.compactMap { lookup[$0] }
     }
+    private var bannerAtmosphereEnabled: Bool { appState.settings.enableBannerAtmosphere }
     private var activeHeroAtmosphere: HeroAtmosphere {
-        appState.settings.enableBannerAtmosphere ? heroAtmosphere : .fallback
+        bannerAtmosphereEnabled ? heroAtmosphere : .neutralBlack
+    }
+    private var pageBackground: Color {
+        bannerAtmosphereEnabled ? activeHeroAtmosphere.baseBackground : Theme.baseBackground
     }
 
     var body: some View {
@@ -34,7 +38,7 @@ struct DiscoveryView: View {
         let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
         let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
-            activeHeroAtmosphere.baseBackground.ignoresSafeArea()
+            pageBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
@@ -109,11 +113,17 @@ struct DiscoveryView: View {
                         .padding(.horizontal, screenPadding)
                         .padding(.top, -12)
                         .background(
-                                LinearGradient(
-                                    colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.18)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
+                            Group {
+                                if bannerAtmosphereEnabled {
+                                    LinearGradient(
+                                        colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.18)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                } else {
+                                    Theme.baseBackground
+                                }
+                            }
                         )
                     }
                     .padding(.bottom, UIConstants.bottomBarHeight)
@@ -140,7 +150,7 @@ struct DiscoveryView: View {
                     DetailsView(media: media)
                 }
             }
-            .background(activeHeroAtmosphere.baseBackground.ignoresSafeArea())
+            .background(pageBackground.ignoresSafeArea())
         }
         .task {
             AppLog.debug(.ui, "discovery view load")
@@ -234,7 +244,9 @@ struct DiscoveryView: View {
                 .clipped()
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.98), activeHeroAtmosphere.bottomFeather.opacity(0.72), Color.clear],
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.bottomFeather.opacity(0.98), activeHeroAtmosphere.bottomFeather.opacity(0.72), Color.clear]
+                        : [Color.black.opacity(0.98), Color.black.opacity(0.72), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
@@ -242,7 +254,9 @@ struct DiscoveryView: View {
                 .frame(maxHeight: .infinity, alignment: .bottom)
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.topFeather.opacity(0.72), activeHeroAtmosphere.topFeather.opacity(0.24), Color.clear],
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.topFeather.opacity(0.72), activeHeroAtmosphere.topFeather.opacity(0.24), Color.clear]
+                        : [Color.black.opacity(0.72), Color.black.opacity(0.24), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -250,7 +264,9 @@ struct DiscoveryView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.topFeather.opacity(0.34), activeHeroAtmosphere.topFeather.opacity(0.14), Color.clear],
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.topFeather.opacity(0.34), activeHeroAtmosphere.topFeather.opacity(0.14), Color.clear]
+                        : [Color.black.opacity(0.34), Color.black.opacity(0.14), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )

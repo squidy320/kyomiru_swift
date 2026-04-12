@@ -14,13 +14,17 @@ struct BrowseView: View {
     @State private var heroAtmosphere: HeroAtmosphere = .fallback
     @State private var navigateMedia: AniListMedia?
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
+    private var bannerAtmosphereEnabled: Bool { appState.settings.enableBannerAtmosphere }
     private var activeHeroAtmosphere: HeroAtmosphere {
-        appState.settings.enableBannerAtmosphere ? heroAtmosphere : .fallback
+        bannerAtmosphereEnabled ? heroAtmosphere : .neutralBlack
+    }
+    private var pageBackground: Color {
+        bannerAtmosphereEnabled ? activeHeroAtmosphere.baseBackground : Theme.baseBackground
     }
 
     var body: some View {
         ZStack {
-            activeHeroAtmosphere.baseBackground.ignoresSafeArea()
+            pageBackground.ignoresSafeArea()
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -86,11 +90,17 @@ struct BrowseView: View {
                     }
                     .padding(.bottom, UIConstants.bottomBarHeight)
                     .background(
-                        LinearGradient(
-                            colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.16)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
+                        Group {
+                            if bannerAtmosphereEnabled {
+                                LinearGradient(
+                                    colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.16)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            } else {
+                                Theme.baseBackground
+                            }
+                        }
                     )
                 }
                 .navigationDestination(item: $navigateMedia) { media in
@@ -100,7 +110,7 @@ struct BrowseView: View {
                     await reload()
                 }
             }
-            .background(activeHeroAtmosphere.baseBackground.ignoresSafeArea())
+            .background(pageBackground.ignoresSafeArea())
         }
         .task {
             await loadHero()
@@ -169,7 +179,7 @@ struct BrowseView: View {
                 Spacer().frame(height: 4)
             }
         }
-        .background(activeHeroAtmosphere.baseBackground)
+        .background(pageBackground)
     }
 
     private func browseChipLabel(text: String, isSelected: Bool) -> some View {
@@ -236,14 +246,18 @@ struct BrowseView: View {
                 )
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.95), activeHeroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.bottomFeather.opacity(0.95), activeHeroAtmosphere.bottomFeather.opacity(0.5), Color.clear]
+                        : [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.topFeather.opacity(0.55), activeHeroAtmosphere.topFeather.opacity(0.15), Color.clear],
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.topFeather.opacity(0.55), activeHeroAtmosphere.topFeather.opacity(0.15), Color.clear]
+                        : [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )

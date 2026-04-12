@@ -108,6 +108,12 @@ struct HeroAtmosphere: Sendable {
         top: HeroAtmosphereColor(red: 0.13, green: 0.14, blue: 0.18),
         bottom: HeroAtmosphereColor(red: 0.09, green: 0.10, blue: 0.14)
     )
+
+    static let neutralBlack = HeroAtmosphere(
+        base: HeroAtmosphereColor(red: 0.04, green: 0.04, blue: 0.06),
+        top: HeroAtmosphereColor(red: 0.0, green: 0.0, blue: 0.0),
+        bottom: HeroAtmosphereColor(red: 0.0, green: 0.0, blue: 0.0)
+    )
 }
 
 actor HeroAtmosphereResolver {

@@ -607,13 +607,17 @@ private struct DownloadsDetailView: View {
     @State private var compileMessage: String?
     @State private var heroAtmosphere: HeroAtmosphere = .fallback
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
+    private var bannerAtmosphereEnabled: Bool { appState.settings.enableBannerAtmosphere }
     private var activeHeroAtmosphere: HeroAtmosphere {
-        appState.settings.enableBannerAtmosphere ? heroAtmosphere : .fallback
+        bannerAtmosphereEnabled ? heroAtmosphere : .neutralBlack
+    }
+    private var pageBackground: Color {
+        bannerAtmosphereEnabled ? activeHeroAtmosphere.baseBackground : Theme.baseBackground
     }
 
     var body: some View {
         ZStack {
-            activeHeroAtmosphere.baseBackground.ignoresSafeArea()
+            pageBackground.ignoresSafeArea()
             downloadsBody
         }
         .navigationTitle(title)
@@ -920,7 +924,9 @@ private struct DownloadsDetailView: View {
             )
 
             LinearGradient(
-                colors: [activeHeroAtmosphere.bottomFeather.opacity(0.92), activeHeroAtmosphere.bottomFeather.opacity(0.45), Color.clear],
+                colors: bannerAtmosphereEnabled
+                    ? [activeHeroAtmosphere.bottomFeather.opacity(0.92), activeHeroAtmosphere.bottomFeather.opacity(0.45), Color.clear]
+                    : [Color.black.opacity(0.92), Color.black.opacity(0.45), Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )
@@ -968,21 +974,27 @@ private struct DownloadsDetailView: View {
                 )
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.95), activeHeroAtmosphere.bottomFeather.opacity(0.5), Color.clear],
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.bottomFeather.opacity(0.95), activeHeroAtmosphere.bottomFeather.opacity(0.5), Color.clear]
+                        : [Color.black.opacity(0.95), Color.black.opacity(0.5), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
                 .frame(width: width, height: height + insetTop)
 
                 LinearGradient(
-                    colors: [activeHeroAtmosphere.topFeather.opacity(0.55), activeHeroAtmosphere.topFeather.opacity(0.15), Color.clear],
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.topFeather.opacity(0.55), activeHeroAtmosphere.topFeather.opacity(0.15), Color.clear]
+                        : [Color.black.opacity(0.55), Color.black.opacity(0.15), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(width: width, height: max(height * 0.34, 120))
 
                 LinearGradient(
-                    colors: [Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.92)],
+                    colors: bannerAtmosphereEnabled
+                        ? [Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.92)]
+                        : [Color.clear, Color.black.opacity(0.9)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
