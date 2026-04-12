@@ -306,7 +306,11 @@ struct DetailsView: View {
         .padding(.horizontal, screenPadding)
         .padding(.top, UIConstants.smallPadding)
         .padding(.bottom, UIConstants.bottomBarHeight)
-        .background(Theme.baseBackground)
+        .background(
+            bannerAtmosphereEnabled
+                ? Theme.baseBackground.opacity(0.7)
+                : Theme.baseBackground
+        )
     }
 
     private var modalContent: some View {
