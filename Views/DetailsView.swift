@@ -224,8 +224,8 @@ struct DetailsView: View {
                             activeHeroAtmosphere.bottomFeather.opacity(0.70),
                             activeHeroAtmosphere.baseBackground
                         ],
-                        startPoint: .top,
-                        endPoint: .bottom
+                        startPoint: .bottom,
+                        endPoint: .top
                     )
                     .ignoresSafeArea()
                 } else {
