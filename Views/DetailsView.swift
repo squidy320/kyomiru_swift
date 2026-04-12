@@ -296,18 +296,18 @@ struct DetailsView: View {
                         activeHeroAtmosphere.baseBackground
 
                         LinearGradient(
-                            colors: [activeHeroAtmosphere.bottomFeather.opacity(0.18), activeHeroAtmosphere.baseBackground],
+                            colors: [Color.black.opacity(0.88), activeHeroAtmosphere.baseBackground],
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                        .frame(height: 56)
+                        .frame(height: 88)
                     }
                 } else {
                     ZStack(alignment: .top) {
                         Theme.baseBackground
 
                         LinearGradient(
-                            colors: [Color.clear, Color.black.opacity(0.92)],
+                            colors: [Color.black.opacity(0.92), Theme.baseBackground],
                             startPoint: .top,
                             endPoint: .bottom
                         )
