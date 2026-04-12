@@ -130,6 +130,7 @@ struct DiscoveryView: View {
                     DetailsView(media: media)
                 }
             }
+            .background(heroAtmosphere.baseBackground.ignoresSafeArea())
         }
         .task {
             AppLog.debug(.ui, "discovery view load")

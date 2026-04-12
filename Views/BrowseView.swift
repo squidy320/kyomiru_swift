@@ -90,6 +90,7 @@ struct BrowseView: View {
                     await reload()
                 }
             }
+            .background(heroAtmosphere.baseBackground.ignoresSafeArea())
         }
         .task {
             await loadHero()

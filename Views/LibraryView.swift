@@ -193,6 +193,7 @@ struct LibraryView: View {
                     }
                 }
             }
+            .background(heroAtmosphere.baseBackground.ignoresSafeArea())
         }
         .sheet(isPresented: $librarySettings.showSettingsSheet) {
             LibrarySettingsSheet(manager: librarySettings)

@@ -77,6 +77,7 @@ struct DownloadsView: View {
                 .navigationTitle(isPad ? "Downloads" : "")
                 .navigationBarTitleDisplayMode(.inline)
             }
+            .background(Theme.baseBackground.ignoresSafeArea())
         }
         .safeAreaInset(edge: .bottom) {
             Color.clear.frame(height: tabBarInset)
