@@ -306,7 +306,7 @@ struct DetailsView: View {
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                        .frame(height: 380)
+                        .ignoresSafeArea()
                     }
                 } else {
                     ZStack(alignment: .bottom) {
@@ -323,7 +323,7 @@ struct DetailsView: View {
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                        .frame(height: 300)
+                        .ignoresSafeArea()
                     }
                 }
             }
