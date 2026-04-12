@@ -136,7 +136,7 @@ struct LibraryView: View {
                     .padding(.bottom, UIConstants.bottomBarHeight)
                     .background(
                         LinearGradient(
-                            colors: [heroAtmosphere.bottomFeather.opacity(0.16), heroAtmosphere.baseBackground],
+                            colors: [heroAtmosphere.baseBackground, heroAtmosphere.bottomFeather.opacity(0.16)],
                             startPoint: .top,
                             endPoint: .bottom
                         )

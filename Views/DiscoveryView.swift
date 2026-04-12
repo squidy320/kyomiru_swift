@@ -107,7 +107,7 @@ struct DiscoveryView: View {
                         .padding(.top, -12)
                         .background(
                             LinearGradient(
-                                colors: [heroAtmosphere.bottomFeather.opacity(0.18), heroAtmosphere.baseBackground],
+                                colors: [heroAtmosphere.baseBackground, heroAtmosphere.bottomFeather.opacity(0.18)],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )

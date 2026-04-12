@@ -229,7 +229,11 @@ struct DetailsView: View {
                                 phoneHeroContentBlock
 
                                 actionRow
+                            }
+                            .padding(.horizontal, screenPadding)
+                            .padding(.top, UIConstants.smallPadding)
 
+                            VStack(alignment: .leading, spacing: screenSpacing) {
                                 if isLoading && episodes.isEmpty {
                                     GlassCard {
                                         Text("Loading episodes...")
@@ -253,7 +257,7 @@ struct DetailsView: View {
                             .padding(.bottom, UIConstants.bottomBarHeight)
                             .background(
                                 LinearGradient(
-                                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.16), activeHeroAtmosphere.baseBackground],
+                                    colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.16)],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
