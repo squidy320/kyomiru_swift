@@ -3,7 +3,6 @@ import UIKit
 import CryptoKit
 import Foundation
 import ImageIO
-import CoreImage
 
 enum Theme {
     private static let accentRedKey = "settings.accentColor.red"
@@ -114,7 +113,6 @@ struct HeroAtmosphere: Sendable {
 actor HeroAtmosphereResolver {
     static let shared = HeroAtmosphereResolver()
 
-    private let context = CIContext(options: [.workingColorSpace: NSNull()])
     private var cache: [String: HeroAtmosphere] = [:]
     private var tasks: [String: Task<HeroAtmosphere, Never>] = [:]
 
@@ -147,29 +145,97 @@ actor HeroAtmosphereResolver {
 
     private func representativeColor(from image: UIImage) -> UIColor? {
         guard let cgImage = image.cgImage else { return nil }
-        let input = CIImage(cgImage: cgImage)
-        let extent = input.extent
-        guard !extent.isEmpty,
-              let filter = CIFilter(name: "CIAreaAverage") else { return nil }
 
-        filter.setValue(input, forKey: kCIInputImageKey)
-        filter.setValue(CIVector(cgRect: extent), forKey: kCIInputExtentKey)
+        let width = 24
+        let height = 24
+        let bytesPerPixel = 4
+        let bytesPerRow = width * bytesPerPixel
+        let bitsPerComponent = 8
+        var pixels = [UInt8](repeating: 0, count: width * height * bytesPerPixel)
 
-        guard let output = filter.outputImage else { return nil }
-        var bitmap = [UInt8](repeating: 0, count: 4)
-        context.render(
-            output,
-            toBitmap: &bitmap,
-            rowBytes: 4,
-            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-            format: .RGBA8,
-            colorSpace: nil
-        )
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                data: &pixels,
+                width: width,
+                height: height,
+                bitsPerComponent: bitsPerComponent,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else {
+            return nil
+        }
+
+        context.interpolationQuality = .medium
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var weightedRed: CGFloat = 0
+        var weightedGreen: CGFloat = 0
+        var weightedBlue: CGFloat = 0
+        var totalWeight: CGFloat = 0
+
+        for index in stride(from: 0, to: pixels.count, by: bytesPerPixel) {
+            let red = CGFloat(pixels[index]) / 255.0
+            let green = CGFloat(pixels[index + 1]) / 255.0
+            let blue = CGFloat(pixels[index + 2]) / 255.0
+            let alpha = CGFloat(pixels[index + 3]) / 255.0
+            if alpha < 0.4 { continue }
+
+            let color = UIColor(red: red, green: green, blue: blue, alpha: 1.0)
+            var hue: CGFloat = 0
+            var saturation: CGFloat = 0
+            var brightness: CGFloat = 0
+            var outAlpha: CGFloat = 0
+            guard color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &outAlpha) else {
+                continue
+            }
+
+            if brightness < 0.14 || brightness > 0.95 {
+                continue
+            }
+
+            let saturationBoost = max(saturation, 0.08)
+            let brightnessWeight = 1.0 - abs(brightness - 0.56)
+            let weight = max(0.05, (saturationBoost * 1.45) + (brightnessWeight * 0.6))
+
+            weightedRed += red * weight
+            weightedGreen += green * weight
+            weightedBlue += blue * weight
+            totalWeight += weight
+        }
+
+        if totalWeight <= 0.0001 {
+            return averageColor(from: pixels, bytesPerPixel: bytesPerPixel)
+        }
 
         return UIColor(
-            red: CGFloat(bitmap[0]) / 255.0,
-            green: CGFloat(bitmap[1]) / 255.0,
-            blue: CGFloat(bitmap[2]) / 255.0,
+            red: weightedRed / totalWeight,
+            green: weightedGreen / totalWeight,
+            blue: weightedBlue / totalWeight,
+            alpha: 1.0
+        )
+    }
+
+    private func averageColor(from pixels: [UInt8], bytesPerPixel: Int) -> UIColor? {
+        var totalRed: CGFloat = 0
+        var totalGreen: CGFloat = 0
+        var totalBlue: CGFloat = 0
+        var count: CGFloat = 0
+
+        for index in stride(from: 0, to: pixels.count, by: bytesPerPixel) {
+            let alpha = CGFloat(pixels[index + 3]) / 255.0
+            if alpha < 0.4 { continue }
+            totalRed += CGFloat(pixels[index]) / 255.0
+            totalGreen += CGFloat(pixels[index + 1]) / 255.0
+            totalBlue += CGFloat(pixels[index + 2]) / 255.0
+            count += 1
+        }
+
+        guard count > 0 else { return nil }
+        return UIColor(
+            red: totalRed / count,
+            green: totalGreen / count,
+            blue: totalBlue / count,
             alpha: 1.0
         )
     }
@@ -181,14 +247,14 @@ actor HeroAtmosphereResolver {
         let seed = color.normalizedHeroSeed()
 
         let base = seed
-            .blended(with: neutralBase, amount: 0.74)
-            .adjustingBrightness(by: 0.78)
-        let top = seed
-            .blended(with: neutralTop, amount: 0.56)
+            .blended(with: neutralBase, amount: 0.52)
             .adjustingBrightness(by: 0.92)
+        let top = seed
+            .blended(with: neutralTop, amount: 0.38)
+            .adjustingBrightness(by: 0.98)
         let bottom = seed
-            .blended(with: neutralBottom, amount: 0.48)
-            .adjustingBrightness(by: 0.76)
+            .blended(with: neutralBottom, amount: 0.34)
+            .adjustingBrightness(by: 0.84)
 
         return HeroAtmosphere(
             base: HeroAtmosphereColor(uiColor: base),
@@ -206,8 +272,8 @@ private extension UIColor {
         var alpha: CGFloat = 0
 
         if getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) {
-            let clampedSaturation = min(max(saturation * 1.18, 0.22), 0.68)
-            let clampedBrightness = min(max(brightness * 0.96, 0.34), 0.72)
+            let clampedSaturation = min(max(saturation * 1.32, 0.34), 0.82)
+            let clampedBrightness = min(max(brightness * 1.02, 0.42), 0.78)
             return UIColor(hue: hue, saturation: clampedSaturation, brightness: clampedBrightness, alpha: 1.0)
         }
 
