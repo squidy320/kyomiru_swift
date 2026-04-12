@@ -283,7 +283,11 @@ struct EpisodeRowView: View {
             HStack(alignment: .top, spacing: UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)) {
                 ZStack(alignment: .topLeading) {
                     RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: UIConstants.cornerRadiusSmall, style: .continuous)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                        )
                         .frame(width: thumbWidth, height: thumbHeight)
                     if let thumbnailURL {
                         CachedImage(
@@ -360,7 +364,11 @@ struct EpisodeRowView: View {
             .padding(rowPadding)
             .background(
                 RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: UIConstants.cornerRadiusLarge, style: .continuous)
+                            .stroke(Color.white.opacity(0.14), lineWidth: 0.5)
+                    )
             )
         }
         .buttonStyle(.plain)

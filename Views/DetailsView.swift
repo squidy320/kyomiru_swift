@@ -296,22 +296,34 @@ struct DetailsView: View {
                         activeHeroAtmosphere.baseBackground
 
                         LinearGradient(
-                            colors: [Color.black.opacity(0.88), activeHeroAtmosphere.baseBackground],
+                            colors: [
+                                Color.black.opacity(0.85),
+                                Color.black.opacity(0.72),
+                                Color.black.opacity(0.48),
+                                Color.black.opacity(0.24),
+                                activeHeroAtmosphere.baseBackground
+                            ],
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                        .frame(height: 88)
+                        .frame(height: 220)
                     }
                 } else {
                     ZStack(alignment: .top) {
                         Theme.baseBackground
 
                         LinearGradient(
-                            colors: [Color.black.opacity(0.92), Theme.baseBackground],
+                            colors: [
+                                Color.black.opacity(0.90),
+                                Color.black.opacity(0.76),
+                                Color.black.opacity(0.52),
+                                Color.black.opacity(0.28),
+                                Theme.baseBackground
+                            ],
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                        .frame(height: 96)
+                        .frame(height: 240)
                     }
                 }
             }
@@ -824,13 +836,18 @@ struct DetailsView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
 
                 LinearGradient(
-                    colors: [Color.clear, Color.black.opacity(0.32)],
+                    colors: [
+                        Color.clear,
+                        Color.black.opacity(0.12),
+                        Color.black.opacity(0.24),
+                        Color.black.opacity(0.36),
+                        Color.black.opacity(0.44)
+                    ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: 120)
+                .frame(width: width, height: 240)
                 .frame(maxHeight: .infinity, alignment: .bottom)
-
             }
             .frame(width: width, height: height + insetTop)
             .clipped()
