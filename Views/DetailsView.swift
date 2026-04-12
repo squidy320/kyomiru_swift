@@ -233,35 +233,7 @@ struct DetailsView: View {
                             .padding(.horizontal, screenPadding)
                             .padding(.top, UIConstants.smallPadding)
 
-                            VStack(alignment: .leading, spacing: screenSpacing) {
-                                if isLoading && episodes.isEmpty {
-                                    GlassCard {
-                                        Text("Loading episodes...")
-                                            .foregroundColor(Theme.textSecondary)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                } else {
-                                    if let errorMessage {
-                                        GlassCard {
-                                            Text(errorMessage)
-                                                .foregroundColor(Theme.textSecondary)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                        }
-                                    }
-                                    episodeList
-                                    RelationsCarouselView(sections: relatedSections)
-                                }
-                            }
-                            .padding(.horizontal, screenPadding)
-                            .padding(.top, UIConstants.smallPadding)
-                            .padding(.bottom, UIConstants.bottomBarHeight)
-                            .background(
-                                LinearGradient(
-                                    colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.16)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
+                            phoneScrollableContent
                         }
                     }
                     .ignoresSafeArea(edges: .top)
@@ -289,6 +261,43 @@ struct DetailsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background((isPad ? Theme.baseBackground : activeHeroAtmosphere.baseBackground).ignoresSafeArea())
+    }
+
+    private var phoneScrollableContent: some View {
+        VStack(alignment: .leading, spacing: screenSpacing) {
+            if isLoading && episodes.isEmpty {
+                GlassCard {
+                    Text("Loading episodes...")
+                        .foregroundColor(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                if let errorMessage {
+                    GlassCard {
+                        Text(errorMessage)
+                            .foregroundColor(Theme.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                episodeList
+                RelationsCarouselView(sections: relatedSections)
+            }
+        }
+        .padding(.horizontal, screenPadding)
+        .padding(.top, UIConstants.smallPadding)
+        .padding(.bottom, UIConstants.bottomBarHeight)
+        .background(
+            ZStack(alignment: .top) {
+                activeHeroAtmosphere.baseBackground
+
+                LinearGradient(
+                    colors: [activeHeroAtmosphere.bottomFeather.opacity(0.18), activeHeroAtmosphere.baseBackground],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 56)
+            }
+        )
     }
 
     private var modalContent: some View {
