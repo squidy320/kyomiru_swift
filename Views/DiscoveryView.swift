@@ -112,19 +112,7 @@ struct DiscoveryView: View {
                         }
                         .padding(.horizontal, screenPadding)
                         .padding(.top, -12)
-                        .background(
-                            Group {
-                                if bannerAtmosphereEnabled {
-                                    LinearGradient(
-                                        colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.18)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                } else {
-                                    Theme.baseBackground
-                                }
-                            }
-                        )
+                        .background(Color.clear)
                     }
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
