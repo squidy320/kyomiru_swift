@@ -202,7 +202,20 @@ actor HeroAtmosphereResolver {
 
             let saturationBoost = max(saturation, 0.08)
             let brightnessWeight = 1.0 - abs(brightness - 0.56)
-            let weight = max(0.05, (saturationBoost * 1.45) + (brightnessWeight * 0.6))
+            
+            // Bias toward warm tones (reds, oranges, yellows: hue 0-90°)
+            let warmthBoost: CGFloat
+            if hue < 0.25 {
+                // Strong boost for warm tones (0-90°)
+                warmthBoost = 1.3
+            } else if hue > 0.75 {
+                // Slight boost for reds wrapping around (270-360°)
+                warmthBoost = 1.1
+            } else {
+                warmthBoost = 1.0
+            }
+            
+            let weight = max(0.05, ((saturationBoost * 1.45) + (brightnessWeight * 0.6)) * warmthBoost)
 
             weightedRed += red * weight
             weightedGreen += green * weight
@@ -253,13 +266,13 @@ actor HeroAtmosphereResolver {
         let seed = color.normalizedHeroSeed()
 
         let base = seed
-            .blended(with: neutralBase, amount: 0.52)
+            .blended(with: neutralBase, amount: 0.35)
             .adjustingBrightness(by: 0.92)
         let top = seed
-            .blended(with: neutralTop, amount: 0.38)
+            .blended(with: neutralTop, amount: 0.30)
             .adjustingBrightness(by: 0.98)
         let bottom = seed
-            .blended(with: neutralBottom, amount: 0.34)
+            .blended(with: neutralBottom, amount: 0.25)
             .adjustingBrightness(by: 0.84)
 
         return HeroAtmosphere(

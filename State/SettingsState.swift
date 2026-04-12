@@ -1,11 +1,5 @@
 import SwiftUI
 
-#if canImport(Libmpv)
-private let mpvBackendAvailable = true
-#else
-private let mpvBackendAvailable = false
-#endif
-
 final class SettingsState: ObservableObject {
     @AppStorage("settings.streamingProvider") private var streamingProviderRaw: String = StreamingProvider.animePahe.rawValue
     @AppStorage("settings.streamingModuleID") private var streamingModuleIDRaw: String = StreamingModuleStore.shared.selectedModuleID()
@@ -18,7 +12,6 @@ final class SettingsState: ObservableObject {
     @AppStorage("settings.playerSkipIntervalSeconds") private var playerSkipIntervalRaw: Double = 85
     @AppStorage("settings.playerHoldSpeed") private var playerHoldSpeedRaw: Double = PlayerHoldSpeed.twoX.rawValue
     @AppStorage("settings.appearanceThemeMode") private var appearanceThemeModeRaw: String = AppearanceThemeMode.system.rawValue
-    @AppStorage("settings.enableBannerAtmosphere") private var enableBannerAtmosphereRaw: Bool = false
     @AppStorage("settings.reduceMotion") private var reduceMotionRaw: Bool = false
     @AppStorage("settings.useComfortableLayout") private var useComfortableLayoutRaw: Bool = true
     @AppStorage("settings.accentColor.red") private var accentColorRedRaw: Double = 0.47
@@ -80,17 +73,10 @@ final class SettingsState: ObservableObject {
     var playerBackend: PlayerBackend {
         get {
             let stored = PlayerBackend(rawValue: playerBackendRaw) ?? .avPlayer
-            if stored == .mpv, !mpvBackendAvailable {
-                return .avPlayer
-            }
-            return stored
+            return stored == .mpv ? .avPlayer : stored
         }
         set {
-            if newValue == .mpv, !mpvBackendAvailable {
-                playerBackendRaw = PlayerBackend.avPlayer.rawValue
-            } else {
-                playerBackendRaw = newValue.rawValue
-            }
+            playerBackendRaw = (newValue == .mpv ? PlayerBackend.avPlayer : newValue).rawValue
             objectWillChange.send()
         }
     }
@@ -151,14 +137,6 @@ final class SettingsState: ObservableObject {
         }
     }
 
-    var enableBannerAtmosphere: Bool {
-        get { enableBannerAtmosphereRaw }
-        set {
-            enableBannerAtmosphereRaw = newValue
-            objectWillChange.send()
-        }
-    }
-
     var useComfortableLayout: Bool {
         get { useComfortableLayoutRaw }
         set {
@@ -195,17 +173,9 @@ final class SettingsState: ObservableObject {
 enum PlayerBackend: String, CaseIterable, Identifiable {
     case avPlayer
     case mpv
+    case ksplayer
 
     var id: String { rawValue }
-
-    var isAvailableInCurrentBuild: Bool {
-        switch self {
-        case .avPlayer:
-            return true
-        case .mpv:
-            return mpvBackendAvailable
-        }
-    }
 
     var title: String {
         switch self {
@@ -213,6 +183,8 @@ enum PlayerBackend: String, CaseIterable, Identifiable {
             return "AVPlayer"
         case .mpv:
             return "mpv"
+        case .ksplayer:
+            return "KSPlayer"
         }
     }
 
@@ -222,6 +194,8 @@ enum PlayerBackend: String, CaseIterable, Identifiable {
             return "Best iOS integration with Picture in Picture support."
         case .mpv:
             return "Advanced playback pipeline with broader codec and subtitle handling."
+        case .ksplayer:
+            return "Lightweight player with hardware acceleration support."
         }
     }
 }
