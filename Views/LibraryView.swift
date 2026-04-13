@@ -770,7 +770,7 @@ private struct LibraryProfileHero: View {
         let avatarSize: CGFloat = PlatformSupport.prefersTabletLayout ? 64 : 56
         let padding: CGFloat = UIConstants.standardPadding
 
-        HStack(alignment: .top, spacing: 0) {
+        HStack(alignment: .center, spacing: 0) {
             Button(action: onAvatarTap) {
                 avatarView(size: avatarSize)
             }
