@@ -58,12 +58,13 @@ struct DiscoveryView: View {
             }
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: screenSpacing) {
+                    VStack(alignment: .leading, spacing: 0) {
                         heroHeader
                             .ignoresSafeArea(edges: .top)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
                             GenreFilterCarousel(genres: GenreFilterCarousel.defaultGenres)
+                                .padding(.top, screenSpacing)
 
                             if isLoading {
                                 GlassCard {
