@@ -32,9 +32,6 @@ struct LibraryView: View {
         if !bannerAtmosphereEnabled {
             return Theme.baseBackground
         }
-        if featuredAnime != nil {
-            return featuredAtmosphere.baseBackground
-        }
         return activeHeroAtmosphere.baseBackground
     }
 
@@ -47,11 +44,11 @@ struct LibraryView: View {
                 if bannerAtmosphereEnabled {
                     LinearGradient(
                         colors: [
-                            backgroundAtmosphere.baseBackground,
-                            backgroundAtmosphere.bottomFeather,
-                            backgroundAtmosphere.bottomFeather,
-                            backgroundAtmosphere.bottomFeather,
-                            backgroundAtmosphere.bottomFeather
+                            activeHeroAtmosphere.baseBackground,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather
                         ],
                         startPoint: .top,
                         endPoint: .bottom
