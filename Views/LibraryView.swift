@@ -309,10 +309,9 @@ struct LibraryView: View {
                 Text(continueError)
                     .foregroundColor(Theme.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.horizontal, screenPadding)
-                .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
             }
+            .padding(.horizontal, screenPadding)
+            .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
         }
         .task {
             AppLog.debug(.ui, "library view load")
