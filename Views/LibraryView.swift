@@ -248,7 +248,7 @@ struct LibraryView: View {
             }
         }
     }
-        .sheet(isPresented: $librarySettings.showSettingsSheet) {
+    .sheet(isPresented: $librarySettings.showSettingsSheet) {
             LibrarySettingsSheet(manager: librarySettings)
                 .presentationDetents([.medium, .large])
         }
