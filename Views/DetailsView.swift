@@ -218,10 +218,10 @@ struct DetailsView: View {
                     LinearGradient(
                         colors: [
                             activeHeroAtmosphere.baseBackground,
+                            activeHeroAtmosphere.bottomFeather.opacity(0.50),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.38),
                             activeHeroAtmosphere.bottomFeather.opacity(0.24),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.16),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.08),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.02)
+                            activeHeroAtmosphere.bottomFeather.opacity(0.12)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
