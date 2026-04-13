@@ -218,10 +218,10 @@ struct DetailsView: View {
                     LinearGradient(
                         colors: [
                             activeHeroAtmosphere.baseBackground,
-                            activeHeroAtmosphere.bottomFeather.opacity(0.70),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.54),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.36),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.18)
+                            activeHeroAtmosphere.bottomFeather.opacity(0.42),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.32),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.20),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.08)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -805,7 +805,7 @@ struct DetailsView: View {
 
                 LinearGradient(
                     colors: [
-                        activeHeroAtmosphere.topFeather.opacity(0.18),
+                        activeHeroAtmosphere.topFeather.opacity(0.14),
                         activeHeroAtmosphere.topFeather.opacity(0.06),
                         Color.clear
                     ],
@@ -816,8 +816,8 @@ struct DetailsView: View {
 
                 LinearGradient(
                     colors: [
-                        activeHeroAtmosphere.topFeather.opacity(0.20),
-                        activeHeroAtmosphere.topFeather.opacity(0.08),
+                        activeHeroAtmosphere.topFeather.opacity(0.10),
+                        activeHeroAtmosphere.topFeather.opacity(0.04),
                         Color.clear
                     ],
                     startPoint: .top,
@@ -829,16 +829,16 @@ struct DetailsView: View {
                 LinearGradient(
                     colors: [
                         Color.clear,
+                        activeHeroAtmosphere.bottomFeather.opacity(0.03),
                         activeHeroAtmosphere.bottomFeather.opacity(0.06),
                         activeHeroAtmosphere.bottomFeather.opacity(0.12),
-                        activeHeroAtmosphere.bottomFeather.opacity(0.20),
-                        activeHeroAtmosphere.bottomFeather.opacity(0.32),
-                        activeHeroAtmosphere.bottomFeather.opacity(0.44)
+                        activeHeroAtmosphere.bottomFeather.opacity(0.22),
+                        activeHeroAtmosphere.bottomFeather.opacity(0.32)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: 320)
+                .frame(width: width, height: 400)
                 .frame(maxHeight: .infinity, alignment: .bottom)
             }
             .frame(width: width, height: height + insetTop)
