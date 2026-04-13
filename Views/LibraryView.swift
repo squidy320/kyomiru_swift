@@ -75,7 +75,7 @@ struct LibraryView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         if let featured = featuredAnime {
                             NavigationLink(destination: DetailsView(media: featured)) {
-                                let score = featured.averageScore ?? 0
+                                let score = featured.averageScore ?? 75
                                 let contentRating = featured.isAdult ? "TV-MA" : "TV-14"
                                 let pills = [
                                     HeroPill(icon: "star.fill", text: "Score \(score)%"),
@@ -91,7 +91,8 @@ struct LibraryView: View {
                                     pills: pills,
                                     tags: tags,
                                     height: UIConstants.heroHeight,
-                                    fullBleed: true
+                                    fullBleed: true,
+                                    atmosphere: featuredAtmosphere
                                 )
                             }
                             .buttonStyle(.plain)
@@ -350,10 +351,14 @@ struct LibraryView: View {
                !cached.isEmpty {
                 applyLibrarySections(cached)
                 await runLibraryBackgroundWork(sections: cached)
+                refreshFeaturedAnime()
             }
             if sections.isEmpty {
                 await loadLibrary(forceRefresh: false)
             }
+        }
+        .onChange(of: sections) { _, _ in
+            refreshFeaturedAnime()
         }
         .onChange(of: appState.authState.token) { _, newToken in
             if newToken == nil {
@@ -376,6 +381,32 @@ struct LibraryView: View {
         }
         .onChange(of: sections) { _, _ in
             Task { await prefetchLibraryImages(sections: sections) }
+        }
+    }
+
+    private func refreshFeaturedAnime() {
+        if let planningSection = sections.first(where: { $0.title.lowercased().contains("plan") }) {
+            let planningItems = planningSection.items
+            if !planningItems.isEmpty {
+                let randomEntry = planningItems.randomElement()
+                featuredAnime = randomEntry?.media
+                
+                if let media = randomEntry?.media {
+                    let backdropURL = media.bannerURL ?? media.coverURL
+                    Task {
+                        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: backdropURL)
+                        await MainActor.run {
+                            if appState.settings.reduceMotion {
+                                self.featuredAtmosphere = atmosphere
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.35)) {
+                                    self.featuredAtmosphere = atmosphere
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -514,30 +545,6 @@ struct LibraryView: View {
     private func applyLibrarySections(_ items: [AniListLibrarySection]) {
         sections = items
         appState.updateLibraryStore(with: items)
-        
-        if let planningSection = items.first(where: { $0.title.lowercased().contains("plan") }) {
-            let planningItems = planningSection.items
-            if !planningItems.isEmpty {
-                let randomEntry = planningItems.randomElement()
-                featuredAnime = randomEntry?.media
-                
-                if let media = randomEntry?.media {
-                    let backdropURL = media.bannerURL ?? media.coverURL
-                    Task {
-                        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: backdropURL)
-                        await MainActor.run {
-                            if appState.settings.reduceMotion {
-                                self.featuredAtmosphere = atmosphere
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.35)) {
-                                    self.featuredAtmosphere = atmosphere
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private func statusForSection(_ title: String) -> MediaStatus {

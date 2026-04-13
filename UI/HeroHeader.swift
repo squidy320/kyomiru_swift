@@ -15,6 +15,7 @@ struct HeroHeader: View {
     let tags: [String]
     var height: CGFloat = 260
     var fullBleed: Bool = false
+    var atmosphere: HeroAtmosphere? = nil
     @EnvironmentObject private var appState: AppState
     @State private var tmdbBackdropURL: URL?
     @State private var tmdbLookupComplete = false
@@ -27,6 +28,8 @@ struct HeroHeader: View {
         let topFeather = max(26, height * 0.17)
         let bottomFeather = max(54, height * 0.34)
         let cornerRadius = fullBleed ? 0.0 : 26.0
+        let scale = UIScreen.main.scale
+        let targetSize = CGSize(width: UIScreen.main.bounds.width * scale, height: height * scale)
         ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(Theme.surface)
@@ -36,12 +39,12 @@ struct HeroHeader: View {
                         if let resolved = resolvedURL {
                             CachedImage(
                                 url: resolved,
-                                targetSize: CGSize(width: UIScreen.main.bounds.width, height: height)
+                                targetSize: targetSize
                             ) { img in
                                 img
                                     .resizable()
                                     .scaledToFill()
-                                    .frame(height: height, alignment: .bottom)
+                                    .frame(height: height, alignment: .center)
                             } placeholder: {
                                 Theme.surface
                             }
@@ -70,7 +73,9 @@ struct HeroHeader: View {
                 .clipped()
 
             LinearGradient(
-                colors: [Color.black.opacity(0.88), Color.black.opacity(0.48), Color.clear],
+                colors: atmosphere != nil
+                    ? [atmosphere!.bottomFeather.opacity(0.88), atmosphere!.bottomFeather.opacity(0.48), Color.clear]
+                    : [Color.black.opacity(0.88), Color.black.opacity(0.48), Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )
@@ -79,7 +84,9 @@ struct HeroHeader: View {
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
 
             LinearGradient(
-                colors: [Color.black.opacity(0.42), Color.black.opacity(0.14), Color.clear],
+                colors: atmosphere != nil
+                    ? [atmosphere!.topFeather.opacity(0.42), atmosphere!.topFeather.opacity(0.14), Color.clear]
+                    : [Color.black.opacity(0.42), Color.black.opacity(0.14), Color.clear],
                 startPoint: .top,
                 endPoint: .bottom
             )
