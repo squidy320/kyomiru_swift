@@ -61,25 +61,31 @@ struct LibraryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        LibraryProfileHero(
-                            bannerURL: appState.authState.user?.bannerURL,
-                            avatarURL: appState.authState.user?.avatarURL,
-                            atmosphere: activeHeroAtmosphere,
-                            onAvatarTap: {
+                        HStack(alignment: .top, spacing: UIConstants.standardPadding) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                LibraryTopBar(
+                                    title: "Library",
+                                    subtitle: "Currently watching and synced lists"
+                                )
+                            }
+
+                            Button(action: {
                                 if appState.authState.isSignedIn {
                                     showAlertsSheet = true
                                 } else {
                                     Task { await appState.authState.signIn() }
                                 }
+                            }) {
+                                avatarView(
+                                    size: PlatformSupport.prefersTabletLayout ? 64 : 56,
+                                    avatarURL: appState.authState.user?.avatarURL
+                                )
                             }
-                        )
-                        .padding(.horizontal, -screenPadding)
+                            .buttonStyle(.plain)
+                        }
+                        .padding(UIConstants.standardPadding)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
-                            LibraryTopBar(
-                                title: "Library",
-                                subtitle: "Currently watching and synced lists"
-                            )
 
                         if !continueWatchingItems().isEmpty {
                             VStack(alignment: .leading, spacing: screenSpacing) {
@@ -407,6 +413,47 @@ struct LibraryView: View {
                 lhs.media.title.best.lowercased() < rhs.media.title.best.lowercased()
             }
         }
+    }
+
+    @ViewBuilder
+    private func avatarView(size: CGFloat, avatarURL: URL?) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color.white)
+                .frame(width: size, height: size)
+
+            Circle()
+                .fill(Color.black)
+                .frame(width: size - 4, height: size - 4)
+
+            if let avatarURL {
+                CachedImage(
+                    url: avatarURL,
+                    targetSize: CGSize(width: size, height: size)
+                ) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    avatarFallback(size: size)
+                }
+                .frame(width: size - 4, height: size - 4)
+                .clipShape(Circle())
+            } else {
+                avatarFallback(size: size)
+                    .frame(width: size - 4, height: size - 4)
+                    .clipShape(Circle())
+            }
+        }
+        .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
+    }
+
+    private func avatarFallback(size: CGFloat) -> some View {
+        Circle()
+            .fill(Color.white.opacity(0.08))
+            .overlay(
+                Image(systemName: "person.fill")
+                    .foregroundColor(.white)
+                    .font(.system(size: size * 0.32, weight: .semibold))
+            )
     }
 
     private func continueWatchingItems() -> [ContinueItem] {
@@ -760,68 +807,6 @@ private struct LibraryTopBar: View {
     }
 }
 
-private struct LibraryProfileHero: View {
-    let bannerURL: URL?
-    let avatarURL: URL?
-    let atmosphere: HeroAtmosphere
-    let onAvatarTap: () -> Void
-
-    var body: some View {
-        let avatarSize: CGFloat = PlatformSupport.prefersTabletLayout ? 64 : 56
-        let padding: CGFloat = UIConstants.standardPadding
-
-        HStack(alignment: .center, spacing: 0) {
-            Button(action: onAvatarTap) {
-                avatarView(size: avatarSize)
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-        }
-        .padding(.horizontal, padding)
-        .padding(.vertical, padding + 8)
-    }
-
-    @ViewBuilder
-    private func avatarView(size: CGFloat) -> some View {
-        ZStack {
-            Circle()
-                .fill(Color.white)
-                .frame(width: size, height: size)
-
-            Circle()
-                .fill(Color.black)
-                .frame(width: size - 4, height: size - 4)
-
-            if let avatarURL {
-                CachedImage(
-                    url: avatarURL,
-                    targetSize: CGSize(width: size, height: size)
-                ) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    avatarFallback(size: size)
-                }
-                .frame(width: size - 4, height: size - 4)
-                .clipShape(Circle())
-            } else {
-                avatarFallback(size: size)
-                    .frame(width: size - 4, height: size - 4)
-                    .clipShape(Circle())
-            }
-        }
-        .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
-    }
-
-    private func avatarFallback(size: CGFloat) -> some View {
-        Circle()
-            .fill(Color.white.opacity(0.08))
-            .overlay(
-                Image(systemName: "person.fill")
-                    .foregroundColor(.white)
-                    .font(.system(size: size * 0.32, weight: .semibold))
-            )
-    }
 }
 
 struct LibrarySection: View {
