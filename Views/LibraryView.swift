@@ -72,21 +72,30 @@ struct LibraryView: View {
             }
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: screenSpacing) {
+                    VStack(alignment: .leading, spacing: 0) {
                         if let featured = featuredAnime {
                             NavigationLink(destination: DetailsView(media: featured)) {
-                                HeroHeader(
+                                let score = featured.averageScore ?? 0
+                                let contentRating = featured.isAdult ? "TV-MA" : "TV-14"
+                                let pills = [
+                                    HeroPill(icon: "star.fill", text: "Score \(score)%"),
+                                    HeroPill(icon: "shield.fill", text: contentRating),
+                                ]
+                                let tags = Array(featured.genres.prefix(2))
+                                
+                                return HeroHeader(
                                     title: featured.title.best,
-                                    subtitle: "From Your Planning",
-                                    imageURL: featured.coverURL,
+                                    subtitle: "Add to your watchlist",
+                                    imageURL: featured.bannerURL ?? featured.coverURL,
                                     media: featured,
-                                    pills: [],
-                                    tags: featured.genres,
-                                    height: 200
+                                    pills: pills,
+                                    tags: tags,
+                                    height: UIConstants.heroHeight,
+                                    fullBleed: true
                                 )
                             }
                             .buttonStyle(.plain)
-                            .padding(.horizontal, -screenPadding)
+                            .ignoresSafeArea(edges: .top)
                         } else {
                             LibraryProfileHero(
                                 bannerURL: appState.authState.user?.bannerURL,
@@ -101,12 +110,15 @@ struct LibraryView: View {
                                 }
                             )
                             .padding(.horizontal, -screenPadding)
+                            .ignoresSafeArea(edges: .top)
                         }
 
-                        LibraryTopBar(
-                            title: "Library",
-                            subtitle: "Currently watching and synced lists"
-                        )
+                        VStack(alignment: .leading, spacing: screenSpacing) {
+                            LibraryTopBar(
+                                title: "Library",
+                                subtitle: "Currently watching and synced lists"
+                            )
+                            .padding(.top, screenSpacing)
 
                         if !continueWatchingItems().isEmpty {
                             VStack(alignment: .leading, spacing: screenSpacing) {
@@ -189,19 +201,20 @@ struct LibraryView: View {
                     .padding(.horizontal, screenPadding)
                     .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
-                    .background(
-                        Group {
-                            if bannerAtmosphereEnabled {
-                                LinearGradient(
-                                    colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.18)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            } else {
-                                Theme.baseBackground
-                            }
+                }
+                .background(
+                    Group {
+                        if bannerAtmosphereEnabled {
+                            LinearGradient(
+                                colors: [backgroundAtmosphere.baseBackground, backgroundAtmosphere.bottomFeather.opacity(0.18)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        } else {
+                            Theme.baseBackground
                         }
-                    )
+                    }
+                )
                 }
                 .ignoresSafeArea(edges: .top)
                 .refreshable {
@@ -508,10 +521,19 @@ struct LibraryView: View {
                 let randomEntry = planningItems.randomElement()
                 featuredAnime = randomEntry?.media
                 
-                if let media = randomEntry?.media, let backdropURL = media.bannerURL ?? media.coverURL {
+                if let media = randomEntry?.media {
+                    let backdropURL = media.bannerURL ?? media.coverURL
                     Task {
                         let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: backdropURL)
-                        featuredAtmosphere = atmosphere
+                        await MainActor.run {
+                            if appState.settings.reduceMotion {
+                                self.featuredAtmosphere = atmosphere
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.35)) {
+                                    self.featuredAtmosphere = atmosphere
+                                }
+                            }
+                        }
                     }
                 }
             }
