@@ -247,11 +247,10 @@ struct LibraryView: View {
                 }
             }
         }
-    }
-    .sheet(isPresented: $librarySettings.showSettingsSheet) {
-        LibrarySettingsSheet(manager: librarySettings)
-            .presentationDetents([.medium, .large])
-    }
+        .sheet(isPresented: $librarySettings.showSettingsSheet) {
+            LibrarySettingsSheet(manager: librarySettings)
+                .presentationDetents([.medium, .large])
+        }
     .task(id: appState.authState.user?.bannerURL) {
         await refreshHeroAtmosphere()
     }
