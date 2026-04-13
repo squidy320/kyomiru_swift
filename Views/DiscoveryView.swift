@@ -38,7 +38,24 @@ struct DiscoveryView: View {
         let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
         let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
-            pageBackground.ignoresSafeArea()
+            Group {
+                if bannerAtmosphereEnabled {
+                    LinearGradient(
+                        colors: [
+                            activeHeroAtmosphere.baseBackground,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                } else {
+                    Theme.baseBackground.ignoresSafeArea()
+                }
+            }
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
@@ -290,6 +307,16 @@ struct DiscoveryView: View {
                 }
                 .padding(.horizontal, UIConstants.standardPadding)
                 .padding(.bottom, 24)
+
+                LinearGradient(
+                    colors: bannerAtmosphereEnabled
+                        ? [Color.clear, Color.clear, activeHeroAtmosphere.bottomFeather.opacity(0.15), activeHeroAtmosphere.bottomFeather.opacity(0.35), activeHeroAtmosphere.bottomFeather.opacity(0.60), activeHeroAtmosphere.bottomFeather, activeHeroAtmosphere.bottomFeather]
+                        : [Color.clear, Color.clear, Color.black.opacity(0.15), Color.black.opacity(0.35), Color.black.opacity(0.60), Color.black, Color.black],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: (height + insetTop) * 0.22)
+                .frame(maxHeight: .infinity, alignment: .bottom)
             }
             .frame(width: width, height: height + insetTop)
             .clipped()
