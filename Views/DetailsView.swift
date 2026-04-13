@@ -218,10 +218,10 @@ struct DetailsView: View {
                     LinearGradient(
                         colors: [
                             activeHeroAtmosphere.baseBackground,
-                            activeHeroAtmosphere.bottomFeather.opacity(0.42),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.32),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.20),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.08)
+                            activeHeroAtmosphere.bottomFeather.opacity(0.24),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.16),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.08),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.02)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -829,16 +829,17 @@ struct DetailsView: View {
                 LinearGradient(
                     colors: [
                         Color.clear,
-                        activeHeroAtmosphere.bottomFeather.opacity(0.03),
-                        activeHeroAtmosphere.bottomFeather.opacity(0.06),
-                        activeHeroAtmosphere.bottomFeather.opacity(0.12),
+                        Color.clear,
+                        activeHeroAtmosphere.bottomFeather.opacity(0.04),
+                        activeHeroAtmosphere.bottomFeather.opacity(0.10),
                         activeHeroAtmosphere.bottomFeather.opacity(0.22),
-                        activeHeroAtmosphere.bottomFeather.opacity(0.32)
+                        activeHeroAtmosphere.bottomFeather.opacity(0.38),
+                        activeHeroAtmosphere.bottomFeather.opacity(0.52)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: 400)
+                .frame(width: width, height: 200)
                 .frame(maxHeight: .infinity, alignment: .bottom)
             }
             .frame(width: width, height: height + insetTop)
