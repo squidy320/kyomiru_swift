@@ -249,65 +249,65 @@ struct LibraryView: View {
         }
     }
     .sheet(isPresented: $librarySettings.showSettingsSheet) {
-            LibrarySettingsSheet(manager: librarySettings)
-                .presentationDetents([.medium, .large])
-        }
-        .task(id: appState.authState.user?.bannerURL) {
-            await refreshHeroAtmosphere()
-        }
-        .sheet(isPresented: $showAlertsSheet) {
-            AlertsView()
-        }
-        .fullScreenCover(isPresented: $showContinuePlayer) {
-            if let episode = selectedContinueEpisode,
-               let media = selectedContinueMedia,
-               !continueSources.isEmpty {
-                PlayerView(
-                    episode: episode,
-                    sources: continueSources,
-                    mediaId: media.id,
-                    malId: media.idMal,
-                    mediaTitle: media.title.best,
-                    startAt: continuePlayerStartAt,
-                    onRestoreAfterPictureInPicture: {
-                        showContinuePlayer = true
-                    }
-                )
-            }
-        }
-        .sheet(isPresented: $showContinueSourceSheet) {
-            if let episode = selectedContinueEpisode,
-               let media = selectedContinueMedia,
-               !continueSources.isEmpty {
-                StreamSourcePickerSheet(
-                    media: media,
-                    episode: episode,
-                    sources: continueSources,
-                    preferredAudio: appState.settings.defaultAudio,
-                    preferredQuality: appState.settings.defaultQuality,
-                    onPlay: { picked in
-                        continueSources = [picked]
-                        presentContinuePlayer()
-                    },
-                    onDownload: { source in
-                        enqueueContinueDownload(source, media: media, episodeNumber: episode.number)
-                    }
-                )
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if continueLoading {
-                GlassCard {
-                    Text("Loading stream...")
-                        .foregroundColor(Theme.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+        LibrarySettingsSheet(manager: librarySettings)
+            .presentationDetents([.medium, .large])
+    }
+    .task(id: appState.authState.user?.bannerURL) {
+        await refreshHeroAtmosphere()
+    }
+    .sheet(isPresented: $showAlertsSheet) {
+        AlertsView()
+    }
+    .fullScreenCover(isPresented: $showContinuePlayer) {
+        if let episode = selectedContinueEpisode,
+           let media = selectedContinueMedia,
+           !continueSources.isEmpty {
+            PlayerView(
+                episode: episode,
+                sources: continueSources,
+                mediaId: media.id,
+                malId: media.idMal,
+                mediaTitle: media.title.best,
+                startAt: continuePlayerStartAt,
+                onRestoreAfterPictureInPicture: {
+                    showContinuePlayer = true
                 }
-                .padding(.horizontal, screenPadding)
-                .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
-            } else if let continueError {
-                GlassCard {
-                    Text(continueError)
-                        .foregroundColor(Theme.textSecondary)
+            )
+        }
+    }
+    .sheet(isPresented: $showContinueSourceSheet) {
+        if let episode = selectedContinueEpisode,
+           let media = selectedContinueMedia,
+           !continueSources.isEmpty {
+            StreamSourcePickerSheet(
+                media: media,
+                episode: episode,
+                sources: continueSources,
+                preferredAudio: appState.settings.defaultAudio,
+                preferredQuality: appState.settings.defaultQuality,
+                onPlay: { picked in
+                    continueSources = [picked]
+                    presentContinuePlayer()
+                },
+                onDownload: { source in
+                    enqueueContinueDownload(source, media: media, episodeNumber: episode.number)
+                }
+            )
+        }
+    }
+    .overlay(alignment: .bottom) {
+        if continueLoading {
+            GlassCard {
+                Text("Loading stream...")
+                    .foregroundColor(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, screenPadding)
+            .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
+        } else if let continueError {
+            GlassCard {
+                Text(continueError)
+                    .foregroundColor(Theme.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, screenPadding)
