@@ -778,8 +778,8 @@ private struct LibraryProfileHero: View {
 
             Spacer()
         }
-        .padding(padding)
-        .frame(height: avatarSize + padding * 2)
+        .padding(.horizontal, padding)
+        .padding(.vertical, padding + 8)
     }
 
     @ViewBuilder
