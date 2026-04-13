@@ -162,7 +162,7 @@ struct LibraryView: View {
                         Group {
                             if bannerAtmosphereEnabled {
                                 LinearGradient(
-                                    colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.16)],
+                                    colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.18)],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
@@ -834,7 +834,7 @@ private struct LibraryProfileHero: View {
                     Spacer(minLength: 0)
 
                     LinearGradient(
-                        colors: [Color.clear, atmosphere.bottomFeather.opacity(0.28), atmosphere.baseBackground.opacity(0.90)],
+                        colors: [Color.clear, Color.clear, atmosphere.baseBackground.opacity(0.20), atmosphere.baseBackground.opacity(0.45), atmosphere.baseBackground.opacity(0.70), atmosphere.baseBackground, atmosphere.baseBackground],
                         startPoint: .top,
                         endPoint: .bottom
                     )
