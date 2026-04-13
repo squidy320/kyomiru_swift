@@ -86,6 +86,7 @@ struct LibraryView: View {
                             Spacer()
                         }
                         .padding(UIConstants.standardPadding)
+                        .padding(.top, 12)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
 
@@ -179,10 +180,8 @@ struct LibraryView: View {
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
-                            .ignoresSafeArea()
                         } else {
                             Theme.baseBackground
-                                .ignoresSafeArea()
                         }
                     }
                 )
