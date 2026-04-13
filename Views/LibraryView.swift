@@ -769,23 +769,10 @@ private struct LibraryProfileHero: View {
         ZStack(alignment: .bottom) {
             heroBackdrop(height: heroHeight)
 
-            Button(action: onAvatarTap) {
-                avatarView(size: avatarSize)
-            }
-            .buttonStyle(.plain)
-            .offset(y: avatarOverlap)
-            .zIndex(1)
-        }
-        .padding(.bottom, avatarOverlap)
-    }
-
-    @ViewBuilder
-    private func heroBackdrop(height: CGFloat) -> some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            let topFeather = max(28.0, height * 0.18)
-            let bottomFeather = max(60.0, height * 0.38)
-
+            ButtprofileHeroFallback
+                    .frame(width: width, height: height)
+                    .clipped()
+    
             ZStack(alignment: .bottom) {
                 Group {
                     if let bannerURL {
