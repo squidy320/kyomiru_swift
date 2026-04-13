@@ -42,7 +42,7 @@ struct DiscoveryView: View {
                 if bannerAtmosphereEnabled {
                     LinearGradient(
                         colors: [
-                            activeHeroAtmosphere.baseBackground,
+                            activeHeroAtmosphere.bottomFeather,
                             activeHeroAtmosphere.bottomFeather,
                             activeHeroAtmosphere.bottomFeather,
                             activeHeroAtmosphere.bottomFeather,
