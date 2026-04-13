@@ -266,14 +266,14 @@ actor HeroAtmosphereResolver {
         let seed = color.normalizedHeroSeed()
 
         let base = seed
-            .blended(with: neutralBase, amount: 0.35)
-            .adjustingBrightness(by: 0.92)
+            .blended(with: neutralBase, amount: 0.15)
+            .adjustingBrightness(by: 0.95)
         let top = seed
-            .blended(with: neutralTop, amount: 0.30)
-            .adjustingBrightness(by: 0.98)
+            .blended(with: neutralTop, amount: 0.12)
+            .adjustingBrightness(by: 1.02)
         let bottom = seed
-            .blended(with: neutralBottom, amount: 0.25)
-            .adjustingBrightness(by: 0.84)
+            .blended(with: neutralBottom, amount: 0.10)
+            .adjustingBrightness(by: 0.88)
 
         return HeroAtmosphere(
             base: HeroAtmosphereColor(uiColor: base),
