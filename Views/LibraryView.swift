@@ -180,8 +180,10 @@ struct LibraryView: View {
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
+                            .ignoresSafeArea()
                         } else {
                             Theme.baseBackground
+                                .ignoresSafeArea()
                         }
                     }
                 )
