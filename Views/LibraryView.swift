@@ -74,7 +74,6 @@ struct LibraryView: View {
                             }
                         )
                         .padding(.horizontal, -screenPadding)
-                        .ignoresSafeArea(edges: .top)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
                             LibraryTopBar(
@@ -343,7 +342,7 @@ struct LibraryView: View {
 
     @MainActor
     private func refreshHeroAtmosphere() async {
-        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: appState.authState.user?.bannerURL)
+        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: appState.authState.user?.avatarURL)
         if appState.settings.reduceMotion {
             heroAtmosphere = atmosphere
         } else {
