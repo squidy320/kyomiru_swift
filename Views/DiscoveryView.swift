@@ -311,12 +311,12 @@ struct DiscoveryView: View {
 
                 LinearGradient(
                     colors: bannerAtmosphereEnabled
-                        ? [Color.clear, Color.clear, activeHeroAtmosphere.bottomFeather.opacity(0.15), activeHeroAtmosphere.bottomFeather.opacity(0.35), activeHeroAtmosphere.bottomFeather.opacity(0.60), activeHeroAtmosphere.bottomFeather, activeHeroAtmosphere.bottomFeather]
-                        : [Color.clear, Color.clear, Color.black.opacity(0.15), Color.black.opacity(0.35), Color.black.opacity(0.60), Color.black, Color.black],
+                        ? [Color.clear, Color.clear, activeHeroAtmosphere.bottomFeather.opacity(0.20), activeHeroAtmosphere.bottomFeather.opacity(0.45), activeHeroAtmosphere.bottomFeather.opacity(0.70), activeHeroAtmosphere.bottomFeather, activeHeroAtmosphere.bottomFeather]
+                        : [Color.clear, Color.clear, Color.black.opacity(0.20), Color.black.opacity(0.45), Color.black.opacity(0.70), Color.black, Color.black],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: (height + insetTop) * 0.22)
+                .frame(height: (height + insetTop) * 0.26)
                 .frame(maxHeight: .infinity, alignment: .bottom)
             }
             .frame(width: width, height: height + insetTop)
