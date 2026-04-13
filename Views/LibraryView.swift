@@ -23,13 +23,28 @@ struct LibraryView: View {
     @State private var showAlertsSheet = false
     @State private var libraryLoadGeneration = 0
     @State private var heroAtmosphere: HeroAtmosphere = .fallback
+    @State private var featuredAnime: AniListMedia?
+    @State private var featuredAtmosphere: HeroAtmosphere = .fallback
+    @State private var showFeaturedDetails = false
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
     private var bannerAtmosphereEnabled: Bool { appState.settings.enableBannerAtmosphere }
     private var activeHeroAtmosphere: HeroAtmosphere {
         bannerAtmosphereEnabled ? heroAtmosphere : .neutralBlack
     }
+    private var backgroundAtmosphere: HeroAtmosphere {
+        if featuredAnime != nil {
+            return featuredAtmosphere
+        }
+        return activeHeroAtmosphere
+    }
     private var pageBackground: Color {
-        bannerAtmosphereEnabled ? activeHeroAtmosphere.baseBackground : Theme.baseBackground
+        if !bannerAtmosphereEnabled {
+            return Theme.baseBackground
+        }
+        if featuredAnime != nil {
+            return featuredAtmosphere.baseBackground
+        }
+        return activeHeroAtmosphere.baseBackground
     }
 
     var body: some View {
@@ -41,11 +56,11 @@ struct LibraryView: View {
                 if bannerAtmosphereEnabled {
                     LinearGradient(
                         colors: [
-                            activeHeroAtmosphere.baseBackground,
-                            activeHeroAtmosphere.bottomFeather,
-                            activeHeroAtmosphere.bottomFeather,
-                            activeHeroAtmosphere.bottomFeather,
-                            activeHeroAtmosphere.bottomFeather
+                            backgroundAtmosphere.baseBackground,
+                            backgroundAtmosphere.bottomFeather,
+                            backgroundAtmosphere.bottomFeather,
+                            backgroundAtmosphere.bottomFeather,
+                            backgroundAtmosphere.bottomFeather
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -58,19 +73,35 @@ struct LibraryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
-                        LibraryProfileHero(
-                            bannerURL: appState.authState.user?.bannerURL,
-                            avatarURL: appState.authState.user?.avatarURL,
-                            atmosphere: activeHeroAtmosphere,
-                            onAvatarTap: {
-                                if appState.authState.isSignedIn {
-                                    showAlertsSheet = true
-                                } else {
-                                    Task { await appState.authState.signIn() }
-                                }
+                        if let featured = featuredAnime {
+                            NavigationLink(destination: DetailsView(media: featured)) {
+                                HeroHeader(
+                                    title: featured.title.best,
+                                    subtitle: "From Your Planning",
+                                    imageURL: featured.coverURL,
+                                    media: featured,
+                                    pills: [],
+                                    tags: featured.genres,
+                                    height: 200
+                                )
                             }
-                        )
-                        .padding(.horizontal, -screenPadding)
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, -screenPadding)
+                        } else {
+                            LibraryProfileHero(
+                                bannerURL: appState.authState.user?.bannerURL,
+                                avatarURL: appState.authState.user?.avatarURL,
+                                atmosphere: activeHeroAtmosphere,
+                                onAvatarTap: {
+                                    if appState.authState.isSignedIn {
+                                        showAlertsSheet = true
+                                    } else {
+                                        Task { await appState.authState.signIn() }
+                                    }
+                                }
+                            )
+                            .padding(.horizontal, -screenPadding)
+                        }
 
                         LibraryTopBar(
                             title: "Library",
@@ -470,6 +501,21 @@ struct LibraryView: View {
     private func applyLibrarySections(_ items: [AniListLibrarySection]) {
         sections = items
         appState.updateLibraryStore(with: items)
+        
+        if let planningSection = items.first(where: { $0.title.lowercased().contains("plan") }) {
+            let planningItems = planningSection.items
+            if !planningItems.isEmpty {
+                let randomEntry = planningItems.randomElement()
+                featuredAnime = randomEntry?.media
+                
+                if let media = randomEntry?.media, let backdropURL = media.bannerURL ?? media.coverURL {
+                    Task {
+                        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: backdropURL)
+                        featuredAtmosphere = atmosphere
+                    }
+                }
+            }
+        }
     }
 
     private func statusForSection(_ title: String) -> MediaStatus {
