@@ -246,8 +246,8 @@ struct LibraryView: View {
                     }
                 }
             }
-            .background(pageBackground.ignoresSafeArea())
         }
+    }
         .sheet(isPresented: $librarySettings.showSettingsSheet) {
             LibrarySettingsSheet(manager: librarySettings)
                 .presentationDetents([.medium, .large])
