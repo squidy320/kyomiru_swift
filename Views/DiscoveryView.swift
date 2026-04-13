@@ -42,7 +42,7 @@ struct DiscoveryView: View {
                 if bannerAtmosphereEnabled {
                     LinearGradient(
                         colors: [
-                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.baseBackground,
                             activeHeroAtmosphere.bottomFeather,
                             activeHeroAtmosphere.bottomFeather,
                             activeHeroAtmosphere.bottomFeather,
@@ -311,7 +311,7 @@ struct DiscoveryView: View {
 
                 LinearGradient(
                     colors: bannerAtmosphereEnabled
-                        ? [Color.clear, Color.clear, activeHeroAtmosphere.bottomFeather.opacity(0.20), activeHeroAtmosphere.bottomFeather.opacity(0.45), activeHeroAtmosphere.bottomFeather.opacity(0.70), activeHeroAtmosphere.bottomFeather, activeHeroAtmosphere.bottomFeather]
+                        ? [Color.clear, Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.20), activeHeroAtmosphere.baseBackground.opacity(0.45), activeHeroAtmosphere.baseBackground.opacity(0.70), activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.baseBackground]
                         : [Color.clear, Color.clear, Color.black.opacity(0.20), Color.black.opacity(0.45), Color.black.opacity(0.70), Color.black, Color.black],
                     startPoint: .top,
                     endPoint: .bottom
