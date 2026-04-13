@@ -11,7 +11,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "KyomiruSwift",
-            path: "Sources/KyomiruSwift"
+            path: "Sources"
         ),
     ]
 )

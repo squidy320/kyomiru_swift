@@ -217,11 +217,11 @@ struct DetailsView: View {
                 if bannerAtmosphereEnabled {
                     LinearGradient(
                         colors: [
-                            activeHeroAtmosphere.bottomFeather.opacity(0.18),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.36),
-                            activeHeroAtmosphere.bottomFeather.opacity(0.54),
+                            activeHeroAtmosphere.baseBackground,
                             activeHeroAtmosphere.bottomFeather.opacity(0.70),
-                            activeHeroAtmosphere.baseBackground
+                            activeHeroAtmosphere.bottomFeather.opacity(0.54),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.36),
+                            activeHeroAtmosphere.bottomFeather.opacity(0.18)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
