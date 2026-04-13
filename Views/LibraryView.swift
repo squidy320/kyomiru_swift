@@ -807,8 +807,6 @@ private struct LibraryTopBar: View {
     }
 }
 
-}
-
 struct LibrarySection: View {
     let section: AniListLibrarySection
     let filterText: String
