@@ -183,7 +183,6 @@ struct LibraryView: View {
                     }
                 )
                 }
-                .ignoresSafeArea(edges: .top)
                 .refreshable {
                     await loadLibrary(forceRefresh: true)
                 }
