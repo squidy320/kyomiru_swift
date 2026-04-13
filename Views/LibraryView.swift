@@ -23,19 +23,10 @@ struct LibraryView: View {
     @State private var showAlertsSheet = false
     @State private var libraryLoadGeneration = 0
     @State private var heroAtmosphere: HeroAtmosphere = .fallback
-    @State private var featuredAnime: AniListMedia?
-    @State private var featuredAtmosphere: HeroAtmosphere = .fallback
-    @State private var showFeaturedDetails = false
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
     private var bannerAtmosphereEnabled: Bool { appState.settings.enableBannerAtmosphere }
     private var activeHeroAtmosphere: HeroAtmosphere {
         bannerAtmosphereEnabled ? heroAtmosphere : .neutralBlack
-    }
-    private var backgroundAtmosphere: HeroAtmosphere {
-        if featuredAnime != nil {
-            return featuredAtmosphere
-        }
-        return activeHeroAtmosphere
     }
     private var pageBackground: Color {
         if !bannerAtmosphereEnabled {
@@ -73,53 +64,26 @@ struct LibraryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        if let featured = featuredAnime {
-                            NavigationLink(destination: DetailsView(media: featured)) {
-                                let score = featured.averageScore ?? 75
-                                let contentRating = featured.isAdult ? "TV-MA" : "TV-14"
-                                let pills = [
-                                    HeroPill(icon: "star.fill", text: "Score \(score)%"),
-                                    HeroPill(icon: "shield.fill", text: contentRating),
-                                ]
-                                let tags = Array(featured.genres.prefix(2))
-                                
-                                return HeroHeader(
-                                    title: featured.title.best,
-                                    subtitle: "Add to your watchlist",
-                                    imageURL: featured.bannerURL ?? featured.coverURL,
-                                    media: featured,
-                                    pills: pills,
-                                    tags: tags,
-                                    height: UIConstants.heroHeight,
-                                    fullBleed: true,
-                                    atmosphere: featuredAtmosphere
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .ignoresSafeArea(edges: .top)
-                        } else {
-                            LibraryProfileHero(
-                                bannerURL: appState.authState.user?.bannerURL,
-                                avatarURL: appState.authState.user?.avatarURL,
-                                atmosphere: activeHeroAtmosphere,
-                                onAvatarTap: {
-                                    if appState.authState.isSignedIn {
-                                        showAlertsSheet = true
-                                    } else {
-                                        Task { await appState.authState.signIn() }
-                                    }
+                        LibraryProfileHero(
+                            bannerURL: appState.authState.user?.bannerURL,
+                            avatarURL: appState.authState.user?.avatarURL,
+                            atmosphere: activeHeroAtmosphere,
+                            onAvatarTap: {
+                                if appState.authState.isSignedIn {
+                                    showAlertsSheet = true
+                                } else {
+                                    Task { await appState.authState.signIn() }
                                 }
-                            )
-                            .padding(.horizontal, -screenPadding)
-                            .ignoresSafeArea(edges: .top)
-                        }
+                            }
+                        )
+                        .padding(.horizontal, -screenPadding)
+                        .ignoresSafeArea(edges: .top)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
                             LibraryTopBar(
                                 title: "Library",
                                 subtitle: "Currently watching and synced lists"
                             )
-                            .padding(.top, screenSpacing)
 
                         if !continueWatchingItems().isEmpty {
                             VStack(alignment: .leading, spacing: screenSpacing) {
@@ -204,28 +168,16 @@ struct LibraryView: View {
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
                 .background(
-                    ZStack {
-                        Group {
-                            if bannerAtmosphereEnabled {
-                                LinearGradient(
-                                    colors: [backgroundAtmosphere.baseBackground, backgroundAtmosphere.bottomFeather.opacity(0.18)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            } else {
-                                Theme.baseBackground
-                            }
+                    Group {
+                        if bannerAtmosphereEnabled {
+                            LinearGradient(
+                                colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.18)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        } else {
+                            Theme.baseBackground
                         }
-                        
-                        LinearGradient(
-                            colors: bannerAtmosphereEnabled
-                                ? [Color.clear, Color.clear, backgroundAtmosphere.baseBackground.opacity(0.20), backgroundAtmosphere.baseBackground.opacity(0.45), backgroundAtmosphere.baseBackground.opacity(0.70), backgroundAtmosphere.baseBackground, backgroundAtmosphere.baseBackground]
-                                : [Color.clear, Color.clear, Color.black.opacity(0.20), Color.black.opacity(0.45), Color.black.opacity(0.70), Color.black, Color.black],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: UIConstants.heroHeight * 0.26)
-                        .frame(maxHeight: .infinity, alignment: .top)
                     }
                 )
                 }
@@ -363,7 +315,6 @@ struct LibraryView: View {
                !cached.isEmpty {
                 applyLibrarySections(cached)
                 await runLibraryBackgroundWork(sections: cached)
-                refreshFeaturedAnime()
             }
             if sections.isEmpty {
                 await loadLibrary(forceRefresh: false)
@@ -390,32 +341,6 @@ struct LibraryView: View {
         }
         .onChange(of: sections) { _, _ in
             Task { await prefetchLibraryImages(sections: sections) }
-        }
-    }
-
-    private func refreshFeaturedAnime() {
-        if let planningSection = sections.first(where: { $0.title.lowercased().contains("plan") }) {
-            let planningItems = planningSection.items
-            if !planningItems.isEmpty {
-                let randomEntry = planningItems.randomElement()
-                featuredAnime = randomEntry?.media
-                
-                if let media = randomEntry?.media {
-                    let backdropURL = media.bannerURL ?? media.coverURL
-                    Task {
-                        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: backdropURL)
-                        await MainActor.run {
-                            if appState.settings.reduceMotion {
-                                self.featuredAtmosphere = atmosphere
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.35)) {
-                                    self.featuredAtmosphere = atmosphere
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
