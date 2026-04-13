@@ -62,13 +62,6 @@ struct LibraryView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(alignment: .top, spacing: UIConstants.standardPadding) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                LibraryTopBar(
-                                    title: "Library",
-                                    subtitle: "Currently watching and synced lists"
-                                )
-                            }
-
                             Button(action: {
                                 if appState.authState.isSignedIn {
                                     showAlertsSheet = true
@@ -82,6 +75,15 @@ struct LibraryView: View {
                                 )
                             }
                             .buttonStyle(.plain)
+
+                            VStack(alignment: .leading, spacing: 0) {
+                                LibraryTopBar(
+                                    title: "Library",
+                                    subtitle: "Currently watching and synced lists"
+                                )
+                            }
+
+                            Spacer()
                         }
                         .padding(UIConstants.standardPadding)
 
@@ -177,8 +179,10 @@ struct LibraryView: View {
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
+                            .ignoresSafeArea()
                         } else {
                             Theme.baseBackground
+                                .ignoresSafeArea()
                         }
                     }
                 )
