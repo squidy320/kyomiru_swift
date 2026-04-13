@@ -263,8 +263,8 @@ struct DiscoveryView: View {
 
                 LinearGradient(
                     colors: bannerAtmosphereEnabled
-                        ? [activeHeroAtmosphere.bottomFeather, activeHeroAtmosphere.bottomFeather, Color.clear]
-                        : [Color.black, Color.black, Color.clear],
+                        ? [activeHeroAtmosphere.bottomFeather.opacity(0.48), activeHeroAtmosphere.bottomFeather.opacity(0.28), Color.clear]
+                        : [Color.black.opacity(0.48), Color.black.opacity(0.28), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
