@@ -37,7 +37,24 @@ struct LibraryView: View {
         let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
         let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
-            pageBackground.ignoresSafeArea()
+            Group {
+                if bannerAtmosphereEnabled {
+                    LinearGradient(
+                        colors: [
+                            activeHeroAtmosphere.baseBackground,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                } else {
+                    Theme.baseBackground.ignoresSafeArea()
+                }
+            }
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: screenSpacing) {
@@ -155,6 +172,7 @@ struct LibraryView: View {
                         }
                     )
                 }
+                .ignoresSafeArea(edges: .top)
                 .refreshable {
                     await loadLibrary(forceRefresh: true)
                 }
