@@ -830,16 +830,16 @@ struct DetailsView: View {
                     colors: [
                         Color.clear,
                         Color.clear,
-                        activeHeroAtmosphere.bottomFeather.opacity(0.04),
-                        activeHeroAtmosphere.bottomFeather.opacity(0.10),
-                        activeHeroAtmosphere.bottomFeather.opacity(0.22),
-                        activeHeroAtmosphere.bottomFeather.opacity(0.38),
-                        activeHeroAtmosphere.bottomFeather.opacity(0.52)
+                        activeHeroAtmosphere.bottomFeather.opacity(0.15),
+                        activeHeroAtmosphere.bottomFeather.opacity(0.35),
+                        activeHeroAtmosphere.bottomFeather.opacity(0.60),
+                        activeHeroAtmosphere.bottomFeather,
+                        activeHeroAtmosphere.bottomFeather
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(width: width, height: 200)
+                .frame(width: width, height: height * 0.22)
                 .frame(maxHeight: .infinity, alignment: .bottom)
             }
             .frame(width: width, height: height + insetTop)
