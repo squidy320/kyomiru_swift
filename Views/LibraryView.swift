@@ -768,106 +768,19 @@ private struct LibraryProfileHero: View {
     let onAvatarTap: () -> Void
 
     var body: some View {
-        let heroHeight = UIConstants.libraryProfileHeroHeight
-        let avatarSize = UIConstants.libraryProfileAvatarSize
-        let avatarOverlap = UIConstants.libraryProfileAvatarOverlap
+        let avatarSize: CGFloat = PlatformSupport.prefersTabletLayout ? 64 : 56
+        let padding: CGFloat = UIConstants.standardPadding
 
-        ZStack(alignment: .bottom) {
-            heroBackdrop(height: heroHeight)
-
+        HStack(alignment: .top, spacing: 0) {
             Button(action: onAvatarTap) {
                 avatarView(size: avatarSize)
             }
             .buttonStyle(.plain)
-            .offset(y: avatarOverlap)
-            .zIndex(1)
+
+            Spacer()
         }
-        .padding(.bottom, avatarOverlap)
-    }
-
-    @ViewBuilder
-    private func heroBackdrop(height: CGFloat) -> some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            let topFeather = max(28.0, height * 0.18)
-            let bottomFeather = max(60.0, height * 0.38)
-
-            ZStack(alignment: .bottom) {
-                profileHeroFallback
-                    .frame(width: width, height: height)
-                    .clipped()
-                    .mask(
-                        VStack(spacing: 0) {
-                            LinearGradient(
-                                colors: [Color.clear, Color.black],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .frame(height: topFeather)
-
-                            Color.black
-
-                            LinearGradient(
-                                colors: [Color.black, Color.clear],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .frame(height: bottomFeather)
-                        }
-                    )
-
-                VStack(spacing: 0) {
-                    LinearGradient(
-                        colors: [atmosphere.topFeather.opacity(0.34), Color.clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: height * 0.30)
-
-                    Spacer(minLength: 0)
-
-                    LinearGradient(
-                        colors: [Color.clear, atmosphere.bottomFeather.opacity(0.28), atmosphere.baseBackground.opacity(0.90)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: height * 0.70)
-                }
-
-                LinearGradient(
-                    colors: [atmosphere.topFeather.opacity(0.10), Color.clear, atmosphere.bottomFeather.opacity(0.30)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
-            .frame(width: width, height: height)
-            .contentShape(Rectangle())
-        }
-        .frame(height: height)
-    }
-
-    private var profileHeroFallback: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    atmosphere.topFeather.opacity(0.72),
-                    atmosphere.baseBackground.opacity(0.92),
-                    Theme.surface.opacity(0.82)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.06),
-                    Color.clear,
-                    Color.black.opacity(0.24)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
+        .padding(padding)
+        .frame(height: avatarSize + padding * 2)
     }
 
     @ViewBuilder
@@ -879,7 +792,7 @@ private struct LibraryProfileHero: View {
 
             Circle()
                 .fill(Color.black)
-                .frame(width: size - 6, height: size - 6)
+                .frame(width: size - 4, height: size - 4)
 
             if let avatarURL {
                 CachedImage(
@@ -890,15 +803,15 @@ private struct LibraryProfileHero: View {
                 } placeholder: {
                     avatarFallback(size: size)
                 }
-                .frame(width: size - 6, height: size - 6)
+                .frame(width: size - 4, height: size - 4)
                 .clipShape(Circle())
             } else {
                 avatarFallback(size: size)
-                    .frame(width: size - 6, height: size - 6)
+                    .frame(width: size - 4, height: size - 4)
                     .clipShape(Circle())
             }
         }
-        .shadow(color: Color.black.opacity(0.35), radius: 16, x: 0, y: 10)
+        .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
     }
 
     private func avatarFallback(size: CGFloat) -> some View {
@@ -907,7 +820,7 @@ private struct LibraryProfileHero: View {
             .overlay(
                 Image(systemName: "person.fill")
                     .foregroundColor(.white)
-                    .font(.system(size: size * 0.28, weight: .semibold))
+                    .font(.system(size: size * 0.32, weight: .semibold))
             )
     }
 }
