@@ -204,16 +204,28 @@ struct LibraryView: View {
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
                 .background(
-                    Group {
-                        if bannerAtmosphereEnabled {
-                            LinearGradient(
-                                colors: [backgroundAtmosphere.baseBackground, backgroundAtmosphere.bottomFeather.opacity(0.18)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        } else {
-                            Theme.baseBackground
+                    ZStack {
+                        Group {
+                            if bannerAtmosphereEnabled {
+                                LinearGradient(
+                                    colors: [backgroundAtmosphere.baseBackground, backgroundAtmosphere.bottomFeather.opacity(0.18)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            } else {
+                                Theme.baseBackground
+                            }
                         }
+                        
+                        LinearGradient(
+                            colors: bannerAtmosphereEnabled
+                                ? [Color.clear, Color.clear, backgroundAtmosphere.baseBackground.opacity(0.20), backgroundAtmosphere.baseBackground.opacity(0.45), backgroundAtmosphere.baseBackground.opacity(0.70), backgroundAtmosphere.baseBackground, backgroundAtmosphere.baseBackground]
+                                : [Color.clear, Color.clear, Color.black.opacity(0.20), Color.black.opacity(0.45), Color.black.opacity(0.70), Color.black, Color.black],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: UIConstants.heroHeight * 0.26)
+                        .frame(maxHeight: .infinity, alignment: .top)
                     }
                 )
                 }
@@ -356,9 +368,6 @@ struct LibraryView: View {
             if sections.isEmpty {
                 await loadLibrary(forceRefresh: false)
             }
-        }
-        .onChange(of: sections) { _, _ in
-            refreshFeaturedAnime()
         }
         .onChange(of: appState.authState.token) { _, newToken in
             if newToken == nil {
