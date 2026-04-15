@@ -332,96 +332,88 @@ struct LibraryView: View {
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
-            ZStack(alignment: .bottomLeading) {
-                Group {
-                    if bannerAtmosphereEnabled, let bannerURL {
-                        CachedImage(url: bannerURL) { image in
-                            image
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: width, height: height + insetTop, alignment: .bottom)
-                        } placeholder: {
+            let avatarSize: CGFloat = PlatformSupport.prefersTabletLayout ? 72 : 64
+            ZStack(alignment: .bottom) {
+                ZStack(alignment: .bottomLeading) {
+                    Group {
+                        if bannerAtmosphereEnabled, let bannerURL {
+                            CachedImage(url: bannerURL) { image in
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: width, height: height + insetTop, alignment: .bottom)
+                            } placeholder: {
+                                Theme.surface
+                            }
+                        } else {
                             Theme.surface
                         }
-                    } else {
-                        Theme.surface
                     }
+                    .frame(width: width, height: height + insetTop)
+                    .clipped()
+
+                    LinearGradient(
+                        colors: bannerAtmosphereEnabled
+                            ? [activeHeroAtmosphere.bottomFeather.opacity(0.48), activeHeroAtmosphere.bottomFeather.opacity(0.28), Color.clear]
+                            : [Color.black.opacity(0.48), Color.black.opacity(0.28), Color.clear],
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                    .frame(width: width, height: (height + insetTop) * 0.66)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+
+                    LinearGradient(
+                        colors: bannerAtmosphereEnabled
+                            ? [activeHeroAtmosphere.topFeather.opacity(0.72), activeHeroAtmosphere.topFeather.opacity(0.24), Color.clear]
+                            : [Color.black.opacity(0.72), Color.black.opacity(0.24), Color.clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(width: width, height: (height + insetTop) * 0.30)
+                    .frame(maxHeight: .infinity, alignment: .top)
+
+                    LinearGradient(
+                        colors: bannerAtmosphereEnabled
+                            ? [activeHeroAtmosphere.topFeather.opacity(0.34), activeHeroAtmosphere.topFeather.opacity(0.14), Color.clear]
+                            : [Color.black.opacity(0.34), Color.black.opacity(0.14), Color.clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(width: width, height: max(52, insetTop + 28))
+                    .frame(maxHeight: .infinity, alignment: .top)
+
+                    LinearGradient(
+                        colors: bannerAtmosphereEnabled
+                            ? [Color.clear, Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.20), activeHeroAtmosphere.baseBackground.opacity(0.45), activeHeroAtmosphere.baseBackground.opacity(0.70), activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.baseBackground]
+                            : [Color.clear, Color.clear, Color.black.opacity(0.20), Color.black.opacity(0.45), Color.black.opacity(0.70), Theme.baseBackground, Theme.baseBackground],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: (height + insetTop) * 0.26)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
                 }
                 .frame(width: width, height: height + insetTop)
                 .clipped()
 
-                LinearGradient(
-                    colors: bannerAtmosphereEnabled
-                        ? [activeHeroAtmosphere.bottomFeather.opacity(0.48), activeHeroAtmosphere.bottomFeather.opacity(0.28), Color.clear]
-                        : [Color.black.opacity(0.48), Color.black.opacity(0.28), Color.clear],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-                .frame(width: width, height: (height + insetTop) * 0.66)
-                .frame(maxHeight: .infinity, alignment: .bottom)
-
-                LinearGradient(
-                    colors: bannerAtmosphereEnabled
-                        ? [activeHeroAtmosphere.topFeather.opacity(0.72), activeHeroAtmosphere.topFeather.opacity(0.24), Color.clear]
-                        : [Color.black.opacity(0.72), Color.black.opacity(0.24), Color.clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(width: width, height: (height + insetTop) * 0.30)
-                .frame(maxHeight: .infinity, alignment: .top)
-
-                LinearGradient(
-                    colors: bannerAtmosphereEnabled
-                        ? [activeHeroAtmosphere.topFeather.opacity(0.34), activeHeroAtmosphere.topFeather.opacity(0.14), Color.clear]
-                        : [Color.black.opacity(0.34), Color.black.opacity(0.14), Color.clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(width: width, height: max(52, insetTop + 28))
-                .frame(maxHeight: .infinity, alignment: .top)
-
-                HStack(alignment: .top, spacing: UIConstants.standardPadding) {
-                    Button(action: {
-                        if appState.authState.isSignedIn {
-                            showAlertsSheet = true
-                        } else {
-                            Task { await appState.authState.signIn() }
-                        }
-                    }) {
-                        avatarView(
-                            size: PlatformSupport.prefersTabletLayout ? 64 : 56,
-                            avatarURL: appState.authState.user?.avatarURL
-                        )
+                Button(action: {
+                    if appState.authState.isSignedIn {
+                        showAlertsSheet = true
+                    } else {
+                        Task { await appState.authState.signIn() }
                     }
-                    .buttonStyle(.plain)
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        LibraryTopBar(
-                            title: "Library",
-                            subtitle: "Currently watching and synced lists"
-                        )
-                    }
-
-                    Spacer()
+                }) {
+                    avatarView(
+                        size: avatarSize,
+                        avatarURL: appState.authState.user?.avatarURL
+                    )
                 }
-                .padding(.horizontal, UIConstants.standardPadding)
-                .padding(.bottom, 24)
-
-                LinearGradient(
-                    colors: bannerAtmosphereEnabled
-                        ? [Color.clear, Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.20), activeHeroAtmosphere.baseBackground.opacity(0.45), activeHeroAtmosphere.baseBackground.opacity(0.70), activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.baseBackground]
-                        : [Color.clear, Color.clear, Color.black.opacity(0.20), Color.black.opacity(0.45), Color.black.opacity(0.70), Theme.baseBackground, Theme.baseBackground],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: (height + insetTop) * 0.26)
-                .frame(maxHeight: .infinity, alignment: .bottom)
+                .buttonStyle(.plain)
+                .offset(y: avatarSize * 0.44)
             }
             .frame(width: width, height: height + insetTop)
-            .clipped()
             .offset(y: -insetTop)
         }
-        .frame(height: UIConstants.heroHeight)
+        .frame(height: UIConstants.heroHeight + (PlatformSupport.prefersTabletLayout ? 32 : 28))
     }
 
     @MainActor
@@ -867,22 +859,6 @@ private enum LibraryFilter: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
-}
-
-private struct LibraryTopBar: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: UIConstants.microPadding) {
-            Text(title)
-                .font(.system(size: 28, weight: .heavy))
-                .foregroundColor(Theme.textPrimary)
-            Text(subtitle)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(Theme.textSecondary)
-        }
-    }
 }
 
 struct LibrarySection: View {
