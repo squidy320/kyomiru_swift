@@ -312,6 +312,7 @@ struct LibraryView: View {
             .padding(.horizontal, screenPadding)
             .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
         }
+    }
         .task {
             AppLog.debug(.ui, "library view load")
             if let token = appState.authState.token,
