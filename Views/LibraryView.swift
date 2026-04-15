@@ -28,6 +28,9 @@ struct LibraryView: View {
     private var activeHeroAtmosphere: HeroAtmosphere {
         bannerAtmosphereEnabled ? heroAtmosphere : .neutralBlack
     }
+    private var bannerURL: URL? {
+        appState.authState.user?.bannerURL
+    }
     private var pageBackground: Color {
         if !bannerAtmosphereEnabled {
             return Theme.baseBackground
@@ -61,133 +64,108 @@ struct LibraryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack(alignment: .top, spacing: UIConstants.standardPadding) {
-                            Button(action: {
-                                if appState.authState.isSignedIn {
-                                    showAlertsSheet = true
-                                } else {
-                                    Task { await appState.authState.signIn() }
-                                }
-                            }) {
-                                avatarView(
-                                    size: PlatformSupport.prefersTabletLayout ? 64 : 56,
-                                    avatarURL: appState.authState.user?.avatarURL
-                                )
-                            }
-                            .buttonStyle(.plain)
-
-                            VStack(alignment: .leading, spacing: 0) {
-                                LibraryTopBar(
-                                    title: "Library",
-                                    subtitle: "Currently watching and synced lists"
-                                )
-                            }
-
-                            Spacer()
-                        }
-                        .padding(UIConstants.standardPadding)
-                        .padding(.top, 12)
+                        libraryHeroHeader
+                            .ignoresSafeArea(edges: .top)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
-
-                        if !continueWatchingItems().isEmpty {
-                            VStack(alignment: .leading, spacing: screenSpacing) {
-                                Text("Continue Watching")
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(.white)
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    LazyHStack(spacing: screenSpacing) {
-                                        ForEach(continueWatchingItems()) { item in
-                                            Button {
-                                                resumeContinueWatching(item)
-                                            } label: {
-                                                ContinueWatchingCard(
-                                                    title: item.title,
-                                                    episodeText: item.episodeText,
-                                                    progress: item.progressFraction,
-                                                    timeRemainingText: item.timeRemainingText,
-                                                    imageURL: item.imageURL,
-                                                    episodeBadge: item.episodeBadge,
-                                                    media: item.media,
-                                                    enablesTMDBArtworkLookup: true
-                                                )
-                                                .frame(height: UIConstants.continueCardHeight)
-                                            }
-                                            .buttonStyle(.plain)
-                                            .contextMenu {
-                                                Button("Remove") {
-                                                    PlaybackHistoryStore.shared.clearMedia(mediaId: item.id)
-                                                    continueThumbs.removeValue(forKey: item.id)
-                                                    continueEpisodes.removeValue(forKey: item.id)
+                            if !continueWatchingItems().isEmpty {
+                                VStack(alignment: .leading, spacing: screenSpacing) {
+                                    Text("Continue Watching")
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundColor(.white)
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        LazyHStack(spacing: screenSpacing) {
+                                            ForEach(continueWatchingItems()) { item in
+                                                Button {
+                                                    resumeContinueWatching(item)
+                                                } label: {
+                                                    ContinueWatchingCard(
+                                                        title: item.title,
+                                                        episodeText: item.episodeText,
+                                                        progress: item.progressFraction,
+                                                        timeRemainingText: item.timeRemainingText,
+                                                        imageURL: item.imageURL,
+                                                        episodeBadge: item.episodeBadge,
+                                                        media: item.media,
+                                                        enablesTMDBArtworkLookup: true
+                                                    )
+                                                    .frame(height: UIConstants.continueCardHeight)
                                                 }
-                                                Button("Mark Completed") {
-                                                    Task {
-                                                        await appState.markMediaCompleted(mediaId: item.id)
+                                                .buttonStyle(.plain)
+                                                .contextMenu {
+                                                    Button("Remove") {
                                                         PlaybackHistoryStore.shared.clearMedia(mediaId: item.id)
                                                         continueThumbs.removeValue(forKey: item.id)
                                                         continueEpisodes.removeValue(forKey: item.id)
                                                     }
+                                                    Button("Mark Completed") {
+                                                        Task {
+                                                            await appState.markMediaCompleted(mediaId: item.id)
+                                                            PlaybackHistoryStore.shared.clearMedia(mediaId: item.id)
+                                                            continueThumbs.removeValue(forKey: item.id)
+                                                            continueEpisodes.removeValue(forKey: item.id)
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
+                                        .padding(.horizontal, UIConstants.tinyPadding)
+                                        .padding(.vertical, UIConstants.heroTopPadding)
                                     }
-                                    .padding(.horizontal, UIConstants.tinyPadding)
-                                    .padding(.vertical, UIConstants.heroTopPadding)
+                                    .scrollClipDisabled()
                                 }
-                                .scrollClipDisabled()
                             }
-                        }
 
-                        if appState.authState.isSignedIn {
-                            if isLoading {
-                                GlassCard {
-                                    Text("Loading AniList library...")
-                                        .foregroundColor(Theme.textSecondary)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            } else if let errorMessage {
-                                GlassCard {
-                                    Text(errorMessage)
-                                        .foregroundColor(Theme.textSecondary)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
+                            if appState.authState.isSignedIn {
+                                if isLoading {
+                                    GlassCard {
+                                        Text("Loading AniList library...")
+                                            .foregroundColor(Theme.textSecondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                } else if let errorMessage {
+                                    GlassCard {
+                                        Text(errorMessage)
+                                            .foregroundColor(Theme.textSecondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                } else {
+                                    ForEach(displaySections()) { section in
+                                        LibrarySection(
+                                            section: section,
+                                            filterText: "",
+                                            availabilityById: availabilityById
+                                        )
+                                    }
                                 }
                             } else {
-                                ForEach(displaySections()) { section in
-                                    LibrarySection(
-                                        section: section,
-                                        filterText: "",
-                                        availabilityById: availabilityById
-                                    )
+                                GlassCard {
+                                    Text("No account connected. Tap the avatar to sign in.")
+                                        .foregroundColor(Theme.textSecondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             }
-                        } else {
-                            GlassCard {
-                                Text("No account connected. Tap the avatar to sign in.")
-                                    .foregroundColor(Theme.textSecondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
                         }
+                        .padding(.horizontal, screenPadding)
+                        .padding(.top, -12)
+                        .background(
+                            Group {
+                                if bannerAtmosphereEnabled {
+                                    LinearGradient(
+                                        colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.18)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                } else {
+                                    Theme.baseBackground
+                                }
+                            }
+                        )
                     }
-                    .padding(.horizontal, screenPadding)
-                    .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
-                .background(
-                    Group {
-                        if bannerAtmosphereEnabled {
-                            LinearGradient(
-                                colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.18)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .ignoresSafeArea()
-                        } else {
-                            Theme.baseBackground
-                                .ignoresSafeArea()
-                        }
-                    }
-                )
-                }
+                .ignoresSafeArea(edges: .top)
+                .background(pageBackground.ignoresSafeArea())
                 .refreshable {
                     await loadLibrary(forceRefresh: true)
                 }
@@ -251,68 +229,68 @@ struct LibraryView: View {
             LibrarySettingsSheet(manager: librarySettings)
                 .presentationDetents([.medium, .large])
         }
-    .task(id: appState.authState.user?.bannerURL) {
-        await refreshHeroAtmosphere()
-    }
-    .sheet(isPresented: $showAlertsSheet) {
-        AlertsView()
-    }
-    .fullScreenCover(isPresented: $showContinuePlayer) {
-        if let episode = selectedContinueEpisode,
-           let media = selectedContinueMedia,
-           !continueSources.isEmpty {
-            PlayerView(
-                episode: episode,
-                sources: continueSources,
-                mediaId: media.id,
-                malId: media.idMal,
-                mediaTitle: media.title.best,
-                startAt: continuePlayerStartAt,
-                onRestoreAfterPictureInPicture: {
-                    showContinuePlayer = true
-                }
-            )
+        .task(id: bannerURL) {
+            await refreshHeroAtmosphere()
         }
-    }
-    .sheet(isPresented: $showContinueSourceSheet) {
-        if let episode = selectedContinueEpisode,
-           let media = selectedContinueMedia,
-           !continueSources.isEmpty {
-            StreamSourcePickerSheet(
-                media: media,
-                episode: episode,
-                sources: continueSources,
-                preferredAudio: appState.settings.defaultAudio,
-                preferredQuality: appState.settings.defaultQuality,
-                onPlay: { picked in
-                    continueSources = [picked]
-                    presentContinuePlayer()
-                },
-                onDownload: { source in
-                    enqueueContinueDownload(source, media: media, episodeNumber: episode.number)
-                }
-            )
+        .sheet(isPresented: $showAlertsSheet) {
+            AlertsView()
         }
-    }
-    .overlay(alignment: .bottom) {
-        if continueLoading {
-            GlassCard {
-                Text("Loading stream...")
-                    .foregroundColor(Theme.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        .fullScreenCover(isPresented: $showContinuePlayer) {
+            if let episode = selectedContinueEpisode,
+               let media = selectedContinueMedia,
+               !continueSources.isEmpty {
+                PlayerView(
+                    episode: episode,
+                    sources: continueSources,
+                    mediaId: media.id,
+                    malId: media.idMal,
+                    mediaTitle: media.title.best,
+                    startAt: continuePlayerStartAt,
+                    onRestoreAfterPictureInPicture: {
+                        showContinuePlayer = true
+                    }
+                )
             }
-            .padding(.horizontal, screenPadding)
-            .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
-        } else if let continueError {
-            GlassCard {
-                Text(continueError)
-                    .foregroundColor(Theme.textSecondary)
+        }
+        .sheet(isPresented: $showContinueSourceSheet) {
+            if let episode = selectedContinueEpisode,
+               let media = selectedContinueMedia,
+               !continueSources.isEmpty {
+                StreamSourcePickerSheet(
+                    media: media,
+                    episode: episode,
+                    sources: continueSources,
+                    preferredAudio: appState.settings.defaultAudio,
+                    preferredQuality: appState.settings.defaultQuality,
+                    onPlay: { picked in
+                        continueSources = [picked]
+                        presentContinuePlayer()
+                    },
+                    onDownload: { source in
+                        enqueueContinueDownload(source, media: media, episodeNumber: episode.number)
+                    }
+                )
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if continueLoading {
+                GlassCard {
+                    Text("Loading stream...")
+                        .foregroundColor(Theme.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, screenPadding)
+                .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
+            } else if let continueError {
+                GlassCard {
+                    Text(continueError)
+                        .foregroundColor(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, screenPadding)
+                .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
             }
-            .padding(.horizontal, screenPadding)
-            .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
         }
-    }
         .task {
             AppLog.debug(.ui, "library view load")
             if let token = appState.authState.token,
@@ -349,9 +327,106 @@ struct LibraryView: View {
         }
     }
 
+    private var libraryHeroHeader: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let insetTop = proxy.safeAreaInsets.top
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if bannerAtmosphereEnabled, let bannerURL {
+                        CachedImage(url: bannerURL) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: width, height: height + insetTop, alignment: .bottom)
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
+                        Theme.surface
+                    }
+                }
+                .frame(width: width, height: height + insetTop)
+                .clipped()
+
+                LinearGradient(
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.bottomFeather.opacity(0.48), activeHeroAtmosphere.bottomFeather.opacity(0.28), Color.clear]
+                        : [Color.black.opacity(0.48), Color.black.opacity(0.28), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(width: width, height: (height + insetTop) * 0.66)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+
+                LinearGradient(
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.topFeather.opacity(0.72), activeHeroAtmosphere.topFeather.opacity(0.24), Color.clear]
+                        : [Color.black.opacity(0.72), Color.black.opacity(0.24), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: (height + insetTop) * 0.30)
+                .frame(maxHeight: .infinity, alignment: .top)
+
+                LinearGradient(
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.topFeather.opacity(0.34), activeHeroAtmosphere.topFeather.opacity(0.14), Color.clear]
+                        : [Color.black.opacity(0.34), Color.black.opacity(0.14), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: max(52, insetTop + 28))
+                .frame(maxHeight: .infinity, alignment: .top)
+
+                HStack(alignment: .top, spacing: UIConstants.standardPadding) {
+                    Button(action: {
+                        if appState.authState.isSignedIn {
+                            showAlertsSheet = true
+                        } else {
+                            Task { await appState.authState.signIn() }
+                        }
+                    }) {
+                        avatarView(
+                            size: PlatformSupport.prefersTabletLayout ? 64 : 56,
+                            avatarURL: appState.authState.user?.avatarURL
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        LibraryTopBar(
+                            title: "Library",
+                            subtitle: "Currently watching and synced lists"
+                        )
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, 24)
+
+                LinearGradient(
+                    colors: bannerAtmosphereEnabled
+                        ? [Color.clear, Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.20), activeHeroAtmosphere.baseBackground.opacity(0.45), activeHeroAtmosphere.baseBackground.opacity(0.70), activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.baseBackground]
+                        : [Color.clear, Color.clear, Color.black.opacity(0.20), Color.black.opacity(0.45), Color.black.opacity(0.70), Theme.baseBackground, Theme.baseBackground],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: (height + insetTop) * 0.26)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+            }
+            .frame(width: width, height: height + insetTop)
+            .clipped()
+            .offset(y: -insetTop)
+        }
+        .frame(height: UIConstants.heroHeight)
+    }
+
     @MainActor
     private func refreshHeroAtmosphere() async {
-        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: appState.authState.user?.avatarURL)
+        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: bannerURL)
         if appState.settings.reduceMotion {
             heroAtmosphere = atmosphere
         } else {
