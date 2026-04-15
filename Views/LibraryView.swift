@@ -331,7 +331,7 @@ struct LibraryView: View {
         let avatarSize: CGFloat = PlatformSupport.prefersTabletLayout ? 72 : 64
         let avatarSeamOffset = avatarSize * 0.5
         let heroBottomAllowance = avatarSeamOffset + 16
-        GeometryReader { proxy in
+        return GeometryReader { proxy in
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
