@@ -328,13 +328,13 @@ struct LibraryView: View {
     }
 
     private var libraryHeroHeader: some View {
+        let avatarSize: CGFloat = PlatformSupport.prefersTabletLayout ? 72 : 64
+        let avatarSeamOffset = avatarSize * 0.5
+        let heroBottomAllowance = avatarSeamOffset + 16
         GeometryReader { proxy in
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
-            let avatarSize: CGFloat = PlatformSupport.prefersTabletLayout ? 72 : 64
-            let avatarSeamOffset = avatarSize * 0.5
-            let heroBottomAllowance = avatarSeamOffset + 16
             ZStack(alignment: .bottom) {
                 ZStack(alignment: .bottomLeading) {
                     Group {
