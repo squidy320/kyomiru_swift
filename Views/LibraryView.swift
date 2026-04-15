@@ -333,6 +333,8 @@ struct LibraryView: View {
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
             let avatarSize: CGFloat = PlatformSupport.prefersTabletLayout ? 72 : 64
+            let avatarSeamOffset = avatarSize * 0.5
+            let heroBottomAllowance = avatarSeamOffset + 16
             ZStack(alignment: .bottom) {
                 ZStack(alignment: .bottomLeading) {
                     Group {
@@ -408,12 +410,12 @@ struct LibraryView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .offset(y: avatarSize * 0.44)
+                .offset(y: avatarSeamOffset)
             }
             .frame(width: width, height: height + insetTop)
             .offset(y: -insetTop)
         }
-        .frame(height: UIConstants.heroHeight + (PlatformSupport.prefersTabletLayout ? 32 : 28))
+        .frame(height: UIConstants.heroHeight + heroBottomAllowance)
     }
 
     @MainActor
