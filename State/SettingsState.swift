@@ -5,7 +5,6 @@ final class SettingsState: ObservableObject {
     @AppStorage("settings.streamingModuleID") private var streamingModuleIDRaw: String = StreamingModuleStore.shared.selectedModuleID()
     @AppStorage("settings.defaultAudio") private var defaultAudioRaw: String = "Sub"
     @AppStorage("settings.defaultQuality") private var defaultQualityRaw: String = "Auto"
-    @AppStorage("settings.playerBackend") private var playerBackendRaw: String = PlayerBackend.avPlayer.rawValue
     @AppStorage("settings.autoSyncAniList") private var autoSyncAniListRaw: Bool = true
     @AppStorage("settings.autoSkipSegments") private var autoSkipSegmentsRaw: Bool = false
     @AppStorage("settings.showPlayerDebugOverlay") private var showPlayerDebugOverlayRaw: Bool = false
@@ -67,17 +66,6 @@ final class SettingsState: ObservableObject {
         get { defaultQualityRaw }
         set {
             defaultQualityRaw = newValue
-            objectWillChange.send()
-        }
-    }
-
-    var playerBackend: PlayerBackend {
-        get {
-            let stored = PlayerBackend(rawValue: playerBackendRaw) ?? .avPlayer
-            return stored == .mpv ? .avPlayer : stored
-        }
-        set {
-            playerBackendRaw = (newValue == .mpv ? PlayerBackend.avPlayer : newValue).rawValue
             objectWillChange.send()
         }
     }
@@ -175,31 +163,6 @@ final class SettingsState: ObservableObject {
             accentColorGreenRaw = green
             accentColorBlueRaw = blue
             objectWillChange.send()
-        }
-    }
-}
-
-enum PlayerBackend: String, CaseIterable, Identifiable {
-    case avPlayer
-    case mpv
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .avPlayer:
-            return "AVPlayer"
-        case .mpv:
-            return "mpv"
-        }
-    }
-
-    var summary: String {
-        switch self {
-        case .avPlayer:
-            return "Best iOS integration with Picture in Picture support."
-        case .mpv:
-            return "Advanced playback pipeline with broader codec and subtitle handling."
         }
     }
 }

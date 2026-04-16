@@ -190,7 +190,6 @@ struct SettingsView: View {
 
             HStack(spacing: 8) {
                 settingsTag(appState.settings.streamingModule.title)
-                settingsTag(appState.settings.playerBackend.title)
                 settingsTag(appState.settings.appearanceThemeMode.title)
             }
         }
@@ -212,7 +211,7 @@ struct SettingsView: View {
                 icon: "play.fill",
                 iconColor: .white,
                 title: "Player",
-                value: "\(appState.settings.streamingModule.title) / \(appState.settings.playerBackend.title)",
+                value: appState.settings.streamingModule.title,
                 destination: .player
             ),
             SettingsRowItem(
@@ -350,17 +349,7 @@ private struct PlayerSettingsScreen: View {
                         .font(.system(size: 12))
                         .foregroundColor(Theme.textSecondary)
 
-                    Picker("Playback Engine", selection: Binding(
-                        get: { appState.settings.playerBackend },
-                        set: { appState.settings.playerBackend = $0 }
-                    )) {
-                        ForEach(availablePlayerBackends) { backend in
-                            Text(backend.title).tag(backend)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Text(playerBackendSummary)
+                    Text("Playback uses AVPlayer for native iOS controls and Picture in Picture.")
                         .font(.system(size: 12))
                         .foregroundColor(Theme.textSecondary)
 
@@ -396,29 +385,6 @@ private struct PlayerSettingsScreen: View {
                 .pickerStyle(.segmented)
             }
         }
-        .onAppear {
-#if targetEnvironment(macCatalyst)
-            if appState.settings.playerBackend != .avPlayer {
-                appState.settings.playerBackend = .avPlayer
-            }
-#endif
-        }
-    }
-
-    private var availablePlayerBackends: [PlayerBackend] {
-#if targetEnvironment(macCatalyst)
-        [.avPlayer]
-#else
-        PlayerBackend.allCases
-#endif
-    }
-
-    private var playerBackendSummary: String {
-#if targetEnvironment(macCatalyst)
-        return "Mac Catalyst currently uses AVPlayer."
-#else
-        return appState.settings.playerBackend.summary
-#endif
     }
 }
 
