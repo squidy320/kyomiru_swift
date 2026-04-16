@@ -292,6 +292,16 @@ struct DiscoveryView: View {
                 .frame(width: width, height: max(52, insetTop + 28))
                 .frame(maxHeight: .infinity, alignment: .top)
 
+                LinearGradient(
+                    colors: bannerAtmosphereEnabled
+                        ? [Color.clear, Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.20), activeHeroAtmosphere.baseBackground.opacity(0.45), activeHeroAtmosphere.baseBackground.opacity(0.70), activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.baseBackground]
+                        : [Color.clear, Color.clear, Theme.baseBackground.opacity(0.20), Theme.baseBackground.opacity(0.45), Theme.baseBackground.opacity(0.70), Theme.baseBackground, Theme.baseBackground],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: (height + insetTop) * 0.26)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+
                 VStack(alignment: .leading, spacing: 10) {
                     if let logo = heroTrending?.logoURL {
                         CachedImage(url: logo) { image in
@@ -309,16 +319,6 @@ struct DiscoveryView: View {
                 }
                 .padding(.horizontal, UIConstants.standardPadding)
                 .padding(.bottom, 24)
-
-                LinearGradient(
-                    colors: bannerAtmosphereEnabled
-                        ? [Color.clear, Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.20), activeHeroAtmosphere.baseBackground.opacity(0.45), activeHeroAtmosphere.baseBackground.opacity(0.70), activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.baseBackground]
-                        : [Color.clear, Color.clear, Theme.baseBackground.opacity(0.20), Theme.baseBackground.opacity(0.45), Theme.baseBackground.opacity(0.70), Theme.baseBackground, Theme.baseBackground],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: (height + insetTop) * 0.26)
-                .frame(maxHeight: .infinity, alignment: .bottom)
             }
             .frame(width: width, height: height + insetTop)
             .clipped()
