@@ -218,7 +218,7 @@ final class LocalHLSProxyServer {
             }
 
             let length = Int(min(remaining, chunkSize))
-            guard let data = try? handle.read(upToCount: length), let data, !data.isEmpty else {
+            guard let data = try? handle.read(upToCount: length), !data.isEmpty else {
                 try? handle.close()
                 return
             }
