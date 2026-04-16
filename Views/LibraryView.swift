@@ -66,6 +66,7 @@ struct LibraryView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         libraryHeroHeader
                             .ignoresSafeArea(edges: .top)
+                            .zIndex(1)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
                             if !continueWatchingItems().isEmpty {
@@ -148,6 +149,7 @@ struct LibraryView: View {
                         }
                         .padding(.horizontal, screenPadding)
                         .padding(.top, -12)
+                        .zIndex(0)
                         .background(
                             Group {
                                 if bannerAtmosphereEnabled {
@@ -411,6 +413,7 @@ struct LibraryView: View {
                 }
                 .buttonStyle(.plain)
                 .offset(y: avatarSeamOffset)
+                .zIndex(2)
             }
             .frame(width: width, height: height + insetTop)
             .offset(y: -insetTop)
