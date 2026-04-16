@@ -148,7 +148,7 @@ struct LibraryView: View {
                             }
                         }
                         .padding(.horizontal, screenPadding)
-                        .padding(.top, -12)
+                        .padding(.top, 20)
                         .zIndex(0)
                         .background(
                             Group {
