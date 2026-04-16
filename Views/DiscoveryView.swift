@@ -142,6 +142,7 @@ struct DiscoveryView: View {
             }
             .background(pageBackground.ignoresSafeArea())
         }
+        .background(pageBackground.ignoresSafeArea())
         .task {
             AppLog.debug(.ui, "discovery view load")
             if sections.isEmpty,
