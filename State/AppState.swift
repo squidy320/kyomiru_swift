@@ -13,6 +13,9 @@ enum AppTab: Hashable {
 final class AppState: ObservableObject {
     @Published var selectedTab: AppTab = .home
     @Published var settings = SettingsState()
+    @Published private(set) var isBootstrapComplete = false
+    @Published private(set) var discoveryLaunchReady = false
+    @Published private(set) var libraryLaunchReady = false
     let services: AppServices
     @Published var authState: AuthState
     private var hasBootstrapped = false
@@ -33,11 +36,25 @@ final class AppState: ObservableObject {
         hasBootstrapped = true
         AppLog.debug(.ui, "app bootstrap start")
         await authState.bootstrap()
+        libraryLaunchReady = !authState.isSignedIn
         await loadLibraryStoreIfNeeded()
         Task {
             await services.streamingExtensionManager.refreshIfNeeded()
         }
+        isBootstrapComplete = true
         AppLog.debug(.ui, "app bootstrap complete")
+    }
+
+    var shouldShowLaunchScreen: Bool {
+        !isBootstrapComplete || !discoveryLaunchReady || !libraryLaunchReady
+    }
+
+    func markDiscoveryLaunchReady() {
+        discoveryLaunchReady = true
+    }
+
+    func markLibraryLaunchReady() {
+        libraryLaunchReady = true
     }
 
     @MainActor

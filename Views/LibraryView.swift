@@ -305,6 +305,9 @@ struct LibraryView: View {
             if sections.isEmpty {
                 await loadLibrary(forceRefresh: false)
             }
+            if !appState.authState.isSignedIn || !sections.isEmpty || errorMessage != nil {
+                appState.markLibraryLaunchReady()
+            }
         }
         .onChange(of: appState.authState.token) { _, newToken in
             if newToken == nil {
@@ -319,6 +322,7 @@ struct LibraryView: View {
                 continuePlayerStartAt = nil
                 showContinuePlayer = false
                 showContinueSourceSheet = false
+                appState.markLibraryLaunchReady()
                 return
             }
             Task {
@@ -592,6 +596,7 @@ struct LibraryView: View {
         }
         guard loadGeneration == libraryLoadGeneration else { return }
         isLoading = false
+        appState.markLibraryLaunchReady()
         AppLog.debug(.network, "library load complete sections=\(sections.count)")
     }
 

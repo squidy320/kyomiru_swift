@@ -181,6 +181,7 @@ struct DiscoveryView: View {
             if sections.isEmpty {
                 await loadDiscovery(forceRefresh: false)
             }
+            appState.markDiscoveryLaunchReady()
         }
         .onChange(of: sections) { _, _ in
             if heroIndex >= heroItems().count {
