@@ -48,10 +48,10 @@ final class CacheService {
         let targets = [
             "KyomiruCache",
             "KyomiruImageCache",
-            "KyomiruURLCache",
             "tmdb_meta",
             "tmdb_meta_v2",
-            "tmdb_meta_v3"
+            "tmdb_meta_v3",
+            "tmdb_meta_v10"
         ]
         for name in targets {
             let url = caches.appendingPathComponent(name, isDirectory: true)
@@ -82,17 +82,16 @@ final class CacheService {
             let targets = [
                 "KyomiruCache",
                 "KyomiruImageCache",
-                "KyomiruURLCache",
                 "tmdb_meta",
                 "tmdb_meta_v2",
-                "tmdb_meta_v3"
+                "tmdb_meta_v3",
+                "tmdb_meta_v10"
             ]
             for name in targets {
                 let url = caches.appendingPathComponent(name, isDirectory: true)
                 total += folderSize(url)
             }
         }
-        total += Int64(URLCache.shared.currentDiskUsage)
         return total
     }
 

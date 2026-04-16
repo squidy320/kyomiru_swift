@@ -27,6 +27,21 @@ enum AniListError: Error {
 }
 
 final class AniListClient {
+    private enum CacheTTL {
+        static let viewer: TimeInterval = 60 * 10
+        static let trending: TimeInterval = 60 * 10
+        static let discoverySections: TimeInterval = 60 * 10
+        static let library: TimeInterval = 60 * 5
+        static let browse: TimeInterval = 60 * 10
+        static let tracking: TimeInterval = 60 * 5
+        static let relatedSections: TimeInterval = 60 * 30
+        static let relationsGraphDisk: TimeInterval = 60 * 60 * 24
+        static let relationsGraphMemory: TimeInterval = 60 * 60
+        static let streamingEpisodesDisk: TimeInterval = 60 * 60 * 6
+        static let streamingEpisodesMemory: TimeInterval = 60 * 30
+        static let staleFallback: TimeInterval = 60
+    }
+
     private let endpoint = URL(string: "https://graphql.anilist.co/")!
     private let cacheStore: CacheStore
     private let session: URLSession
@@ -51,7 +66,7 @@ final class AniListClient {
 
     func viewer(token: String) async throws -> AniListUser {
         let cacheKey = "viewer:\(token.prefix(8))"
-        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 10),
+        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: CacheTTL.viewer),
            let user = decodeViewer(data: data) {
             AppLog.debug(.cache, "viewer cache hit")
             return user
@@ -87,7 +102,7 @@ final class AniListClient {
         }
         if let cached = cachedTrendingFromDisk() {
             AppLog.debug(.cache, "trending disk cache hit")
-            cachedTrending = (cached, Date().addingTimeInterval(60 * 10))
+            cachedTrending = (cached, Date().addingTimeInterval(CacheTTL.trending))
             return cached
         }
         AppLog.debug(.network, "trending request start")
@@ -116,28 +131,28 @@ final class AniListClient {
         let data = try await graphql(query: query)
         let items = decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
         cacheStore.writeJSON(data, forKey: "discovery:trending")
-        cachedTrending = (items, Date().addingTimeInterval(60 * 10))
+        cachedTrending = (items, Date().addingTimeInterval(CacheTTL.trending))
         AppLog.debug(.network, "trending request success count=\(items.count)")
         return items
     }
 
-func discoverySections(sort: String, forceRefresh: Bool = false) async throws -> [AniListDiscoverySection] {
-    if !forceRefresh {
-        if let cached = cachedDiscoverySections, cached.expires > Date(), cached.sort == sort {
-            AppLog.debug(.cache, "discovery sections cache hit")
-            return cached.items
+    func discoverySections(sort: String, forceRefresh: Bool = false) async throws -> [AniListDiscoverySection] {
+        if !forceRefresh {
+            if let cached = cachedDiscoverySections, cached.expires > Date(), cached.sort == sort {
+                AppLog.debug(.cache, "discovery sections cache hit")
+                return cached.items
+            }
+            if let cached = cachedDiscoverySectionsFromDisk(sort: sort) {
+                AppLog.debug(.cache, "discovery sections disk cache hit")
+                cachedDiscoverySections = (sort, cached, Date().addingTimeInterval(CacheTTL.discoverySections))
+                return cached
+            }
+        } else {
+            AppLog.debug(.cache, "discovery sections cache bypass")
         }
-        if let cached = cachedDiscoverySectionsFromDisk(sort: sort) {
-            AppLog.debug(.cache, "discovery sections disk cache hit")
-            cachedDiscoverySections = (sort, cached, Date().addingTimeInterval(60 * 10))
-            return cached
-        }
-    } else {
-        AppLog.debug(.cache, "discovery sections cache bypass")
-    }
-    AppLog.debug(.network, "discovery sections request start")
+        AppLog.debug(.network, "discovery sections request start")
 
-    let mediaFields = """
+        let mediaFields = """
           id
           idMal
           title { romaji english native }
@@ -153,8 +168,8 @@ func discoverySections(sort: String, forceRefresh: Bool = false) async throws ->
           genres
           studios(isMain: true) { nodes { name } }
     """
-    let (seasonValue, seasonYear) = currentSeasonAndYear()
-    let baseQuery = """
+        let (seasonValue, seasonYear) = currentSeasonAndYear()
+        let baseQuery = """
         query DiscoveryBase {
           trending: Page(page: 1, perPage: 12) { media(type: ANIME, sort: TRENDING_DESC, isAdult: false) { \(mediaFields) } }
           hotNow: Page(page: 1, perPage: 12) { media(type: ANIME, sort: POPULARITY_DESC, isAdult: false, season: \(seasonValue), seasonYear: \(seasonYear), status: RELEASING) { \(mediaFields) } }
@@ -163,35 +178,35 @@ func discoverySections(sort: String, forceRefresh: Bool = false) async throws ->
         }
         """
 
-    let baseSections = [
-        ("trending", "Trending"),
-        ("hotNow", "Popular This Season"),
-        ("upcoming", "Upcoming"),
-        ("allTime", "All Time")
-    ]
+        let baseSections = [
+            ("trending", "Trending"),
+            ("hotNow", "Popular This Season"),
+            ("upcoming", "Upcoming"),
+            ("allTime", "All Time")
+        ]
 
-    var sections: [AniListDiscoverySection] = []
-    do {
-        sections += try await loadDiscoveryBatch(
-            sort: sort,
-            batch: "base",
-            query: baseQuery,
-            variables: [:],
-            sectionDefs: baseSections
-        )
-    } catch {
-        if let stale = cachedDiscoverySectionsFromDisk(sort: sort, allowStale: true) {
-            AppLog.debug(.cache, "discovery sections stale cache fallback")
-            cachedDiscoverySections = (sort, stale, Date().addingTimeInterval(60))
-            return stale
+        var sections: [AniListDiscoverySection] = []
+        do {
+            sections += try await loadDiscoveryBatch(
+                sort: sort,
+                batch: "base",
+                query: baseQuery,
+                variables: [:],
+                sectionDefs: baseSections
+            )
+        } catch {
+            if let stale = cachedDiscoverySectionsFromDisk(sort: sort, allowStale: true) {
+                AppLog.debug(.cache, "discovery sections stale cache fallback")
+                cachedDiscoverySections = (sort, stale, Date().addingTimeInterval(CacheTTL.staleFallback))
+                return stale
+            }
+            throw error
         }
-        throw error
-    }
 
-    cachedDiscoverySections = (sort, sections, Date().addingTimeInterval(60 * 10))
-    AppLog.debug(.network, "discovery sections request success count=\(sections.count)")
-    return sections
-}
+        cachedDiscoverySections = (sort, sections, Date().addingTimeInterval(CacheTTL.discoverySections))
+        AppLog.debug(.network, "discovery sections request success count=\(sections.count)")
+        return sections
+    }
 
 func librarySections(token: String, forceRefresh: Bool = false) async throws -> [AniListLibrarySection] {
         if !forceRefresh {
@@ -201,7 +216,7 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
             }
             if let cached = cachedLibrarySectionsFromDisk(token: token) {
                 AppLog.debug(.cache, "library disk cache hit")
-                cachedLibrarySections = (cached, Date().addingTimeInterval(60 * 5))
+                cachedLibrarySections = (cached, Date().addingTimeInterval(CacheTTL.library))
                 return cached
             }
         } else {
@@ -245,13 +260,13 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
             let data = try await graphql(query: query, variables: ["userId": viewer.id], token: token)
             let sections = decodeLibrarySections(data: data)
             cacheStore.writeJSON(data, forKey: "library:\(token.prefix(8))")
-            cachedLibrarySections = (sections, Date().addingTimeInterval(60 * 5))
+            cachedLibrarySections = (sections, Date().addingTimeInterval(CacheTTL.library))
             AppLog.debug(.network, "library request success count=\(sections.count)")
             return sections
         } catch {
             if let stale = cachedLibrarySectionsFromDisk(token: token, allowStale: true) {
                 AppLog.debug(.cache, "library stale cache fallback")
-                cachedLibrarySections = (stale, Date().addingTimeInterval(60))
+                cachedLibrarySections = (stale, Date().addingTimeInterval(CacheTTL.staleFallback))
                 return stale
             }
             throw error
@@ -361,7 +376,7 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
         perPage: Int = 30
     ) async throws -> [AniListMedia] {
         let cacheKey = "browse:\(filters.cacheKey):p\(page)"
-        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 10) {
+        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: CacheTTL.browse) {
             return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
         }
 
@@ -414,11 +429,11 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
             return cached.sections
         }
         let cacheKey = "anilist:related-sections:v1:\(mediaId)"
-        guard let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 30),
+        guard let data = cacheStore.readJSON(forKey: cacheKey, maxAge: CacheTTL.relatedSections),
               let decoded = try? JSONDecoder().decode([AniListRelatedSection].self, from: data) else {
             return nil
         }
-        cachedRelatedSections[mediaId] = (decoded, Date().addingTimeInterval(60 * 30))
+        cachedRelatedSections[mediaId] = (decoded, Date().addingTimeInterval(CacheTTL.relatedSections))
         return decoded
     }
 
@@ -427,11 +442,11 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
             return cached.episodes
         }
         let cacheKey = "anilist:streaming:v1:\(mediaId)"
-        guard let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 6),
+        guard let data = cacheStore.readJSON(forKey: cacheKey, maxAge: CacheTTL.streamingEpisodesDisk),
               let decoded = try? JSONDecoder().decode([AniListStreamingEpisode].self, from: data) else {
             return nil
         }
-        cachedStreamingEpisodes[mediaId] = (decoded, Date().addingTimeInterval(60 * 30))
+        cachedStreamingEpisodes[mediaId] = (decoded, Date().addingTimeInterval(CacheTTL.streamingEpisodesMemory))
         return decoded
     }
 
@@ -462,7 +477,7 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
     }
 
     private func cachedTrendingFromDisk() -> [AniListMedia]? {
-        guard let data = cacheStore.readJSON(forKey: "discovery:trending") else { return nil }
+        guard let data = cacheStore.readJSON(forKey: "discovery:trending", maxAge: CacheTTL.trending) else { return nil }
         return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
     }
 
@@ -586,7 +601,7 @@ private func cachedDiscoverySectionsFromDisk(sort: String, allowStale: Bool = fa
         let cacheKey = discoverySectionsCacheKey(batch: batch, sort: sort)
         let data = allowStale
             ? cacheStore.readJSON(forKey: cacheKey)
-            : cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 10)
+            : cacheStore.readJSON(forKey: cacheKey, maxAge: CacheTTL.discoverySections)
         guard let data else { continue }
         sections += decodeDiscoveryBatch(data: data, batch: batch)
     }
@@ -618,7 +633,7 @@ private func loadDiscoveryBatch(
     sectionDefs: [(id: String, title: String)]
 ) async throws -> [AniListDiscoverySection] {
     let cacheKey = discoverySectionsCacheKey(batch: batch, sort: sort)
-    if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 10) {
+    if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: CacheTTL.discoverySections) {
         return decodeDiscoveryBatch(data: data, batch: batch)
     }
     let data = try await graphql(query: query, variables: variables)
@@ -688,7 +703,7 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
         let key = "library:\(token.prefix(8))"
         let data = allowStale
             ? cacheStore.readJSON(forKey: key)
-            : cacheStore.readJSON(forKey: key)
+            : cacheStore.readJSON(forKey: key, maxAge: CacheTTL.library)
         guard let data else { return nil }
         return decodeLibrarySections(data: data)
     }
@@ -844,7 +859,7 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
         do {
             data = try await graphql(query: query, variables: ["mediaId": mediaId, "userId": viewer.id], token: token)
         } catch let AniListError.graphQLError(message) where message == "Not Found." {
-            cachedTrackingEntries[mediaId] = (nil, Date().addingTimeInterval(60 * 5))
+            cachedTrackingEntries[mediaId] = (nil, Date().addingTimeInterval(CacheTTL.tracking))
             return nil
         }
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -867,7 +882,7 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
             startedAt: startedAt,
             completedAt: completedAt
         )
-        cachedTrackingEntries[mediaId] = (entry, Date().addingTimeInterval(60 * 5))
+        cachedTrackingEntries[mediaId] = (entry, Date().addingTimeInterval(CacheTTL.tracking))
         AppLog.debug(.network, "tracking entry success mediaId=\(mediaId)")
         return entry
     }
@@ -898,7 +913,7 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
             let status = media["status"] as? String
             let nextEpisode = (media["nextAiringEpisode"] as? [String: Any])?["episode"] as? Int
             let availability = AniListEpisodeAvailability(totalEpisodes: total, nextAiringEpisode: nextEpisode, status: status)
-            cachedAvailability[mediaId] = (availability, Date().addingTimeInterval(60 * 5))
+            cachedAvailability[mediaId] = (availability, Date().addingTimeInterval(CacheTTL.tracking))
             AppLog.debug(.network, "episode availability success mediaId=\(mediaId)")
             return availability
         }
@@ -959,7 +974,7 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
                     )
                 }
                 if !sections.isEmpty {
-                    cachedRelatedSections[mediaId] = (sections, Date().addingTimeInterval(60 * 30))
+                    cachedRelatedSections[mediaId] = (sections, Date().addingTimeInterval(CacheTTL.relatedSections))
                     if let encoded = try? JSONEncoder().encode(sections) {
                         cacheStore.writeJSON(encoded, forKey: "anilist:related-sections:v1:\(mediaId)")
                     }
@@ -1004,7 +1019,7 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
             let sections = items.isEmpty ? [] : [
                 AniListRelatedSection(id: "related", title: "Related", items: items)
             ]
-            cachedRelatedSections[mediaId] = (sections, Date().addingTimeInterval(60 * 30))
+            cachedRelatedSections[mediaId] = (sections, Date().addingTimeInterval(CacheTTL.relatedSections))
             if let encoded = try? JSONEncoder().encode(sections) {
                 cacheStore.writeJSON(encoded, forKey: "anilist:related-sections:v1:\(mediaId)")
             }
@@ -1030,9 +1045,9 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
             return cached.edges
         }
         let cacheKey = "anilist:relations:v1:\(mediaId)"
-        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 24),
+        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: CacheTTL.relationsGraphDisk),
            let decoded = try? JSONDecoder().decode([AniListRelationEdge].self, from: data) {
-            cachedRelations[mediaId] = (decoded, Date().addingTimeInterval(60 * 60))
+            cachedRelations[mediaId] = (decoded, Date().addingTimeInterval(CacheTTL.relationsGraphMemory))
             AppLog.debug(.cache, "relations graph disk cache hit mediaId=\(mediaId)")
             return decoded
         }
@@ -1076,7 +1091,7 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
                   let media = decodeMedia(node) else { continue }
             result.append(AniListRelationEdge(relationType: relation, media: media))
         }
-        cachedRelations[mediaId] = (result, Date().addingTimeInterval(60 * 60))
+        cachedRelations[mediaId] = (result, Date().addingTimeInterval(CacheTTL.relationsGraphMemory))
         if let encoded = try? JSONEncoder().encode(result) {
             cacheStore.writeJSON(encoded, forKey: cacheKey)
         }
@@ -1089,9 +1104,9 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
             return cached.episodes
         }
         let cacheKey = "anilist:streaming:v1:\(mediaId)"
-        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: 60 * 60 * 6),
+        if let data = cacheStore.readJSON(forKey: cacheKey, maxAge: CacheTTL.streamingEpisodesDisk),
            let decoded = try? JSONDecoder().decode([AniListStreamingEpisode].self, from: data) {
-            cachedStreamingEpisodes[mediaId] = (decoded, Date().addingTimeInterval(60 * 30))
+            cachedStreamingEpisodes[mediaId] = (decoded, Date().addingTimeInterval(CacheTTL.streamingEpisodesMemory))
             AppLog.debug(.cache, "streaming episodes disk cache hit mediaId=\(mediaId)")
             return decoded
         }
@@ -1127,7 +1142,7 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
                 )
             }
             let parsedCount = episodes.filter { ($0.episodeNumber ?? 0) > 0 }.count
-            cachedStreamingEpisodes[mediaId] = (episodes, Date().addingTimeInterval(60 * 30))
+            cachedStreamingEpisodes[mediaId] = (episodes, Date().addingTimeInterval(CacheTTL.streamingEpisodesMemory))
             if let encoded = try? JSONEncoder().encode(episodes) {
                 cacheStore.writeJSON(encoded, forKey: cacheKey)
             }
@@ -1141,7 +1156,7 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
         } catch {
             if let stale = cacheStore.readJSON(forKey: cacheKey),
                let decoded = try? JSONDecoder().decode([AniListStreamingEpisode].self, from: stale) {
-                cachedStreamingEpisodes[mediaId] = (decoded, Date().addingTimeInterval(60))
+                cachedStreamingEpisodes[mediaId] = (decoded, Date().addingTimeInterval(CacheTTL.staleFallback))
                 AppLog.debug(.cache, "streaming episodes stale cache fallback mediaId=\(mediaId)")
                 return decoded
             }

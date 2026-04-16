@@ -382,11 +382,7 @@ actor ImageCache {
         config.timeoutIntervalForResource = 45
         config.waitsForConnectivity = true
         config.httpMaximumConnectionsPerHost = 8
-        config.urlCache = URLCache(
-            memoryCapacity: 20 * 1024 * 1024,
-            diskCapacity: 120 * 1024 * 1024,
-            diskPath: "KyomiruURLCache"
-        )
+        config.urlCache = nil
         session = URLSession(configuration: config)
         memory.totalCostLimit = 40 * 1024 * 1024
         memory.countLimit = 200

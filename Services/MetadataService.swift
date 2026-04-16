@@ -88,6 +88,9 @@ final class MetadataService {
     private let metadataRequests = TMDBTaskCoalescer<Int, TMDBMetadata?>()
     private let logoRequests = TMDBTaskCoalescer<Int, URL?>()
     private let tmdbMatcher: TMDBMatchingService
+    // Keep this dedicated cache manager because it uniquely stores resolved season details
+    // that are reused across artwork and episode metadata flows.
+    private let metadataCacheManager: MetadataCacheManager
 
     private struct ResolvedArtworkContext {
         let showId: Int
@@ -98,7 +101,8 @@ final class MetadataService {
     init(
         cacheStore: CacheStore,
         session: URLSession = .custom,
-        tmdbMatcher: TMDBMatchingService? = nil
+        tmdbMatcher: TMDBMatchingService? = nil,
+        metadataCacheManager: MetadataCacheManager = MetadataCacheManager()
     ) {
         self.cacheStore = cacheStore
         self.session = session
@@ -106,6 +110,7 @@ final class MetadataService {
         let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
         self.apiKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
         self.tmdbMatcher = tmdbMatcher ?? TMDBMatchingService(cacheStore: cacheStore, session: session)
+        self.metadataCacheManager = metadataCacheManager
     }
 
     func cachedHeroArtwork(for media: AniListMedia) -> (backdrop: URL?, logo: URL?) {
@@ -321,7 +326,7 @@ final class MetadataService {
     }
 
     private func cacheStoreSeasonNumber(for aniListId: Int) -> Int? {
-        MetadataCacheManager().load(aniListId: aniListId)?.seasonNumber
+        metadataCacheManager.load(aniListId: aniListId)?.seasonNumber
     }
 
     private func resolveTMDBShowId(media: AniListMedia) async -> Int? {
@@ -547,7 +552,7 @@ final class MetadataService {
     }
 
     private func invalidateTMDBCaches(for mediaId: Int) {
-        MetadataCacheManager().clear(aniListId: mediaId)
+        metadataCacheManager.clear(aniListId: mediaId)
         cacheStore.removeKeys(withPrefix: "tmdb:match:v10:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v6:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v6:manual:\(mediaId)")

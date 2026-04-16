@@ -156,6 +156,7 @@ final class StreamingExtensionManager {
 final class AppServices {
     let keychain = KeychainService()
     let cacheStore = CacheStore()
+    let metadataCacheManager = MetadataCacheManager()
     let aniListClient: AniListClient
     let aniListAuth: AniListAuthService
     let mediaTracker: MediaTracker
@@ -178,8 +179,8 @@ final class AppServices {
         self.mediaTracker = MediaTracker()
         self.playbackEngine = PlaybackEngine()
         self.offlineManager = OfflineManager()
-        self.tmdbMatchingService = TMDBMatchingService(cacheStore: cacheStore, aniListClient: aniListClient)
-        self.metadataService = MetadataService(cacheStore: cacheStore, tmdbMatcher: tmdbMatchingService)
+        self.tmdbMatchingService = TMDBMatchingService(cacheStore: cacheStore, cacheManager: metadataCacheManager, aniListClient: aniListClient)
+        self.metadataService = MetadataService(cacheStore: cacheStore, tmdbMatcher: tmdbMatchingService, metadataCacheManager: metadataCacheManager)
         self.episodeMetadataService = EpisodeMetadataService(
             cacheStore: cacheStore,
             aniListClient: aniListClient,
