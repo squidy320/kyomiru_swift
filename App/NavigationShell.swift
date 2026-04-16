@@ -5,7 +5,7 @@ struct NavigationShell: View {
     @EnvironmentObject private var appState: AppState
     var body: some View {
         ZStack {
-            Theme.backgroundGradient
+            Theme.baseBackground
                 .ignoresSafeArea()
 
             TabView(selection: $appState.selectedTab) {
