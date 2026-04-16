@@ -636,6 +636,9 @@ final class DownloadManager: NSObject, ObservableObject {
         loadIndex()
         loadAniSkipCache()
         normalizeRecoveredItems()
+        #if os(iOS)
+        LocalHLSProxyServer.shared.start()
+        #endif
     }
 
     struct QueueSummary {
@@ -1399,6 +1402,19 @@ final class DownloadManager: NSObject, ObservableObject {
         }
         AppLog.error(.downloads, "offline resolve failed no localFile title=\(item.title) ep=\(item.episode)")
         return nil
+    }
+
+    func avPlayerURL(for item: DownloadItem) -> URL? {
+        guard let resolved = playableURL(for: item) else { return nil }
+        #if os(iOS)
+        if resolved.isFileURL,
+           resolved.pathExtension.lowercased() == "m3u8",
+           let proxyURL = LocalHLSProxyServer.shared.proxyURL(for: resolved) {
+            AppLog.debug(.player, "offline avplayer proxy local=\(resolved.path) proxy=\(proxyURL.absoluteString)")
+            return proxyURL
+        }
+        #endif
+        return resolved
     }
 
     func downloadedItem(title: String, episode: Int) -> DownloadItem? {
