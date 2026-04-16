@@ -722,7 +722,7 @@ private struct CinematicTrendingCard: View {
             .clipShape(RoundedRectangle(cornerRadius: UIConstants.cardCornerRadius, style: .continuous))
 
             LinearGradient(
-                colors: [Color.black.opacity(0.9), Color.black.opacity(0.5), Color.clear],
+                colors: [Theme.baseBackground.opacity(0.9), Theme.baseBackground.opacity(0.5), Color.clear],
                 startPoint: .bottom,
                 endPoint: .top
             )
