@@ -38,24 +38,8 @@ struct DiscoveryView: View {
         let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
         let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
-            Group {
-                if bannerAtmosphereEnabled {
-                    LinearGradient(
-                        colors: [
-                            activeHeroAtmosphere.baseBackground,
-                            activeHeroAtmosphere.bottomFeather,
-                            activeHeroAtmosphere.bottomFeather,
-                            activeHeroAtmosphere.bottomFeather,
-                            activeHeroAtmosphere.bottomFeather
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea()
-                } else {
-                    Theme.baseBackground.ignoresSafeArea()
-                }
-            }
+            pageBackground
+                .ignoresSafeArea()
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -130,19 +114,7 @@ struct DiscoveryView: View {
                         }
                         .padding(.horizontal, screenPadding)
                         .padding(.top, -12)
-                        .background(
-                            Group {
-                                if bannerAtmosphereEnabled {
-                                    LinearGradient(
-                                        colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.18)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                } else {
-                                    Theme.baseBackground
-                                }
-                            }
-                        )
+                        .background(pageBackground)
                     }
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
