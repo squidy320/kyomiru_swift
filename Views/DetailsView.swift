@@ -144,6 +144,7 @@ enum StreamSourcePreferenceResolver {
 struct DetailsView: View {
     let media: AniListMedia
     @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var episodes: [SoraEpisode] = []
@@ -318,7 +319,7 @@ struct DetailsView: View {
             view.toolbar(.hidden, for: .navigationBar)
         }
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .task(id: currentHeroBackdropURL) {
             if !isPad {
                 await refreshHeroAtmosphere()

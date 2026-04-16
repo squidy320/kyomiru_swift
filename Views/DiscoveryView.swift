@@ -4,6 +4,7 @@ import Kingfisher
 
 struct DiscoveryView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("library.sort") private var librarySortRaw: String = LibrarySortOption.lastUpdated.rawValue
     @State private var sections: [AniListDiscoverySection] = []
     @State private var isLoading = false
@@ -38,8 +39,24 @@ struct DiscoveryView: View {
         let screenSpacing = UIConstants.interCardSpacing + (useComfortableLayout ? 2 : 0)
         let screenPadding = UIConstants.standardPadding + (useComfortableLayout ? 4 : 0)
         ZStack {
-            pageBackground
-                .ignoresSafeArea()
+            Group {
+                if bannerAtmosphereEnabled {
+                    LinearGradient(
+                        colors: [
+                            activeHeroAtmosphere.baseBackground,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather,
+                            activeHeroAtmosphere.bottomFeather
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                } else {
+                    Theme.baseBackground.ignoresSafeArea()
+                }
+            }
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -114,7 +131,19 @@ struct DiscoveryView: View {
                         }
                         .padding(.horizontal, screenPadding)
                         .padding(.top, -12)
-                        .background(pageBackground)
+                        .background(
+                            Group {
+                                if bannerAtmosphereEnabled {
+                                    LinearGradient(
+                                        colors: [activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.bottomFeather.opacity(0.18)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                } else {
+                                    Theme.baseBackground
+                                }
+                            }
+                        )
                     }
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
@@ -125,7 +154,7 @@ struct DiscoveryView: View {
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(.hidden, for: .navigationBar)
-                .toolbarColorScheme(.dark, for: .navigationBar)
+                .toolbarColorScheme(colorScheme, for: .navigationBar)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         NavigationLink {
@@ -142,7 +171,6 @@ struct DiscoveryView: View {
             }
             .background(pageBackground.ignoresSafeArea())
         }
-        .background(pageBackground.ignoresSafeArea())
         .task {
             AppLog.debug(.ui, "discovery view load")
             if sections.isEmpty,

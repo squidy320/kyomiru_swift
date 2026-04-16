@@ -35,6 +35,7 @@ struct SearchView: View {
     let context: SearchContext
 
     @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
     @State private var query = ""
     @State private var isSearching = false
     @State private var searchResults: [AniListMedia] = []
@@ -60,7 +61,7 @@ struct SearchView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: context.prompt
         )
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .onChange(of: query) { _, newValue in
             switch context {
             case .discovery:

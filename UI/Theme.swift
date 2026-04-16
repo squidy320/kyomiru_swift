@@ -17,15 +17,15 @@ enum Theme {
 
     static var baseBackground: Color {
         adaptiveColor(
-            light: UIColor(red: 0.95, green: 0.96, blue: 0.98, alpha: 1.0),
-            dark: UIColor(red: 0.04, green: 0.04, blue: 0.06, alpha: 1.0)
+            light: .white,
+            dark: .black
         )
     }
 
     static var surface: Color {
         adaptiveColor(
-            light: UIColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.96),
-            dark: UIColor(red: 0.08, green: 0.09, blue: 0.12, alpha: 1.0)
+            light: .white,
+            dark: .black
         )
     }
 
@@ -54,12 +54,12 @@ enum Theme {
         LinearGradient(
             colors: [
                 adaptiveColor(
-                    light: UIColor(red: 0.99, green: 0.99, blue: 1.0, alpha: 1.0),
-                    dark: UIColor(red: 0.08, green: 0.09, blue: 0.12, alpha: 1.0)
+                    light: .white,
+                    dark: .black
                 ),
                 adaptiveColor(
-                    light: UIColor(red: 0.91, green: 0.94, blue: 0.98, alpha: 1.0),
-                    dark: UIColor(red: 0.03, green: 0.03, blue: 0.05, alpha: 1.0)
+                    light: .white,
+                    dark: .black
                 )
             ],
             startPoint: .topLeading,
@@ -104,13 +104,13 @@ struct HeroAtmosphere: Sendable {
     var bottomFeather: Color { bottom.color }
 
     static let fallback = HeroAtmosphere(
-        base: HeroAtmosphereColor(red: 0.05, green: 0.05, blue: 0.07),
-        top: HeroAtmosphereColor(red: 0.13, green: 0.14, blue: 0.18),
-        bottom: HeroAtmosphereColor(red: 0.09, green: 0.10, blue: 0.14)
+        base: HeroAtmosphereColor(red: 0.0, green: 0.0, blue: 0.0),
+        top: HeroAtmosphereColor(red: 0.0, green: 0.0, blue: 0.0),
+        bottom: HeroAtmosphereColor(red: 0.0, green: 0.0, blue: 0.0)
     )
 
     static let neutralBlack = HeroAtmosphere(
-        base: HeroAtmosphereColor(red: 0.04, green: 0.04, blue: 0.06),
+        base: HeroAtmosphereColor(red: 0.0, green: 0.0, blue: 0.0),
         top: HeroAtmosphereColor(red: 0.0, green: 0.0, blue: 0.0),
         bottom: HeroAtmosphereColor(red: 0.0, green: 0.0, blue: 0.0)
     )

@@ -3,6 +3,7 @@ import UIKit
 
 struct LibraryView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var librarySettings = LibrarySettingsManager()
     @StateObject private var networkMonitor = NetworkMonitor.shared
     @State private var sections: [AniListLibrarySection] = []
@@ -174,7 +175,7 @@ struct LibraryView: View {
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(.hidden, for: .navigationBar)
-                .toolbarColorScheme(.dark, for: .navigationBar)
+                .toolbarColorScheme(colorScheme, for: .navigationBar)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         NavigationLink {
@@ -340,7 +341,7 @@ struct LibraryView: View {
             ZStack(alignment: .bottom) {
                 ZStack(alignment: .bottomLeading) {
                     Group {
-                        if bannerAtmosphereEnabled, let bannerURL {
+                        if let bannerURL {
                             CachedImage(url: bannerURL) { image in
                                 image
                                     .resizable()
