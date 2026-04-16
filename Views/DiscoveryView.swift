@@ -265,7 +265,7 @@ struct DiscoveryView: View {
                 LinearGradient(
                     colors: bannerAtmosphereEnabled
                         ? [activeHeroAtmosphere.bottomFeather.opacity(0.48), activeHeroAtmosphere.bottomFeather.opacity(0.28), Color.clear]
-                        : [Color.black.opacity(0.48), Color.black.opacity(0.28), Color.clear],
+                        : [Theme.baseBackground.opacity(0.48), Theme.baseBackground.opacity(0.28), Color.clear],
                     startPoint: .bottom,
                     endPoint: .top
                 )
@@ -275,7 +275,7 @@ struct DiscoveryView: View {
                 LinearGradient(
                     colors: bannerAtmosphereEnabled
                         ? [activeHeroAtmosphere.topFeather.opacity(0.72), activeHeroAtmosphere.topFeather.opacity(0.24), Color.clear]
-                        : [Color.black.opacity(0.72), Color.black.opacity(0.24), Color.clear],
+                        : [Theme.baseBackground.opacity(0.72), Theme.baseBackground.opacity(0.24), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -285,7 +285,7 @@ struct DiscoveryView: View {
                 LinearGradient(
                     colors: bannerAtmosphereEnabled
                         ? [activeHeroAtmosphere.topFeather.opacity(0.34), activeHeroAtmosphere.topFeather.opacity(0.14), Color.clear]
-                        : [Color.black.opacity(0.34), Color.black.opacity(0.14), Color.clear],
+                        : [Theme.baseBackground.opacity(0.34), Theme.baseBackground.opacity(0.14), Color.clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -313,7 +313,7 @@ struct DiscoveryView: View {
                 LinearGradient(
                     colors: bannerAtmosphereEnabled
                         ? [Color.clear, Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.20), activeHeroAtmosphere.baseBackground.opacity(0.45), activeHeroAtmosphere.baseBackground.opacity(0.70), activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.baseBackground]
-                        : [Color.clear, Color.clear, Color.black.opacity(0.20), Color.black.opacity(0.45), Color.black.opacity(0.70), Color.black, Color.black],
+                        : [Color.clear, Color.clear, Theme.baseBackground.opacity(0.20), Theme.baseBackground.opacity(0.45), Theme.baseBackground.opacity(0.70), Theme.baseBackground, Theme.baseBackground],
                     startPoint: .top,
                     endPoint: .bottom
                 )
