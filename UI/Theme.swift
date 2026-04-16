@@ -567,6 +567,7 @@ actor ImageCache {
 struct CachedImage<Content: View, Placeholder: View>: View {
     let url: URL?
     let targetSize: CGSize?
+    let onLoaded: ((URL) -> Void)?
     let content: (Image) -> Content
     let placeholder: () -> Placeholder
 
@@ -575,11 +576,13 @@ struct CachedImage<Content: View, Placeholder: View>: View {
     init(
         url: URL?,
         targetSize: CGSize? = nil,
+        onLoaded: ((URL) -> Void)? = nil,
         @ViewBuilder content: @escaping (Image) -> Content,
         @ViewBuilder placeholder: @escaping () -> Placeholder
     ) {
         self.url = url
         self.targetSize = targetSize
+        self.onLoaded = onLoaded
         self.content = content
         self.placeholder = placeholder
     }
@@ -606,13 +609,19 @@ struct CachedImage<Content: View, Placeholder: View>: View {
         if let targetSize {
             let scale = await MainActor.run { UIScreen.main.scale }
             if let image = await ImageCache.shared.image(for: url, targetSize: targetSize, scale: scale) {
-                await MainActor.run { uiImage = image }
+                await MainActor.run {
+                    uiImage = image
+                    onLoaded?(url)
+                }
                 return
             }
         }
         if let data = await ImageCache.shared.data(for: url),
            let image = UIImage(data: data) {
-            await MainActor.run { uiImage = image }
+            await MainActor.run {
+                uiImage = image
+                onLoaded?(url)
+            }
         } else {
             await MainActor.run { uiImage = nil }
         }

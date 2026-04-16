@@ -24,6 +24,9 @@ struct LibraryView: View {
     @State private var showAlertsSheet = false
     @State private var libraryLoadGeneration = 0
     @State private var heroAtmosphere: HeroAtmosphere = .fallback
+    @State private var launchBannerImageKey: String?
+    @State private var launchBannerImageReady = false
+    @State private var launchBannerAtmosphereReady = false
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
     private var bannerAtmosphereEnabled: Bool { appState.settings.enableBannerAtmosphere }
     private var activeHeroAtmosphere: HeroAtmosphere {
@@ -233,7 +236,8 @@ struct LibraryView: View {
                 .presentationDetents([.medium, .large])
         }
         .task(id: bannerURL) {
-            await refreshHeroAtmosphere()
+            updateLaunchBannerState(for: bannerURL)
+            await refreshHeroAtmosphere(for: bannerURL)
         }
         .sheet(isPresented: $showAlertsSheet) {
             AlertsView()
@@ -329,6 +333,10 @@ struct LibraryView: View {
                 await loadLibrary(forceRefresh: true)
             }
         }
+        .onChange(of: appState.authState.user) { _, user in
+            guard user != nil, bannerURL == nil else { return }
+            updateLaunchBannerState(for: nil)
+        }
         .onChange(of: sections) { _, _ in
             Task { await prefetchLibraryImages(sections: sections) }
         }
@@ -342,15 +350,16 @@ struct LibraryView: View {
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
+            let heroImageAlignment: Alignment = isPad ? .center : .bottom
             ZStack(alignment: .bottom) {
                 ZStack(alignment: .bottomLeading) {
                     Group {
                         if let bannerURL {
-                            CachedImage(url: bannerURL) { image in
+                            CachedImage(url: bannerURL, onLoaded: handleLaunchBannerLoaded(_:)) { image in
                                 image
                                     .resizable()
                                     .scaledToFill()
-                                    .frame(width: width, height: height + insetTop, alignment: .bottom)
+                                    .frame(width: width, height: height + insetTop, alignment: heroImageAlignment)
                             } placeholder: {
                                 Theme.surface
                             }
@@ -427,8 +436,8 @@ struct LibraryView: View {
     }
 
     @MainActor
-    private func refreshHeroAtmosphere() async {
-        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: bannerURL)
+    private func refreshHeroAtmosphere(for url: URL?) async {
+        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: url)
         if appState.settings.reduceMotion {
             heroAtmosphere = atmosphere
         } else {
@@ -436,6 +445,30 @@ struct LibraryView: View {
                 heroAtmosphere = atmosphere
             }
         }
+        launchBannerAtmosphereReady = true
+        updateLaunchVisualReadiness()
+    }
+
+    @MainActor
+    private func updateLaunchBannerState(for url: URL?) {
+        let hasResolvedBannerSource = !appState.authState.isSignedIn || appState.authState.user != nil
+        launchBannerImageKey = url?.absoluteString
+        launchBannerImageReady = hasResolvedBannerSource && url == nil
+        launchBannerAtmosphereReady = !bannerAtmosphereEnabled || (hasResolvedBannerSource && url == nil)
+        updateLaunchVisualReadiness()
+    }
+
+    @MainActor
+    private func handleLaunchBannerLoaded(_ url: URL) {
+        guard bannerURL?.absoluteString == url.absoluteString else { return }
+        launchBannerImageReady = true
+        updateLaunchVisualReadiness()
+    }
+
+    @MainActor
+    private func updateLaunchVisualReadiness() {
+        guard launchBannerImageReady, launchBannerAtmosphereReady else { return }
+        appState.markLibraryLaunchVisualReady()
     }
 
     private func displaySections() -> [AniListLibrarySection] {

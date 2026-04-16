@@ -18,6 +18,9 @@ struct DiscoveryView: View {
     @State private var imdbAniListMap: [Int: AniListMedia] = [:]
     @State private var navigateMedia: AniListMedia?
     @State private var discoveryLoadGeneration = 0
+    @State private var launchHeroImageKey: String?
+    @State private var launchHeroImageReady = false
+    @State private var launchHeroAtmosphereReady = false
     @StateObject private var networkMonitor = NetworkMonitor.shared
     private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
@@ -182,6 +185,9 @@ struct DiscoveryView: View {
                 await loadDiscovery(forceRefresh: false)
             }
             appState.markDiscoveryLaunchReady()
+            if heroTrending == nil {
+                updateLaunchHeroState(for: nil)
+            }
         }
         .onChange(of: sections) { _, _ in
             if heroIndex >= heroItems().count {
@@ -192,7 +198,9 @@ struct DiscoveryView: View {
             Task { await loadDiscovery(forceRefresh: true) }
         }
         .task(id: heroTrending?.backdropURL) {
-            await refreshHeroAtmosphere()
+            let heroURL = heroTrending?.backdropURL
+            updateLaunchHeroState(for: heroURL)
+            await refreshHeroAtmosphere(for: heroURL)
         }
     }
 
@@ -246,14 +254,15 @@ struct DiscoveryView: View {
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
+            let heroImageAlignment: Alignment = isPad ? .center : .bottom
             ZStack(alignment: .bottomLeading) {
                 Group {
                     if let heroTrending, let url = heroTrending.backdropURL {
-                        CachedImage(url: url) { image in
+                        CachedImage(url: url, onLoaded: handleLaunchHeroImageLoaded(_:)) { image in
                             image
                                 .resizable()
                                 .scaledToFill()
-                                .frame(width: width, height: height + insetTop, alignment: .bottom)
+                                .frame(width: width, height: height + insetTop, alignment: heroImageAlignment)
                         } placeholder: {
                             Theme.surface
                         }
@@ -406,8 +415,8 @@ private extension DiscoveryView {
     }
 
     @MainActor
-    func refreshHeroAtmosphere() async {
-        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: heroTrending?.backdropURL)
+    func refreshHeroAtmosphere(for url: URL?) async {
+        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: url)
         if appState.settings.reduceMotion {
             heroAtmosphere = atmosphere
         } else {
@@ -415,6 +424,8 @@ private extension DiscoveryView {
                 heroAtmosphere = atmosphere
             }
         }
+        launchHeroAtmosphereReady = true
+        updateLaunchVisualReadiness()
     }
 
     func loadDiscovery(forceRefresh: Bool) async {
@@ -553,6 +564,28 @@ private extension DiscoveryView {
             if let logo = heroTrending.logoURL { urls.append(logo) }
         }
         await ImageCache.shared.prefetch(urls: urls)
+    }
+
+    @MainActor
+    func updateLaunchHeroState(for url: URL?) {
+        let hasResolvedHeroSource = heroTrending != nil || !isLoadingImdbTrending
+        launchHeroImageKey = url?.absoluteString
+        launchHeroImageReady = hasResolvedHeroSource && url == nil
+        launchHeroAtmosphereReady = !bannerAtmosphereEnabled || (hasResolvedHeroSource && url == nil)
+        updateLaunchVisualReadiness()
+    }
+
+    @MainActor
+    func handleLaunchHeroImageLoaded(_ url: URL) {
+        guard heroTrending?.backdropURL?.absoluteString == url.absoluteString else { return }
+        launchHeroImageReady = true
+        updateLaunchVisualReadiness()
+    }
+
+    @MainActor
+    func updateLaunchVisualReadiness() {
+        guard launchHeroImageReady, launchHeroAtmosphereReady else { return }
+        appState.markDiscoveryLaunchVisualReady()
     }
 }
 
