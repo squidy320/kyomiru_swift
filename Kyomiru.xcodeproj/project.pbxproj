@@ -28,6 +28,7 @@
 		B1C2D3E4F5061728394A5B6D /* NetworkRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* NetworkRetry.swift */; };
 		314C57A12C82496CA605168E /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 161229ED682D48179B328B0A /* DownloadManager.swift */; };
 		B6D7E8F9A0B1C2D3E4F50617 /* PlaybackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5C9E3B1D4F24C1BAA112233 /* PlaybackService.swift */; };
+		C7E8F901A2B3C4D5E6F70819 /* LocalHLSProxyServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E8F901A2B3C4D5E6F70818 /* LocalHLSProxyServer.swift */; };
 		E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */; };
         01A2B3C4D5E6F708192A3B4C /* OfflineManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */; };
         12B3C4D5E6F708192A3B4C5D /* MetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */; };
@@ -105,6 +106,7 @@
 		A1B2C3D4E5F60718293A4B5D /* NetworkRetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRetry.swift; sourceTree = "<group>"; };
 		161229ED682D48179B328B0A /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
 		A5C9E3B1D4F24C1BAA112233 /* PlaybackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackService.swift; sourceTree = "<group>"; };
+		C7E8F901A2B3C4D5E6F70818 /* LocalHLSProxyServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalHLSProxyServer.swift; sourceTree = "<group>"; };
 		F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackEngine.swift; sourceTree = "<group>"; };
         0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineManager.swift; sourceTree = "<group>"; };
         1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataService.swift; sourceTree = "<group>"; };
@@ -253,6 +255,7 @@
 				A1B2C3D4E5F60718293A4B5D /* NetworkRetry.swift */,
 				161229ED682D48179B328B0A /* DownloadManager.swift */,
 				A5C9E3B1D4F24C1BAA112233 /* PlaybackService.swift */,
+				C7E8F901A2B3C4D5E6F70818 /* LocalHLSProxyServer.swift */,
                 F901A2B3C4D5E6F708192A3B /* PlaybackEngine.swift */,
                 0A1B2C3D4E5F60718293A4B5 /* OfflineManager.swift */,
                 1B2C3D4E5F60718293A4B5C6 /* MetadataService.swift */,
@@ -440,6 +443,7 @@
 				B1C2D3E4F5061728394A5B6D /* NetworkRetry.swift in Sources */,
 				314C57A12C82496CA605168E /* DownloadManager.swift in Sources */,
 				B6D7E8F9A0B1C2D3E4F50617 /* PlaybackService.swift in Sources */,
+				C7E8F901A2B3C4D5E6F70819 /* LocalHLSProxyServer.swift in Sources */,
                 E8F901A2B3C4D5E6F708192A /* PlaybackEngine.swift in Sources */,
                 01A2B3C4D5E6F708192A3B4C /* OfflineManager.swift in Sources */,
                 12B3C4D5E6F708192A3B4C5D /* MetadataService.swift in Sources */,
