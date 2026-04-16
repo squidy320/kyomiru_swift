@@ -239,7 +239,8 @@ struct DiscoveryView: View {
     }
 
     private var heroHeader: some View {
-        GeometryReader { proxy in
+        let heroBottomAllowance: CGFloat = (PlatformSupport.prefersTabletLayout ? 72 : 64) * 0.5 + 16
+        return GeometryReader { proxy in
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
@@ -327,7 +328,7 @@ struct DiscoveryView: View {
             }
             .offset(y: -insetTop)
         }
-        .frame(height: UIConstants.heroHeight)
+        .frame(height: UIConstants.heroHeight + heroBottomAllowance)
     }
 
     private var imdbCarousel: AnyView {
