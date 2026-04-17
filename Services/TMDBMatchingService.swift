@@ -183,6 +183,7 @@ final class TMDBMatchingService {
     private let cacheManager: MetadataCacheManager
     private let overrideStore: TMDBOverrideStore
     private let aniListClient: AniListClient?
+    private let aniMapClient: AniMapClient
     private let apiKey: String?
     private let dateFormatter: DateFormatter
     private let matchRequests = TMDBMatchTaskCoalescer<String, TMDBResolvedMatch?>()
@@ -201,13 +202,15 @@ final class TMDBMatchingService {
         session: URLSession = .custom,
         cacheManager: MetadataCacheManager = MetadataCacheManager(),
         overrideStore: TMDBOverrideStore = .shared,
-        aniListClient: AniListClient? = nil
+        aniListClient: AniListClient? = nil,
+        aniMapClient: AniMapClient? = nil
     ) {
         self.cacheStore = cacheStore
         self.session = session
         self.cacheManager = cacheManager
         self.overrideStore = overrideStore
         self.aniListClient = aniListClient
+        self.aniMapClient = aniMapClient ?? AniMapClient(cacheStore: cacheStore, session: session)
         let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TMDB_API_KEY") as? String
         let defaultsKey = UserDefaults.standard.string(forKey: "TMDB_API_KEY")
         self.apiKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
@@ -224,7 +227,7 @@ final class TMDBMatchingService {
         expectedEpisodeCount: Int?,
         maxEpisodeNumber: Int?
     ) -> String {
-        "tmdb:match:v10:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
+        "tmdb:match:v11:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
     }
 
     func matchShowAndSeason(
@@ -247,9 +250,9 @@ final class TMDBMatchingService {
             )
         }
 
-        // Tier 2: Ani.zip Primary (full episode data for accurate matching)
-        if let aniZipMatch = await matchViaAniZip(media: media, preferredSeasonNumber: preferredSeasonNumber, expectedEpisodeCount: expectedEpisodeCount) {
-            return aniZipMatch
+        // Tier 2: AniMap primary mapping
+        if let aniMapMatch = await matchViaAniMap(media: media) {
+            return aniMapMatch
         }
 
         // Tier 3: Heuristic Matching
@@ -271,82 +274,49 @@ final class TMDBMatchingService {
         )
     }
 
-    private func matchViaAniZip(
-        media: AniListMedia,
-        preferredSeasonNumber: Int?,
-        expectedEpisodeCount: Int?
-    ) async -> TMDBSeasonMatch? {
-        // Skip ani.zip matching for movies only (OVAs/specials can have main series mappings in ani.zip)
-        if isMovieLike(media) {
+    private func matchViaAniMap(media: AniListMedia) async -> TMDBSeasonMatch? {
+        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME",
+              let mapping = await aniMapClient.mapping(for: media),
+              let showId = mapping.normalizedTMDBID,
+              let mediaType = mapping.normalizedTMDBMediaType else {
             return nil
         }
 
-        guard let seasonInfo = await AniZipClient.getSeasonInfo(aniListId: media.id),
-              let tmdbId = seasonInfo.tmdbId,
-              let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else {
-            return nil
-        }
-
-        AppLog.debug(.matching, "tmdb ani.zip primary match mediaId=\(media.id) tmdbId=\(tmdbId)")
-
-        // Validate that the TMDB show is actually anime TV with episodes
-        guard let showSummary = await fetchShowSummary(showId: tmdbId, mediaType: "tv", apiKey: apiKey) else {
-            AppLog.debug(.matching, "ani.zip validation failed: could not fetch show summary mediaId=\(media.id) tmdbId=\(tmdbId)")
-            return nil
-        }
-
-        // Check if show has episodes and seasons (basic validation)
-        let hasEpisodes = showSummary.numberOfEpisodes > 0
-        let hasSeasons = !showSummary.seasons.isEmpty && showSummary.seasons.contains { $0.episodeCount > 0 }
-        
-        guard hasEpisodes && hasSeasons else {
-            AppLog.debug(.matching, "ani.zip validation failed: no episodes/seasons mediaId=\(media.id) tmdbId=\(tmdbId) episodes=\(showSummary.numberOfEpisodes) seasons=\(showSummary.seasons.count)")
-            return nil
-        }
-
-        // Calculate offset from ani.zip episode data
-        // Use absoluteEpisodeNumber to detect which season this AniList entry represents
-        var episodeOffset = 0
-        var detectedSeasonNumber = 1
-        
-        if let episodes = seasonInfo.episodes, !episodes.isEmpty {
-            // Find the episode offset and season using absoluteEpisodeNumber
-            var minAbsoluteNumber = Int.max
-            var maxAbsoluteNumber = 0
-            var calculatedOffset = 0
-            
-            for (_, episode) in episodes {
-                if let absNum = episode.absoluteEpisodeNumber, let epNum = episode.episodeNumber, let seasonNum = episode.seasonNumber {
-                    minAbsoluteNumber = min(minAbsoluteNumber, absNum)
-                    maxAbsoluteNumber = max(maxAbsoluteNumber, absNum)
-                    
-                    // Offset = first episode's absolute number - 1
-                    // This tells us how many episodes aired before this season
-                    if epNum == 1 {
-                        calculatedOffset = absNum - 1
-                        detectedSeasonNumber = seasonNum
-                        break
-                    }
-                }
+        if mediaType == "movie" {
+            guard await fetchShowSummary(showId: showId, mediaType: mediaType, apiKey: apiKey) != nil else {
+                AppLog.debug(.matching, "animap validation failed mediaId=\(media.id) showId=\(showId) mediaType=\(mediaType)")
+                return nil
             }
-            
-            // Fallback: if no season 1 detected, calculate from the range
-            if calculatedOffset == 0 && minAbsoluteNumber != Int.max {
-                calculatedOffset = minAbsoluteNumber - 1
-                AppLog.debug(.matching, "ani.zip calculated offset mediaId=\(media.id) offset=\(calculatedOffset) from episode range")
-            } else if calculatedOffset > 0 {
-                AppLog.debug(.matching, "ani.zip calculated offset mediaId=\(media.id) offset=\(calculatedOffset) season=\(detectedSeasonNumber) from episode data")
-            }
-            
-            episodeOffset = calculatedOffset
+            AppLog.debug(.matching, "tmdb animap match mediaId=\(media.id) showId=\(showId) mediaType=movie")
+            return TMDBSeasonMatch(
+                showId: showId,
+                mediaType: mediaType,
+                seasonNumber: 1,
+                episodeOffset: 0,
+                absoluteOffset: 0
+            )
         }
 
+        guard let showSummary = await fetchShowSummary(showId: showId, mediaType: mediaType, apiKey: apiKey) else {
+            AppLog.debug(.matching, "animap validation failed mediaId=\(media.id) showId=\(showId) mediaType=\(mediaType)")
+            return nil
+        }
+
+        let seasonNumber = compatibleAniMapSeasonNumber(mapping.normalizedSeasonNumber, for: showSummary)
+        let episodeOffset = compatibleAniMapEpisodeOffset(mapping.normalizedEpisodeOffset)
+        let absoluteOffset = calculateAbsoluteOffset(
+            seasonNumber: seasonNumber,
+            offsetWithinSeason: episodeOffset,
+            in: showSummary
+        )
+
+        AppLog.debug(.matching, "tmdb animap match mediaId=\(media.id) showId=\(showId) season=\(seasonNumber) offset=\(episodeOffset)")
         return TMDBSeasonMatch(
-            showId: tmdbId,
-            mediaType: "tv",
-            seasonNumber: detectedSeasonNumber,
+            showId: showId,
+            mediaType: mediaType,
+            seasonNumber: seasonNumber,
             episodeOffset: episodeOffset,
-            absoluteOffset: episodeOffset
+            absoluteOffset: absoluteOffset
         )
     }
 
@@ -370,6 +340,10 @@ final class TMDBMatchingService {
                 confidence: 1.0,
                 reason: "manual-override"
             )
+        }
+
+        if let aniMapResolved = await resolvedMatchViaAniMap(media: media) {
+            return aniMapResolved
         }
 
         let preferredSeason = preferredSeasonNumber ?? TitleMatcher.extractSeasonNumber(from: media.title.best)
@@ -555,7 +529,7 @@ final class TMDBMatchingService {
     }
 
     func resolveAnimeStructure(media: AniListMedia) async -> TMDBAnimeStructureMatch? {
-        let requestKey = "tmdb:structure:v7:\(media.id)"
+        let requestKey = "tmdb:structure:v8:\(media.id)"
         if let cached = cacheStore.readJSON(forKey: requestKey, maxAge: Self.structureCacheTTL),
            let decoded = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cached) {
             return decoded
@@ -590,6 +564,9 @@ final class TMDBMatchingService {
                 firstAirYear: media.startDate?.year ?? media.seasonYear
             )
         }
+        if let aniMapTarget = await aniMapTarget(for: media) {
+            return aniMapTarget
+        }
         let startYear = media.startDate?.year ?? media.seasonYear
         let directTitles = Array(normalizedCandidateTitleSet(from: [media]))
         if let direct = await findTarget(media: media, titles: directTitles, startYear: startYear) {
@@ -615,6 +592,9 @@ final class TMDBMatchingService {
         } else if let overrideMatch = manualOverride(for: media.id) {
             showId = overrideMatch.showId
             mediaType = overrideMatch.mediaType ?? "tv"
+        } else if let aniMapTarget = await aniMapTarget(for: media) {
+            showId = aniMapTarget.id
+            mediaType = aniMapTarget.mediaType
         } else {
             guard let target = await resolveArtworkTarget(media: media) else {
                 return nil
@@ -683,6 +663,116 @@ final class TMDBMatchingService {
             currentSegment: currentSegment,
             reason: fittedCurrent?.reason ?? "soupy-luna-franchise-fallback"
         )
+    }
+
+    private func aniMapTarget(for media: AniListMedia) async -> TMDBSearchResult? {
+        guard let mapping = await aniMapClient.mapping(for: media),
+              let id = mapping.normalizedTMDBID,
+              let mediaType = mapping.normalizedTMDBMediaType else {
+            return nil
+        }
+
+        return TMDBSearchResult(
+            id: id,
+            mediaType: mediaType,
+            title: media.title.best,
+            posterURL: nil,
+            firstAirYear: media.startDate?.year ?? media.seasonYear
+        )
+    }
+
+    private func resolvedMatchViaAniMap(media: AniListMedia) async -> TMDBResolvedMatch? {
+        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME",
+              let mapping = await aniMapClient.mapping(for: media),
+              let showId = mapping.normalizedTMDBID,
+              let mediaType = mapping.normalizedTMDBMediaType,
+              let show = await fetchShowSummary(showId: showId, mediaType: mediaType, apiKey: apiKey) else {
+            return nil
+        }
+
+        let seasonNumber: Int
+        let episodeOffset: Int
+        let absoluteOffset: Int
+        let reason: String
+
+        if mediaType == "movie" {
+            seasonNumber = 1
+            episodeOffset = 0
+            absoluteOffset = 0
+            reason = "animap-movie"
+        } else if let structured = await resolveAnimeStructure(
+            media: media,
+            showIdOverride: showId,
+            mediaTypeOverride: mediaType,
+            showOverride: show
+        ) {
+            seasonNumber = structured.currentSegment.tmdbSeasonNumber
+            episodeOffset = structured.currentSegment.episodeOffset
+            absoluteOffset = calculateAbsoluteOffset(
+                seasonNumber: seasonNumber,
+                offsetWithinSeason: episodeOffset,
+                in: show
+            )
+            reason = "animap-structure"
+        } else {
+            seasonNumber = compatibleAniMapSeasonNumber(mapping.normalizedSeasonNumber, for: show)
+            episodeOffset = compatibleAniMapEpisodeOffset(mapping.normalizedEpisodeOffset)
+            absoluteOffset = calculateAbsoluteOffset(
+                seasonNumber: seasonNumber,
+                offsetWithinSeason: episodeOffset,
+                in: show
+            )
+            reason = "animap-direct"
+        }
+
+        let resolved = TMDBResolvedMatch(
+            showId: showId,
+            mediaType: mediaType,
+            seasonNumber: seasonNumber,
+            episodeOffset: episodeOffset,
+            absoluteOffset: absoluteOffset,
+            confidence: 0.99,
+            reason: reason
+        )
+
+        if mediaType == "tv",
+           let seasonDetails = await fetchSeasonDetails(
+            aniListId: media.id,
+            showId: resolved.showId,
+            seasonNumber: resolved.seasonNumber
+        ) {
+            cacheManager.save(
+                TMDBCachedMetadata(
+                    aniListId: media.id,
+                    showId: resolved.showId,
+                    seasonNumber: resolved.seasonNumber,
+                    episodeOffset: resolved.episodeOffset,
+                    absoluteOffset: resolved.absoluteOffset,
+                    cachedAt: Date(),
+                    seasonDetails: seasonDetails
+                )
+            )
+        }
+
+        AppLog.debug(
+            .matching,
+            "tmdb animap resolved mediaId=\(media.id) showId=\(resolved.showId) season=\(resolved.seasonNumber) offset=\(resolved.episodeOffset) absOffset=\(resolved.absoluteOffset) reason=\(resolved.reason)"
+        )
+        return resolved
+    }
+
+    private func compatibleAniMapSeasonNumber(_ seasonNumber: Int?, for show: TMDBShowSummary) -> Int {
+        guard let seasonNumber,
+              seasonNumber > 0,
+              show.seasons.contains(where: { $0.seasonNumber == seasonNumber }) else {
+            return 1
+        }
+        return seasonNumber
+    }
+
+    private func compatibleAniMapEpisodeOffset(_ offset: Int?) -> Int {
+        guard let offset, offset >= 0 else { return 0 }
+        return offset
     }
 
     private func buildManualOverrideSegment(
