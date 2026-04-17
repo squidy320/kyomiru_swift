@@ -347,6 +347,7 @@ struct LibraryView: View {
     .onChange(of: sections) { _, _ in
         Task { await prefetchLibraryImages(sections: sections) }
     }
+    }
 
     @MainActor
     private func refreshHeroAtmosphere() async {
