@@ -144,7 +144,6 @@ enum StreamSourcePreferenceResolver {
 struct DetailsView: View {
     let media: AniListMedia
     @EnvironmentObject private var appState: AppState
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var episodes: [SoraEpisode] = []
@@ -160,7 +159,6 @@ struct DetailsView: View {
     @State private var showListManager = false
     @State private var playerStartAt: Double?
     @State private var listManagerModel = ListManagerViewModel(item: MediaItem(title: "", status: .planning))
-    @State private var listManagerItem: MediaItem? // Track the item used for the list manager
     @State private var listTrackingEntry: AniListTrackingEntry?
     @State private var isLoadingMatch = false
     @State private var matchCandidates: [SoraAnimeMatch] = []
@@ -203,7 +201,7 @@ struct DetailsView: View {
     }
 
     private var currentHeroBackdropURL: URL? {
-        resolvedHeroBackdropURL
+        tmdbHeroBackdropURL ?? media.bannerURL ?? media.coverURL
     }
 
     private var activeHeroAtmosphere: HeroAtmosphere {
@@ -211,14 +209,6 @@ struct DetailsView: View {
     }
     private var bannerAtmosphereEnabled: Bool {
         !isPad && appState.settings.enableBannerAtmosphere
-    }
-
-    private var resolvedHeroBackdropURL: URL? {
-        if let tmdbHeroBackdropURL {
-            return tmdbHeroBackdropURL
-        }
-        guard tmdbHeroLookupComplete else { return nil }
-        return media.bannerURL ?? media.coverURL
     }
 
     private var detailContent: some View {
@@ -276,7 +266,7 @@ struct DetailsView: View {
     }
 
     private var shouldShowInitialLoadingScreen: Bool {
-        isInitialLoadInProgress && errorMessage == nil
+        isInitialLoadInProgress && episodes.isEmpty && errorMessage == nil
     }
 
     private var loadingScreen: some View {
@@ -328,7 +318,7 @@ struct DetailsView: View {
             view.toolbar(.hidden, for: .navigationBar)
         }
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbarColorScheme(colorScheme, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .task(id: currentHeroBackdropURL) {
             if !isPad {
                 await refreshHeroAtmosphere()
@@ -467,8 +457,7 @@ struct DetailsView: View {
             )
         }
         .sheet(isPresented: $showListManager) {
-            let itemForListManager = listManagerItem ?? detailItem
-            ListManagerView(item: itemForListManager, viewModel: listManagerModel) { updated in
+            ListManagerView(item: detailItem, viewModel: listManagerModel) { updated in
                 Task {
                     await appState.syncListUpdate(updated, refresh: true)
                     isBookmarked = updated.status != MediaStatus.planning
@@ -477,8 +466,6 @@ struct DetailsView: View {
             .presentationDetents([PresentationDetent.medium])
             .onAppear {
                 listManagerModel = makeListManagerModel()
-                // Track which item we're using for the list manager
-                listManagerItem = appState.services.libraryStore.item(forExternalId: media.id) ?? detailItem
                 Task {
                     await refreshTrackingEntryForSheet()
                 }
@@ -641,9 +628,10 @@ struct DetailsView: View {
         let width = size.width
         let height = size.height
         let insetTop = safeArea.top
+        let fallbackBackdrop = media.bannerURL ?? media.coverURL
         return ZStack {
             Group {
-                if let url = resolvedHeroBackdropURL {
+                if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
                     CachedImage(
                         url: url,
                         targetSize: CGSize(width: width, height: height + insetTop)
@@ -691,9 +679,10 @@ struct DetailsView: View {
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
+            let fallbackBackdrop = media.bannerURL ?? media.coverURL
             ZStack(alignment: .bottomLeading) {
                 Group {
-                    if let url = resolvedHeroBackdropURL {
+                    if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
                         CachedImage(
                             url: url,
                             targetSize: CGSize(width: width, height: height + insetTop)
@@ -781,9 +770,10 @@ struct DetailsView: View {
             let width = proxy.size.width
             let height = proxy.size.height
             let insetTop = proxy.safeAreaInsets.top
+            let fallbackBackdrop = media.bannerURL ?? media.coverURL
             ZStack(alignment: .topLeading) {
                 Group {
-                    if let url = resolvedHeroBackdropURL {
+                    if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
                         CachedImage(
                             url: url,
                             targetSize: CGSize(width: width, height: height + insetTop)
@@ -1142,20 +1132,18 @@ struct DetailsView: View {
                 seasonNumber: 1,
                 firstEpisodeNumber: result.episodes.map(\.number).min()
             )
+            async let streamingEpisodesTask: [AniListStreamingEpisode] = {
+                do {
+                    return try await appState.services.aniListClient.streamingEpisodes(mediaId: media.id)
+                } catch {
+                    AppLog.error(.network, "streaming episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
+                    return []
+                }
+            }()
 
             let metadata = await metadataTask
             let ratings = await ratingsTask
-            let loadedStreamingEpisodes: [AniListStreamingEpisode]
-            if shouldLoadAniListEpisodeFallback(for: metadata, episodes: result.episodes) {
-                do {
-                    loadedStreamingEpisodes = try await appState.services.aniListClient.streamingEpisodes(mediaId: media.id)
-                } catch {
-                    AppLog.error(.network, "streaming episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
-                    loadedStreamingEpisodes = []
-                }
-            } else {
-                loadedStreamingEpisodes = []
-            }
+            let loadedStreamingEpisodes = await streamingEpisodesTask
             guard loadGeneration == episodeLoadGeneration else { return }
             episodeMetadata = metadata
             episodeRatings = ratings
@@ -1264,6 +1252,9 @@ struct DetailsView: View {
             isInitialLoadInProgress = true
             tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
             hydrateInitialCachedState()
+            if !episodes.isEmpty {
+                isInitialLoadInProgress = false
+            }
             async let episodesTask: Void = loadEpisodes(forceRefresh: true)
             async let relatedTask: Void = loadRelated()
             async let heroTask: Void = loadHeroArtwork()
@@ -1280,8 +1271,7 @@ struct DetailsView: View {
             if let cachedMetadata = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: cachedEpisodes.episodes) {
                 episodeMetadata = cachedMetadata
             }
-            if shouldLoadAniListEpisodeFallback(for: episodeMetadata, episodes: cachedEpisodes.episodes),
-               let cachedStreaming = appState.services.aniListClient.cachedStreamingEpisodesSnapshot(mediaId: media.id) {
+            if let cachedStreaming = appState.services.aniListClient.cachedStreamingEpisodesSnapshot(mediaId: media.id) {
                 streamingEpisodes = cachedStreaming
             }
         }
@@ -1358,13 +1348,9 @@ struct DetailsView: View {
         tmdbHeroBackdropURL = backdrop
         tmdbHeroLogoURL = logo
         tmdbHeroLookupComplete = true
-        let urls = [resolvedHeroBackdropURL, logo].compactMap { $0 }
+        let fallback = media.bannerURL ?? media.coverURL
+        let urls = [backdrop, fallback, logo].compactMap { $0 }
         await ImageCache.shared.prefetch(urls: urls)
-    }
-
-    private func shouldLoadAniListEpisodeFallback(for metadata: [Int: EpisodeMetadata], episodes: [SoraEpisode]) -> Bool {
-        guard !episodes.isEmpty else { return false }
-        return episodes.contains { metadata[$0.number] == nil }
     }
 
     private func performTMDBMatchSearch(query: String) {

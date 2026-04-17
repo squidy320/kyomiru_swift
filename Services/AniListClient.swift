@@ -718,24 +718,12 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
         }
         """
         let data = try await graphql(query: q, variables: ["mediaId": mediaId, "progress": progress], token: token)
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            AppLog.error(.network, "save tracking failed mediaId=\(mediaId) invalid json")
-            return false
-        }
-        
-        // Check for GraphQL errors
-        if let errors = root["errors"] as? [[String: Any]], !errors.isEmpty {
-            let errorMessages = errors.compactMap { $0["message"] as? String }.joined(separator: "; ")
-            AppLog.error(.network, "save tracking failed mediaId=\(mediaId) graphql=\(errorMessages)")
-            return false
-        }
-        
-        guard let dataMap = root["data"] as? [String: Any],
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dataMap = root["data"] as? [String: Any],
               let _ = dataMap["SaveMediaListEntry"] as? [String: Any] else {
-            AppLog.error(.network, "save tracking failed mediaId=\(mediaId) no SaveMediaListEntry in response")
+            AppLog.error(.network, "save tracking failed mediaId=\(mediaId)")
             return false
         }
-        
         clearTrackingCaches(for: mediaId)
         AppLog.debug(.network, "save tracking success mediaId=\(mediaId)")
         return true
@@ -780,21 +768,10 @@ private func cachedLibrarySectionsFromDisk(token: String, allowStale: Bool = fal
         vars["startedAt"] = fuzzyDateVariable(startedAt)
         vars["completedAt"] = fuzzyDateVariable(completedAt)
         let data = try await graphql(query: q, variables: vars, token: token)
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            AppLog.error(.network, "save list failed mediaId=\(mediaId) invalid json")
-            return false
-        }
-        
-        // Check for GraphQL errors
-        if let errors = root["errors"] as? [[String: Any]], !errors.isEmpty {
-            let errorMessages = errors.compactMap { $0["message"] as? String }.joined(separator: "; ")
-            AppLog.error(.network, "save list failed mediaId=\(mediaId) graphql=\(errorMessages)")
-            return false
-        }
-        
-        guard let dataMap = root["data"] as? [String: Any],
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dataMap = root["data"] as? [String: Any],
               let _ = dataMap["SaveMediaListEntry"] as? [String: Any] else {
-            AppLog.error(.network, "save list failed mediaId=\(mediaId) no SaveMediaListEntry in response")
+            AppLog.error(.network, "save list failed mediaId=\(mediaId)")
             return false
         }
         clearTrackingCaches(for: mediaId)

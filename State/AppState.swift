@@ -120,42 +120,36 @@ final class AppState: ObservableObject {
 
     func syncListUpdate(_ item: MediaItem, refresh: Bool = true) async {
         services.libraryStore.upsert(item)
-        
-        // Attempt to sync to AniList if auto-sync is enabled and user is signed in
-        if settings.autoSyncAniList,
-           authState.isSignedIn,
-           let token = authState.token,
-           let mediaId = item.externalId {
-            let status = aniListStatus(for: item.status)
-            do {
-                let existing = try await services.aniListClient.trackingEntry(token: token, mediaId: mediaId)
-                let dates = resolvedTrackingDates(
-                    existing: existing,
-                    status: item.status,
-                    progress: item.currentEpisode,
-                    totalEpisodes: item.totalEpisodes
-                )
-                let score = item.userRating > 0 ? item.userRating : existing?.score
-                _ = try await services.aniListClient.saveMediaListEntry(
-                    token: token,
-                    mediaId: mediaId,
-                    status: status,
-                    progress: item.currentEpisode,
-                    score: score,
-                    startedAt: dates.startedAt,
-                    completedAt: dates.completedAt
-                )
-                services.aniListClient.clearLibraryCache(token: token)
-                services.aniListClient.clearTrackingCaches(for: mediaId)
-                AppLog.debug(.network, "list sync success mediaId=\(mediaId) status=\(status)")
-            } catch {
-                AppLog.error(.network, "list sync failed mediaId=\(mediaId) \(error.localizedDescription)")
+        guard settings.autoSyncAniList,
+              authState.isSignedIn,
+              let token = authState.token,
+              let mediaId = item.externalId else { return }
+        let status = aniListStatus(for: item.status)
+        do {
+            let existing = try await services.aniListClient.trackingEntry(token: token, mediaId: mediaId)
+            let dates = resolvedTrackingDates(
+                existing: existing,
+                status: item.status,
+                progress: item.currentEpisode,
+                totalEpisodes: item.totalEpisodes
+            )
+            let score = item.userRating > 0 ? item.userRating : existing?.score
+            _ = try await services.aniListClient.saveMediaListEntry(
+                token: token,
+                mediaId: mediaId,
+                status: status,
+                progress: item.currentEpisode,
+                score: score,
+                startedAt: dates.startedAt,
+                completedAt: dates.completedAt
+            )
+            services.aniListClient.clearLibraryCache(token: token)
+            services.aniListClient.clearTrackingCaches(for: mediaId)
+            if refresh {
+                await loadLibraryStoreIfNeeded(forceRefresh: true)
             }
-        }
-        
-        // Always refresh library view if requested, to reflect local changes immediately
-        if refresh {
-            await loadLibraryStoreIfNeeded(forceRefresh: true)
+        } catch {
+            AppLog.error(.network, "list sync failed mediaId=\(mediaId) \(error.localizedDescription)")
         }
     }
 
@@ -211,12 +205,6 @@ final class AppState: ObservableObject {
             userRating: currentItem?.userRating ?? 0,
             totalEpisodes: totalEpisodes
         )
-
-        // Refresh library to ensure new status is reflected locally
-        // Important for items not in library yet (e.g., first episode of planning anime)
-        if currentItem == nil || currentItem?.status != newStatus {
-            await loadLibraryStoreIfNeeded(forceRefresh: true)
-        }
     }
 
     func markEpisodeUnwatched(mediaId: Int, episodeNumber: Int) async {
@@ -256,11 +244,6 @@ final class AppState: ObservableObject {
             userRating: currentItem?.userRating ?? 0,
             totalEpisodes: currentItem?.totalEpisodes
         )
-
-        // Refresh library to ensure status changes are reflected
-        if currentItem == nil {
-            await loadLibraryStoreIfNeeded(forceRefresh: true)
-        }
     }
 
     func markMediaCompleted(mediaId: Int) async {
@@ -302,11 +285,6 @@ final class AppState: ObservableObject {
             userRating: currentItem?.userRating ?? 0,
             totalEpisodes: totalEpisodes
         )
-
-        // Refresh library to ensure completed status is reflected
-        if currentItem == nil {
-            await loadLibraryStoreIfNeeded(forceRefresh: true)
-        }
     }
 
     private func aniListStatus(for status: MediaStatus) -> String {
