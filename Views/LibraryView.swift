@@ -307,45 +307,45 @@ struct LibraryView: View {
             GlassCard {
                 Text(continueError)
                     .foregroundColor(Theme.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, screenPadding)
             .padding(.bottom, UIConstants.bottomBarHeight + UIConstants.smallPadding)
         }
-        .task {
-            AppLog.debug(.ui, "library view load")
-            if let token = appState.authState.token,
-               let cached = appState.services.aniListClient.cachedLibrarySections(token: token, allowStale: true),
-               !cached.isEmpty {
-                applyLibrarySections(cached)
-                await runLibraryBackgroundWork(sections: cached)
-            }
-            if sections.isEmpty {
-                await loadLibrary(forceRefresh: false)
-            }
+    }
+    .task {
+        AppLog.debug(.ui, "library view load")
+        if let token = appState.authState.token,
+           let cached = appState.services.aniListClient.cachedLibrarySections(token: token, allowStale: true),
+           !cached.isEmpty {
+            applyLibrarySections(cached)
+            await runLibraryBackgroundWork(sections: cached)
         }
-        .onChange(of: appState.authState.token) { _, newToken in
-            if newToken == nil {
-                sections = []
-                availabilityById = [:]
-                continueThumbs = [:]
-                continueEpisodeTitles = [:]
-                continueEpisodes = [:]
-                selectedContinueEpisode = nil
-                selectedContinueMedia = nil
-                continueSources = []
-                continuePlayerStartAt = nil
-                showContinuePlayer = false
-                showContinueSourceSheet = false
-                return
-            }
-            Task {
-                await loadLibrary(forceRefresh: true)
-            }
+        if sections.isEmpty {
+            await loadLibrary(forceRefresh: false)
         }
-        .onChange(of: sections) { _, _ in
-            Task { await prefetchLibraryImages(sections: sections) }
+    }
+    .onChange(of: appState.authState.token) { _, newToken in
+        if newToken == nil {
+            sections = []
+            availabilityById = [:]
+            continueThumbs = [:]
+            continueEpisodeTitles = [:]
+            continueEpisodes = [:]
+            selectedContinueEpisode = nil
+            selectedContinueMedia = nil
+            continueSources = []
+            continuePlayerStartAt = nil
+            showContinuePlayer = false
+            showContinueSourceSheet = false
+            return
         }
+        Task {
+            await loadLibrary(forceRefresh: true)
+        }
+    }
+    .onChange(of: sections) { _, _ in
+        Task { await prefetchLibraryImages(sections: sections) }
     }
 
     @MainActor
