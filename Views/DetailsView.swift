@@ -160,6 +160,7 @@ struct DetailsView: View {
     @State private var showListManager = false
     @State private var playerStartAt: Double?
     @State private var listManagerModel = ListManagerViewModel(item: MediaItem(title: "", status: .planning))
+    @State private var listManagerItem: MediaItem? // Track the item used for the list manager
     @State private var listTrackingEntry: AniListTrackingEntry?
     @State private var isLoadingMatch = false
     @State private var matchCandidates: [SoraAnimeMatch] = []
@@ -466,7 +467,8 @@ struct DetailsView: View {
             )
         }
         .sheet(isPresented: $showListManager) {
-            ListManagerView(item: detailItem, viewModel: listManagerModel) { updated in
+            let itemForListManager = listManagerItem ?? detailItem
+            ListManagerView(item: itemForListManager, viewModel: listManagerModel) { updated in
                 Task {
                     await appState.syncListUpdate(updated, refresh: true)
                     isBookmarked = updated.status != MediaStatus.planning
@@ -475,6 +477,8 @@ struct DetailsView: View {
             .presentationDetents([PresentationDetent.medium])
             .onAppear {
                 listManagerModel = makeListManagerModel()
+                // Track which item we're using for the list manager
+                listManagerItem = appState.services.libraryStore.item(forExternalId: media.id) ?? detailItem
                 Task {
                     await refreshTrackingEntryForSheet()
                 }
