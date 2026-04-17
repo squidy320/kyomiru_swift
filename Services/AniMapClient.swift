@@ -26,6 +26,7 @@ struct AniMapResolvedMapping: Codable, Equatable {
     let tvdbID: Int?
     let tvdbSeason: Int?
     let tvdbEpisodeOffset: Int?
+    let imdbID: String?
     let mediaType: String?
 
     var normalizedTMDBMediaType: String? {
@@ -74,6 +75,7 @@ private struct AniMapEntry: Codable {
     let tvdb_epoffset: Int?
     let tmdb_movie_id: Int?
     let tmdb_show_id: Int?
+    let imdb_id: String?
     let media_type: String?
 }
 
@@ -183,6 +185,7 @@ final class AniMapClient {
                 tvdbID: entry.tvdb_id,
                 tvdbSeason: entry.tvdb_season,
                 tvdbEpisodeOffset: entry.tvdb_epoffset,
+                imdbID: entry.imdb_id,
                 mediaType: entry.media_type
             )
 
