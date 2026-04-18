@@ -443,16 +443,16 @@ final class MetadataService {
 
     private func metadataCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:media:v14:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
+            return "tmdb:media:v15:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
         }
-        return "tmdb:media:v14:\(mediaId)"
+        return "tmdb:media:v15:\(mediaId)"
     }
 
     private func logoCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:logo:v4:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId)"
+            return "tmdb:logo:v5:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId)"
         }
-        return "tmdb:logo:v4:\(mediaId)"
+        return "tmdb:logo:v5:\(mediaId)"
     }
 
     private func cachedLogo(forKey key: String) -> URL?? {
@@ -482,6 +482,9 @@ final class MetadataService {
     private func invalidateTMDBCaches(for mediaId: Int) {
         metadataCacheManager.clear(aniListId: mediaId)
         cacheStore.removeKeys(withPrefix: "tmdb:match:v10:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:match:v11:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:match:v12:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:match:v13:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v6:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v6:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v7:\(mediaId)")
@@ -498,12 +501,20 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:media:v12:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v13:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v13:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v14:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v14:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v15:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v15:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v2:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v2:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v3:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v3:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:logo:v4:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:logo:v4:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:logo:v5:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:logo:v5:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v6:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v7:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v8:\(mediaId):")
@@ -523,6 +534,9 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v5:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v6:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v7:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:structure:v8:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:structure:v9:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:structure:v10:\(mediaId)")
     }
 }
 

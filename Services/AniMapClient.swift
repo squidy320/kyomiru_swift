@@ -57,7 +57,7 @@ struct AniMapResolvedMapping: Codable, Equatable {
     }
 
     var normalizedSeasonNumber: Int? {
-        guard let season = tvdbSeason, season > 0 else { return nil }
+        guard let season = tvdbSeason, season >= 0 else { return nil }
         return season
     }
 

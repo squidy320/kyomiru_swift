@@ -233,7 +233,7 @@ final class TMDBMatchingService {
         expectedEpisodeCount: Int?,
         maxEpisodeNumber: Int?
     ) -> String {
-        "tmdb:match:v12:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
+        "tmdb:match:v13:\(mediaId):preferred:\(preferredSeasonNumber ?? 0):first:\(firstEpisodeNumber ?? 1):count:\(expectedEpisodeCount ?? 0):max:\(maxEpisodeNumber ?? 0)"
     }
 
     func matchShowAndSeason(
@@ -537,7 +537,7 @@ final class TMDBMatchingService {
     }
 
     func resolveAnimeStructure(media: AniListMedia) async -> TMDBAnimeStructureMatch? {
-        let requestKey = "tmdb:structure:v9:\(media.id)"
+        let requestKey = "tmdb:structure:v10:\(media.id)"
         if let cached = cacheStore.readJSON(forKey: requestKey, maxAge: Self.structureCacheTTL),
            let decoded = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cached) {
             return decoded
@@ -773,7 +773,7 @@ final class TMDBMatchingService {
 
     private func compatibleAniMapSeasonNumber(_ seasonNumber: Int?, for show: TMDBShowSummary) -> Int {
         guard let seasonNumber,
-              seasonNumber > 0,
+              seasonNumber >= 0,
               show.seasons.contains(where: { $0.seasonNumber == seasonNumber }) else {
             return 1
         }
@@ -1363,7 +1363,7 @@ final class TMDBMatchingService {
             return nil
         }
         let seasons = series.seasons
-            .filter { $0.number > 0 }
+            .filter { $0.number >= 0 }
             .map {
                 TMDBSeasonInfo(
                     seasonID: $0.id,

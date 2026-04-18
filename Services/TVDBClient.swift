@@ -27,6 +27,29 @@ private actor TVDBTokenStore {
     }
 }
 
+private actor TVDBArtworkTypeStore {
+    private var cached: [Int: String]?
+    private var inFlight: Task<[Int: String], Never>?
+
+    func value(start: @escaping @Sendable () async -> [Int: String]) async -> [Int: String] {
+        if let cached {
+            return cached
+        }
+        if let inFlight {
+            return await inFlight.value
+        }
+
+        let task = Task {
+            await start()
+        }
+        inFlight = task
+        let resolved = await task.value
+        cached = resolved
+        inFlight = nil
+        return resolved
+    }
+}
+
 struct TVDBSearchHit {
     let id: Int
     let mediaType: String
@@ -90,6 +113,7 @@ final class TVDBClient {
     private let apiKey: String?
     private let pin: String?
     private let tokens = TVDBTokenStore()
+    private let artworkTypes = TVDBArtworkTypeStore()
 
     init(session: URLSession = .custom, apiKey: String?, pin: String? = nil) {
         self.session = session
@@ -112,18 +136,21 @@ final class TVDBClient {
     }
 
     func fetchSeries(_ id: Int) async -> TVDBSeriesRecord? {
-        guard let root = await requestObject(path: "/series/\(id)/extended") else { return nil }
-        return parseSeries(from: root)
+        guard let root = await requestObject(path: "/series/\(id)/extended", queryItems: [URLQueryItem(name: "meta", value: "translations")]) else { return nil }
+        let artworkTypeNames = await artworkTypeNames()
+        return parseSeries(from: root, artworkTypeNames: artworkTypeNames)
     }
 
     func fetchMovie(_ id: Int) async -> TVDBMovieRecord? {
-        guard let root = await requestObject(path: "/movies/\(id)/extended") else { return nil }
-        return parseMovie(from: root)
+        guard let root = await requestObject(path: "/movies/\(id)/extended", queryItems: [URLQueryItem(name: "meta", value: "translations")]) else { return nil }
+        let artworkTypeNames = await artworkTypeNames()
+        return parseMovie(from: root, artworkTypeNames: artworkTypeNames)
     }
 
     func fetchSeason(_ id: Int) async -> TVDBSeasonRecord? {
-        guard let root = await requestObject(path: "/seasons/\(id)/extended") else { return nil }
-        return parseSeason(from: root)
+        guard let root = await requestObject(path: "/seasons/\(id)/extended", queryItems: [URLQueryItem(name: "meta", value: "translations")]) else { return nil }
+        let artworkTypeNames = await artworkTypeNames()
+        return parseSeason(from: root, artworkTypeNames: artworkTypeNames)
     }
 
     private func requestObject(path: String, queryItems: [URLQueryItem] = []) async -> [String: Any]? {
@@ -202,6 +229,20 @@ final class TVDBClient {
         return components?.url
     }
 
+    private func artworkTypeNames() async -> [Int: String] {
+        await artworkTypes.value { [weak self] in
+            guard let self else { return [:] }
+            guard let rows = await self.requestArray(path: "/artwork/types") else { return [:] }
+            var mapped: [Int: String] = [:]
+            for row in rows {
+                guard let id = self.int(in: row, keys: ["id"]) else { continue }
+                let name = self.string(in: row, keys: ["name", "slug"]) ?? ""
+                mapped[id] = name
+            }
+            return mapped
+        }
+    }
+
     private func parseSearchHit(from row: [String: Any]) -> TVDBSearchHit? {
         guard let id = int(in: row, keys: ["tvdb_id", "id", "objectID"]) else { return nil }
         let mediaType = normalizedMediaType(from: row)
@@ -211,11 +252,11 @@ final class TVDBClient {
         return TVDBSearchHit(id: id, mediaType: mediaType, title: title, imageURL: imageURL, year: year)
     }
 
-    private func parseSeries(from row: [String: Any]) -> TVDBSeriesRecord? {
+    private func parseSeries(from row: [String: Any], artworkTypeNames: [Int: String]) -> TVDBSeriesRecord? {
         guard let id = int(in: row, keys: ["id", "tvdb_id"]) else { return nil }
-        let title = string(in: row, keys: ["name", "slug"]) ?? "Unknown"
-        let airDate = string(in: row, keys: ["firstAired", "first_air_time"])
-        let artwork = artworkSelection(from: row)
+        let title = translatedString(in: row, translationKeys: ["nameTranslations", "name"], baseKeys: ["name", "slug"]) ?? "Unknown"
+        let airDate = string(in: row, keys: ["firstAired", "first_air_time", "releaseDate"])
+        let artwork = artworkSelection(from: row, artworkTypeNames: artworkTypeNames)
         let rawSeasons = (row["seasons"] as? [[String: Any]] ?? [])
             .compactMap(parseSeasonSummary(from:))
         let seasons = mergeSeasonSummaries(rawSeasons)
@@ -230,13 +271,13 @@ final class TVDBClient {
         )
     }
 
-    private func parseMovie(from row: [String: Any]) -> TVDBMovieRecord? {
+    private func parseMovie(from row: [String: Any], artworkTypeNames: [Int: String]) -> TVDBMovieRecord? {
         guard let id = int(in: row, keys: ["id", "tvdb_id"]) else { return nil }
-        let artwork = artworkSelection(from: row)
+        let artwork = artworkSelection(from: row, artworkTypeNames: artworkTypeNames)
         return TVDBMovieRecord(
             id: id,
-            title: string(in: row, keys: ["name", "title", "slug"]) ?? "Unknown",
-            summary: string(in: row, keys: ["overview"]),
+            title: translatedString(in: row, translationKeys: ["nameTranslations", "name"], baseKeys: ["name", "title", "slug"]) ?? "Unknown",
+            summary: translatedString(in: row, translationKeys: ["overviewTranslations", "overview"], baseKeys: ["overview"]),
             releaseDate: string(in: row, keys: ["firstAired", "releaseDate"]),
             runtimeMinutes: int(in: row, keys: ["runtime"]),
             posterURL: artwork.poster ?? url(in: row, keys: ["image", "image_url"]),
@@ -246,16 +287,16 @@ final class TVDBClient {
         )
     }
 
-    private func parseSeason(from row: [String: Any]) -> TVDBSeasonRecord? {
+    private func parseSeason(from row: [String: Any], artworkTypeNames: [Int: String]) -> TVDBSeasonRecord? {
         guard let id = int(in: row, keys: ["id"]) else { return nil }
-        let posterURL = artworkSelection(from: row).poster ?? url(in: row, keys: ["image", "image_url"])
+        let posterURL = artworkSelection(from: row, artworkTypeNames: artworkTypeNames).poster ?? url(in: row, keys: ["image", "image_url"])
         let episodes = (row["episodes"] as? [[String: Any]] ?? [])
             .compactMap(parseEpisode(from:))
             .sorted { $0.number < $1.number }
         return TVDBSeasonRecord(
             id: id,
             number: int(in: row, keys: ["number", "seasonNumber"]) ?? 0,
-            name: string(in: row, keys: ["name"]),
+            name: translatedString(in: row, translationKeys: ["nameTranslations", "name"], baseKeys: ["name"]),
             posterURL: posterURL,
             episodes: episodes
         )
@@ -269,7 +310,7 @@ final class TVDBClient {
         return TVDBSeasonSummary(
             id: id,
             number: number,
-            name: string(in: row, keys: ["name"]),
+            name: translatedString(in: row, translationKeys: ["nameTranslations", "name"], baseKeys: ["name"]),
             airDate: string(in: row, keys: ["firstAired", "year", "aired"]),
             episodeCount: episodeCount,
             isSpecial: number == 0 || (typeName?.localizedCaseInsensitiveContains("special") == true),
@@ -283,8 +324,8 @@ final class TVDBClient {
         }
         return TVDBEpisodeRecord(
             number: number,
-            title: string(in: row, keys: ["name"]),
-            summary: string(in: row, keys: ["overview"]),
+            title: translatedString(in: row, translationKeys: ["nameTranslations", "name"], baseKeys: ["name"]),
+            summary: translatedString(in: row, translationKeys: ["overviewTranslations", "overview"], baseKeys: ["overview"]),
             airDate: string(in: row, keys: ["aired", "firstAired"]),
             runtimeMinutes: int(in: row, keys: ["runtime"]),
             imageURL: url(in: row, keys: ["image", "image_url"]),
@@ -343,36 +384,157 @@ final class TVDBClient {
         return "tv"
     }
 
-    private func artworkSelection(from row: [String: Any]) -> (poster: URL?, backdrop: URL?, logo: URL?) {
+    private func artworkSelection(from row: [String: Any], artworkTypeNames: [Int: String]) -> (poster: URL?, backdrop: URL?, logo: URL?) {
         let artworks = row["artworks"] as? [[String: Any]] ?? []
-        var poster = url(in: row, keys: ["image", "image_url"])
-        var backdrop: URL?
-        var logo: URL?
-
-        for artwork in artworks {
-            guard let image = url(in: artwork, keys: ["image", "image_url", "thumbnail"]) else { continue }
-            let descriptor = [
-                string(in: artwork, keys: ["type"]),
-                string(in: artwork, keys: ["name"]),
-                string(in: artwork["type"] as? [String: Any], keys: ["name"])
-            ]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
-
-            if logo == nil, descriptor.contains("logo") {
-                logo = image
-                continue
-            }
-            if backdrop == nil && (descriptor.contains("background") || descriptor.contains("banner") || descriptor.contains("fanart")) {
-                backdrop = image
-                continue
-            }
-            if poster == nil && descriptor.contains("poster") {
-                poster = image
-            }
-        }
+        let poster = bestArtworkURL(
+            in: artworks,
+            artworkTypeNames: artworkTypeNames,
+            matchingAnyOf: ["poster", "cover"]
+        ) ?? url(in: row, keys: ["image", "image_url"])
+        let backdrop = bestArtworkURL(
+            in: artworks,
+            artworkTypeNames: artworkTypeNames,
+            matchingAnyOf: ["background", "banner", "fanart"]
+        )
+        let logo = bestArtworkURL(
+            in: artworks,
+            artworkTypeNames: artworkTypeNames,
+            matchingAnyOf: ["logo", "clearlogo", "clear art", "clearart"]
+        )
 
         return (poster, backdrop, logo)
+    }
+
+    private func artworkDescriptor(for artwork: [String: Any], artworkTypeNames: [Int: String]) -> String {
+        var parts: [String] = []
+        if let typeID = artworkTypeID(in: artwork),
+           let name = artworkTypeNames[typeID] {
+            parts.append(name)
+        }
+        if let type = string(in: artwork, keys: ["type"]) {
+            parts.append(type)
+        }
+        if let name = string(in: artwork, keys: ["name"]) {
+            parts.append(name)
+        }
+        if let nestedType = string(in: artwork["type"] as? [String: Any], keys: ["name"]) {
+            parts.append(nestedType)
+        }
+        return parts.map { $0.lowercased() }.joined(separator: " ")
+    }
+
+    private func artworkTypeID(in artwork: [String: Any]) -> Int? {
+        if let nested = artwork["type"] as? [String: Any],
+           let id = int(in: nested, keys: ["id"]) {
+            return id
+        }
+        return int(in: artwork, keys: ["type", "typeId", "artworkType"])
+    }
+
+    private func bestArtworkURL(
+        in artworks: [[String: Any]],
+        artworkTypeNames: [Int: String],
+        matchingAnyOf descriptors: [String]
+    ) -> URL? {
+        let normalizedDescriptors = descriptors.map { $0.lowercased() }
+        let match = artworks
+            .compactMap { artwork -> (url: URL, score: Int)? in
+                guard let image = url(in: artwork, keys: ["image", "image_url", "thumbnail"]) else {
+                    return nil
+                }
+                let descriptor = artworkDescriptor(for: artwork, artworkTypeNames: artworkTypeNames)
+                guard normalizedDescriptors.contains(where: { descriptor.contains($0) }) else {
+                    return nil
+                }
+                return (image, artworkScore(for: artwork, descriptor: descriptor))
+            }
+            .max { lhs, rhs in lhs.score < rhs.score }
+        return match?.url
+    }
+
+    private func artworkScore(for artwork: [String: Any], descriptor: String) -> Int {
+        var score = 0
+        let language = artworkLanguage(for: artwork)
+        switch language {
+        case "eng", "en":
+            score += 40
+        case "jpn", "ja":
+            score += 30
+        case "", "null":
+            score += 20
+        default:
+            score += 10
+        }
+
+        if descriptor.contains("official") { score += 12 }
+        if descriptor.contains("clearlogo") || descriptor.contains("clear art") || descriptor.contains("clearart") {
+            score += 10
+        }
+        if descriptor.contains("series") || descriptor.contains("movie") {
+            score += 4
+        }
+        score += int(in: artwork, keys: ["score"]) ?? 0
+        return score
+    }
+
+    private func artworkLanguage(for artwork: [String: Any]) -> String {
+        let language = string(in: artwork, keys: ["language", "languageCode", "lang"]) ?? ""
+        return language.lowercased()
+    }
+
+    private func translatedString(in row: [String: Any], translationKeys: [String], baseKeys: [String]) -> String? {
+        if let translations = row["translations"] as? [String: Any] {
+            for key in translationKeys {
+                if let translated = translatedString(from: translations[key]) {
+                    return translated
+                }
+            }
+        }
+        for key in translationKeys {
+            if let translated = translatedString(from: row[key]) {
+                return translated
+            }
+        }
+        return string(in: row, keys: baseKeys)
+    }
+
+    private func translatedString(from value: Any?) -> String? {
+        if let map = value as? [String: Any] {
+            for key in ["eng", "en", "jpn", "ja", "spa", "deu", "fra"] {
+                if let text = map[key] as? String, !text.isEmpty {
+                    return text
+                }
+            }
+            if let text = map["value"] as? String, !text.isEmpty {
+                return text
+            }
+            for nested in map.values {
+                if let text = translatedString(from: nested) {
+                    return text
+                }
+            }
+        }
+        if let list = value as? [[String: Any]] {
+            for language in ["eng", "en", "jpn", "ja", "spa", "deu", "fra"] {
+                if let match = list.first(where: {
+                    let lang = (($0["language"] as? String) ?? ($0["languageCode"] as? String) ?? ($0["lang"] as? String) ?? "").lowercased()
+                    return lang == language
+                }) {
+                    if let text = string(in: match, keys: ["name", "overview", "value"]) {
+                        return text
+                    }
+                }
+            }
+            for item in list {
+                if let text = string(in: item, keys: ["name", "overview", "value"]), !text.isEmpty {
+                    return text
+                }
+            }
+        }
+        if let text = value as? String, !text.isEmpty {
+            return text
+        }
+        return nil
     }
 
     private func string(in dict: [String: Any]?, keys: [String]) -> String? {
@@ -419,6 +581,9 @@ final class TVDBClient {
 
     private func url(in dict: [String: Any]?, keys: [String]) -> URL? {
         guard let string = string(in: dict, keys: keys) else { return nil }
+        if string.hasPrefix("/") {
+            return URL(string: "https://artworks.thetvdb.com\(string)")
+        }
         return URL(string: string)
     }
 
