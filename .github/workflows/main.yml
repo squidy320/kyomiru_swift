@@ -50,6 +50,16 @@ jobs:
           fi
           /usr/libexec/PlistBuddy -c "Set :OMDB_API_KEY $OMDB_API_KEY" Resources/Info.plist
 
+      - name: Inject TVDB API Key
+        env:
+          TVDB_API_KEY: ${{ secrets.TVDB_API_KEY }}
+        run: |
+          if [ -z "$TVDB_API_KEY" ]; then
+            echo "TVDB API key missing. Using placeholder to keep CI green."
+            TVDB_API_KEY="CHANGE_ME"
+          fi
+          /usr/libexec/PlistBuddy -c "Set :TVDB_API_KEY $TVDB_API_KEY" Resources/Info.plist
+
       - name: Lint String Interpolation
         run: |
           python3 scripts/lint_interpolation.py
