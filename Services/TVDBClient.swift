@@ -117,6 +117,8 @@ struct TVDBArtworkRecord {
     let score: Double
     let width: Int?
     let height: Int?
+    let seasonId: Int?      // Links to specific TVDB season
+    let seasonNumber: Int?  // Season number after mapping
 }
 
 struct TVDBUpdateRecord {
@@ -199,7 +201,72 @@ final class TVDBClient {
         return rows.compactMap(parseEpisode(from:)).sorted { $0.number < $1.number }
     }
 
-    /// Fetch all artworks for a series
+    /// Extract artworks from series extended response with season mapping
+    /// - Parameter seriesId: The TVDB series ID
+    /// - Returns: Artworks with season info extracted from /series/:id/extended
+    func extractSeriesArtworksWithSeasonMapping(_ seriesId: Int) async -> [TVDBArtworkRecord] {
+        guard let series = await fetchSeries(seriesId) else { return [] }
+        
+        // Build season ID -> number mapping from embedded seasons
+        var seasonMap: [Int: Int] = [:]
+        for season in series.seasons {
+            seasonMap[season.id] = season.number
+        }
+        
+        // Parse artworks from the raw response with season matching
+        guard let root = await requestObject(path: "/series/\(seriesId)/extended", 
+                                            queryItems: [URLQueryItem(name: "meta", value: "translations")]) else { 
+            return [] 
+        }
+        
+        let artworkTypeNames = await artworkTypeNames()
+        guard let artworks = root["artworks"] as? [[String: Any]] else { return [] }
+        
+        return artworks.compactMap { artwork in
+            guard let id = int(in: artwork, keys: ["id"]) else { return nil }
+            
+            let seasonId = int(in: artwork, keys: ["seasonId"])
+            let seasonNumber = seasonId.flatMap { seasonMap[$0] }
+            let typeID = artworkTypeID(in: artwork)
+            let typeName = typeID.flatMap { artworkTypeNames[$0] } ?? ""
+            let language = translationLanguage(from: artwork)
+            let imageURL = url(in: artwork, keys: ["image", "thumbnail"])
+            let score = double(in: artwork, keys: ["score"]) ?? 0
+            let width = int(in: artwork, keys: ["width"])
+            let height = int(in: artwork, keys: ["height"])
+            
+            return TVDBArtworkRecord(
+                id: id,
+                type: typeName,
+                language: language,
+                imageURL: imageURL,
+                score: score,
+                width: width,
+                height: height,
+                seasonId: seasonId,
+                seasonNumber: seasonNumber
+            )
+        }
+    }
+    
+    /// Filter artworks by season number
+    /// - Parameters:
+    ///   - artworks: Array of artwork records
+    ///   - seasonNumber: Season number to filter by
+    /// - Returns: Filtered artworks for the specified season
+    func filterArtworksBySeasonNumber(_ artworks: [TVDBArtworkRecord], _ seasonNumber: Int) -> [TVDBArtworkRecord] {
+        artworks.filter { $0.seasonNumber == seasonNumber }
+    }
+    
+    /// Get all series-level artworks (no season association)
+    /// - Parameters:
+    ///   - artworks: Array of artwork records
+    /// - Returns: Artworks without season association
+    func seriesLevelArtworks(_ artworks: [TVDBArtworkRecord]) -> [TVDBArtworkRecord] {
+        artworks.filter { $0.seasonId == nil }
+    }
+    
+    /// Fetch all artworks for a series (legacy - use extractSeriesArtworksWithSeasonMapping instead)
     /// - Parameter seriesId: The TVDB series ID
     /// - Returns: Array of available artworks with metadata
     func fetchSeriesArtworks(_ seriesId: Int) async -> [TVDBArtworkRecord] {
@@ -224,7 +291,9 @@ final class TVDBClient {
                 imageURL: imageURL,
                 score: score,
                 width: width,
-                height: height
+                height: height,
+                seasonId: nil,
+                seasonNumber: nil
             )
         }
     }
