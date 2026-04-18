@@ -108,6 +108,23 @@ struct TVDBSeasonRecord {
     let episodes: [TVDBEpisodeRecord]
 }
 
+struct TVDBArtworkRecord {
+    let id: Int
+    let type: String
+    let language: String
+    let imageURL: URL?
+    let score: Double
+    let width: Int?
+    let height: Int?
+}
+
+struct TVDBUpdateRecord {
+    let recordId: Int
+    let entityType: String
+    let recordType: String
+    let updateTime: Int
+}
+
 final class TVDBClient {
     private let session: URLSession
     private let apiKey: String?
@@ -194,6 +211,79 @@ final class TVDBClient {
 
         return nil
     }
+
+    /// Fetch episodes by season type with language support
+    /// - Parameters:
+    ///   - seriesId: The TVDB series ID
+    ///   - seasonType: Season type (e.g., "official", "dvd", "absolute", "aired")
+    ///   - language: ISO 639-1 language code (optional)
+    /// - Returns: Array of episodes for the specified season type
+    func fetchSeriesEpisodesByType(_ seriesId: Int, seasonType: String = "default", language: String? = nil) async -> [TVDBEpisodeRecord] {
+        var path = "/series/\(seriesId)/episodes/\(seasonType)"
+        if let language {
+            path += "/\(language)"
+        }
+        guard let rows = await requestArray(path: path) else { return [] }
+        return rows.compactMap(parseEpisode(from:)).sorted { $0.number < $1.number }
+    }
+
+    /// Fetch all artworks for a series
+    /// - Parameter seriesId: The TVDB series ID
+    /// - Returns: Array of available artworks with metadata
+    func fetchSeriesArtworks(_ seriesId: Int) async -> [TVDBArtworkRecord] {
+        guard let root = await requestObject(path: "/series/\(seriesId)/artworks") else { return [] }
+        let artworkTypeNames = await artworkTypeNames()
+        
+        guard let artworks = root["artworks"] as? [[String: Any]] else { return [] }
+        return artworks.compactMap { artwork in
+            guard let id = int(in: artwork, keys: ["id"]) else { return nil }
+            let typeID = artworkTypeID(in: artwork)
+            let typeName = typeID.flatMap { artworkTypeNames[$0] } ?? ""
+            let language = translationLanguage(from: artwork)
+            let imageURL = url(in: artwork, keys: ["image", "thumbnail"])
+            let score = double(in: artwork, keys: ["score"]) ?? 0
+            let width = int(in: artwork, keys: ["width"])
+            let height = int(in: artwork, keys: ["height"])
+            
+            return TVDBArtworkRecord(
+                id: id,
+                type: typeName,
+                language: language,
+                imageURL: imageURL,
+                score: score,
+                width: width,
+                height: height
+            )
+        }
+    }
+
+    /// Fetch recent updates from TVDB
+    /// - Parameter fromTimestamp: Only return updates after this Unix timestamp (optional)
+    /// - Returns: Array of recent updates
+    func fetchUpdates(since fromTimestamp: Int? = nil) async -> [TVDBUpdateRecord] {
+        var queryItems: [URLQueryItem] = []
+        if let fromTimestamp {
+            queryItems.append(URLQueryItem(name: "since", value: String(fromTimestamp)))
+        }
+        
+        guard let root = await requestObject(path: "/updates", queryItems: queryItems) else { return [] }
+        
+        guard let data = root["data"] as? [[String: Any]] else { return [] }
+        return data.compactMap { item in
+            guard let recordId = int(in: item, keys: ["recordId", "id"]) else { return nil }
+            let entityType = string(in: item, keys: ["entityType", "entity_type"]) ?? "unknown"
+            let recordType = string(in: item, keys: ["recordType", "record_type"]) ?? "unknown"
+            let updateTime = int(in: item, keys: ["updateTime", "lastUpdated", "timestamp"]) ?? 0
+            
+            return TVDBUpdateRecord(
+                recordId: recordId,
+                entityType: entityType,
+                recordType: recordType,
+                updateTime: updateTime
+            )
+        }
+    }
+
 
     private func requestObject(path: String, queryItems: [URLQueryItem] = []) async -> [String: Any]? {
         guard let payload = await request(path: path, queryItems: queryItems) else { return nil }
@@ -504,32 +594,114 @@ final class TVDBClient {
 
     private func artworkScore(for artwork: [String: Any], descriptor: String) -> Int {
         var score = 0
+        
+        // Language priority (English is essential for anime apps)
         let language = artworkLanguage(for: artwork)
         switch language {
-        case "eng", "en":
-            score += 40
-        case "jpn", "ja":
-            score += 30
+        case "en":
+            score += 100  // Strong preference for English
+        case "ja":
+            score += 50   // Japanese is good fallback for anime
         case "", "null":
-            score += 20
+            score += 30   // Neutral/no language
         default:
-            score += 10
+            score += 20   // Other languages
         }
 
-        if descriptor.contains("official") { score += 12 }
-        if descriptor.contains("clearlogo") || descriptor.contains("clear art") || descriptor.contains("clearart") {
-            score += 10
+        // Type and quality scoring
+        if descriptor.contains("official") { score += 40 }
+        if descriptor.contains("clearlogo") || descriptor.contains("clearart") { score += 35 }
+        if descriptor.contains("series") || descriptor.contains("main") { score += 25 }
+        if descriptor.contains("textless") { score += 20 }
+        if descriptor.contains("alternate") { score -= 5 }
+        
+        // Image dimensions (prefer high resolution for posters/backdrops)
+        if let width = int(in: artwork, keys: ["width"]), width >= 1280 {
+            score += 30
+        } else if let width = int(in: artwork, keys: ["width"]), width >= 800 {
+            score += 15
         }
-        if descriptor.contains("series") || descriptor.contains("movie") {
-            score += 4
+        
+        if let height = int(in: artwork, keys: ["height"]), height >= 1500 {
+            score += 30
+        } else if let height = int(in: artwork, keys: ["height"]), height >= 1000 {
+            score += 15
         }
-        score += int(in: artwork, keys: ["score"]) ?? 0
+        
+        // Community/rating score from TVDB (0-10 scale)
+        if let tvdbScore = double(in: artwork, keys: ["score"]) {
+            score += Int(tvdbScore * 10)  // 0-100 bonus
+        }
+        
+        return max(0, score)  // Ensure non-negative
+    }
+
+    /// Select best artworks (poster, backdrop, logo) from a fetched artwork list
+    /// - Parameters:
+    ///   - artworks: Array of TVDBArtworkRecord from fetchSeriesArtworks
+    ///   - type: Type of artwork to select ("poster", "background", "logo", etc.)
+    /// - Returns: Best matching URL for the requested type
+    func selectBestArtwork(from artworks: [TVDBArtworkRecord], ofType type: String) -> URL? {
+        let typeDescriptors = normalizeArtworkType(type)
+        
+        let candidates = artworks
+            .filter { artwork in
+                let artworkType = artwork.type.lowercased()
+                return typeDescriptors.contains { artworkType.contains($0) }
+            }
+            .sorted { lhs, rhs in
+                // Score based on language, resolution, and TVDB score
+                var lhsScore = scoreArtworkForSelection(lhs)
+                var rhsScore = scoreArtworkForSelection(rhs)
+                return lhsScore > rhsScore
+            }
+        
+        return candidates.first?.imageURL
+    }
+    
+    private func normalizeArtworkType(_ type: String) -> [String] {
+        let lower = type.lowercased()
+        if lower.contains("poster") || lower.contains("cover") {
+            return ["poster", "cover"]
+        }
+        if lower.contains("background") || lower.contains("backdrop") || lower.contains("fanart") || lower.contains("banner") {
+            return ["background", "backdrop", "fanart", "banner"]
+        }
+        if lower.contains("logo") || lower.contains("clearlogo") || lower.contains("clearart") {
+            return ["logo", "clearlogo", "clearart"]
+        }
+        return [lower]
+    }
+    
+    private func scoreArtworkForSelection(_ artwork: TVDBArtworkRecord) -> Double {
+        var score: Double = 0
+        
+        // Language scoring (English preferred for international audiences)
+        switch artwork.language {
+        case "en":
+            score += 1000
+        case "ja":
+            score += 500
+        case "", "null":
+            score += 300
+        default:
+            score += 100
+        }
+        
+        // TVDB community score
+        score += artwork.score * 100
+        
+        // Resolution bonus
+        let avgDimension = Double((artwork.width ?? 0) + (artwork.height ?? 0)) / 2
+        if avgDimension >= 1280 {
+            score += 200
+        } else if avgDimension >= 800 {
+            score += 100
+        }
+        
         return score
     }
 
-    private func artworkLanguage(for artwork: [String: Any]) -> String {
-        translationLanguage(from: artwork)
-    }
 
     private func translatedString(in row: [String: Any], translationKeys: [String], baseKeys: [String]) -> String? {
         if let translations = row["translations"] as? [String: Any] {
