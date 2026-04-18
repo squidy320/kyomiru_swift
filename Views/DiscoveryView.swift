@@ -375,7 +375,7 @@ private extension DiscoveryView {
         }
     }
 
-    func makeFeaturedBannerAsset(for media: AniListMedia) async -> FeaturedBannerAsset? {
+    private func makeFeaturedBannerAsset(for media: AniListMedia) async -> FeaturedBannerAsset? {
         let cachedArtwork = appState.services.metadataService.cachedHeroArtwork(for: media)
         let initialBackdrop = cachedArtwork.backdrop
         let initialLogo = cachedArtwork.logo
@@ -453,7 +453,7 @@ private extension DiscoveryView {
     }
 
     @MainActor
-    func applyFeaturedBannerAsset(_ asset: FeaturedBannerAsset) {
+    private func applyFeaturedBannerAsset(_ asset: FeaturedBannerAsset) {
         appState.setDiscoveryFeaturedMedia(asset.media)
         featuredMedia = asset.media
         featuredHeroBackdropURL = asset.backdropURL
@@ -461,7 +461,7 @@ private extension DiscoveryView {
     }
 
     @MainActor
-    func popNextFeaturedBannerAsset() -> FeaturedBannerAsset? {
+    private func popNextFeaturedBannerAsset() -> FeaturedBannerAsset? {
         guard !queuedFeaturedBanners.isEmpty else { return nil }
         let asset = queuedFeaturedBanners.removeFirst()
         return asset
@@ -488,7 +488,7 @@ private extension DiscoveryView {
         return media
     }
 
-    func prepareInitialFeaturedBannerAsset() async -> FeaturedBannerAsset? {
+    private func prepareInitialFeaturedBannerAsset() async -> FeaturedBannerAsset? {
         var attempts = 0
         let limit = max(1, featuredBannerPool.count)
         while attempts < limit {
