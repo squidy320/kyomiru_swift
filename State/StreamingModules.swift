@@ -276,10 +276,10 @@ final class StreamingModuleStore {
                     iconUrl: "https://files.catbox.moe/fu5sq7.png",
                     version: "1.0.1",
                     language: "English",
-                    baseUrl: "https://animepahe.si/",
+                    baseUrl: "https://animepahe.pw/",
                     streamType: "HLS",
                     quality: "1080p",
-                    searchBaseUrl: "https://animepahe.si/",
+                    searchBaseUrl: "https://animepahe.pw/",
                     scriptUrl: "https://git.luna-app.eu/50n50/sources/raw/branch/main/animepahe/animepahe.js",
                     softsub: true,
                     type: "anime"

@@ -15,7 +15,7 @@ public struct AniZipEpisode: Codable, Hashable {
     public let episodeNumber: Int?
     public let seasonNumber: Int?
     public let absoluteEpisodeNumber: Int?
-    public let title: [String: String]? // Multilingual titles
+    public let title: [String: String?]? // Multilingual titles, some languages can be null
     public let airDate: String?
     public let runtime: Int?
     public let overview: String?
@@ -125,7 +125,7 @@ public struct AniZipClient {
         // Find episode
         for (_, episode) in episodes {
             if episode.episodeNumber == episodeNumber {
-                let title = episode.title?["en"] ?? episode.title?.values.first
+                let title = episode.title?["en"] ?? episode.title?.values.compactMap { $0 }.first
                 return (title: title, airDate: episode.airDate, overview: episode.overview)
             }
         }

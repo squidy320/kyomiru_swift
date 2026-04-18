@@ -1359,16 +1359,18 @@ struct DetailsView: View {
             tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
             hydrateInitialCachedState()
             
-            // PRIORITY 1: Load hero artwork first (images load before hiding loading screen)
-            await loadHeroArtwork()
+            // Start all expensive work immediately so episode loading is not blocked on hero art.
+            async let heroArtworkTask: Void = loadHeroArtwork()
+            async let episodesTask: Void = loadEpisodes(forceRefresh: false)
+            async let relatedTask: Void = loadRelated()
+
+            // Keep the launch experience focused on the hero, but let episodes/related load in parallel.
+            await heroArtworkTask
             guard !Task.isCancelled else { return }
             
             // Hero loaded, dismiss loading screen
             isInitialLoadInProgress = false
             
-            // PRIORITY 2: Load episodes + related in background (always, for metadata updates)
-            async let episodesTask: Void = loadEpisodes(forceRefresh: false)
-            async let relatedTask: Void = loadRelated()
             _ = await (episodesTask, relatedTask)
             
             guard !Task.isCancelled else { return }

@@ -786,21 +786,52 @@ final class TMDBMatchingService {
     }
 
     private func resolveAniMapTVDBTarget(mapping: AniMapResolvedMapping, media: AniListMedia? = nil) async -> (id: Int, mediaType: String)? {
-        if let tvdbID = mapping.tvdbID {
-            if mapping.mediaType?.uppercased() == "MOVIE" || (mapping.mediaType == nil && media.map(isMovieLike) == true) {
-                return (tvdbID, "movie")
+        let inferredPreferredType: String? = {
+            if let mediaType = mapping.mediaType?.uppercased() {
+                if mediaType.contains("MOVIE") {
+                    return "movie"
+                }
+                return "tv"
             }
-            return (tvdbID, "tv")
+            if media.map(isMovieLike) == true {
+                return "movie"
+            }
+            return nil
+        }()
+
+        if let tvdbID = mapping.tvdbID {
+            return await validatedTVDBTarget(id: tvdbID, preferredMediaType: inferredPreferredType)
         }
         if let imdbID = mapping.imdbID, !imdbID.isEmpty,
            let target = await tvdbClient.searchRemoteID(imdbID) {
-            if target.mediaType == "movie" || media.map(isMovieLike) != true {
-                return (target.id, target.mediaType)
+            return await validatedTVDBTarget(id: target.id, preferredMediaType: target.mediaType)
+        }
+        return nil
+    }
+
+    private func validatedTVDBTarget(id: Int, preferredMediaType: String?) async -> (id: Int, mediaType: String)? {
+        switch preferredMediaType?.lowercased() {
+        case "movie":
+            if await tvdbClient.fetchMovie(id) != nil {
+                return (id, "movie")
             }
-            if let movie = await tvdbClient.fetchMovie(target.id) {
-                return (movie.id, "movie")
+            if await tvdbClient.fetchSeries(id) != nil {
+                return (id, "tv")
             }
-            return nil
+        case "tv":
+            if await tvdbClient.fetchSeries(id) != nil {
+                return (id, "tv")
+            }
+            if await tvdbClient.fetchMovie(id) != nil {
+                return (id, "movie")
+            }
+        default:
+            if await tvdbClient.fetchSeries(id) != nil {
+                return (id, "tv")
+            }
+            if await tvdbClient.fetchMovie(id) != nil {
+                return (id, "movie")
+            }
         }
         return nil
     }
@@ -1186,7 +1217,7 @@ final class TMDBMatchingService {
                 posterURL: hit.imageURL,
                 firstAirYear: hit.year
             ) : nil
-        case .series, .special:
+        case .series:
             return hit.mediaType == "tv" ? TMDBSearchResult(
                 id: hit.id,
                 mediaType: hit.mediaType,
@@ -1194,6 +1225,15 @@ final class TMDBMatchingService {
                 posterURL: hit.imageURL,
                 firstAirYear: hit.year
             ) : nil
+        case .special:
+            guard hit.mediaType == "tv" || hit.mediaType == "movie" else { return nil }
+            return TMDBSearchResult(
+                id: hit.id,
+                mediaType: hit.mediaType,
+                title: hit.title,
+                posterURL: hit.imageURL,
+                firstAirYear: hit.year
+            )
         }
     }
 

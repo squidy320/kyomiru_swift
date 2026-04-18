@@ -26,7 +26,10 @@ private struct SourceProviderConfiguration {
         let fallbackScriptURL = URL(string: resolvedMetadata.scriptUrl) ?? URL(string: "https://example.com")!
         let fallbackBaseURL = URL(string: resolvedMetadata.baseUrl) ?? URL(string: "https://example.com")!
         let resolvedScriptURL = URL(string: resolvedMetadata.scriptUrl) ?? fallbackScriptURL
-        let resolvedBaseURL = URL(string: resolvedMetadata.baseUrl) ?? fallbackBaseURL
+        let resolvedBaseURL = normalizedBaseURL(
+            URL(string: resolvedMetadata.baseUrl) ?? fallbackBaseURL,
+            provider: module.behavior
+        )
         let sourceURL = module.manifestURL ?? URL(string: "local://\(module.id)")!
         switch module.behavior {
         case .animePahe:
@@ -82,6 +85,17 @@ private struct SourceProviderConfiguration {
                 logKey: module.id.replacingOccurrences(of: ".", with: "_")
             )
         }
+    }
+
+    private static func normalizedBaseURL(_ url: URL, provider: StreamingProvider) -> URL {
+        guard provider == .animePahe,
+              let host = url.host?.lowercased(),
+              host == "animepahe.si" else {
+            return url
+        }
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.host = "animepahe.pw"
+        return components?.url ?? url
     }
 }
 

@@ -34,6 +34,10 @@ struct LibraryView: View {
         }
         return activeHeroAtmosphere.baseBackground
     }
+    private var libraryBannerHeight: CGFloat {
+        let heroBottomAllowance: CGFloat = (PlatformSupport.prefersTabletLayout ? 72 : 64) * 0.5 + 16
+        return UIConstants.heroHeight + heroBottomAllowance
+    }
 
     var body: some View {
         let useComfortableLayout = appState.settings.useComfortableLayout
@@ -61,8 +65,8 @@ struct LibraryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        libraryBanner
-                            .ignoresSafeArea(edges: .top)
+                        Color.clear
+                            .frame(height: libraryBannerHeight)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
 
@@ -163,6 +167,10 @@ struct LibraryView: View {
                         }
                     }
                 )
+                .overlay(alignment: .top) {
+                    libraryBanner
+                        .ignoresSafeArea(edges: .top)
+                }
                 }
                 .refreshable {
                     await loadLibrary(forceRefresh: true)
@@ -436,7 +444,6 @@ struct LibraryView: View {
     }
 
     private var libraryBanner: some View {
-        let heroBottomAllowance: CGFloat = (PlatformSupport.prefersTabletLayout ? 72 : 64) * 0.5 + 16
         return GeometryReader { proxy in
             let width = proxy.size.width
             let height = proxy.size.height
@@ -535,7 +542,7 @@ struct LibraryView: View {
             .clipped()
             .offset(y: -insetTop)
         }
-        .frame(height: UIConstants.heroHeight + heroBottomAllowance)
+        .frame(height: libraryBannerHeight)
     }
 
     private func continueWatchingItems() -> [ContinueItem] {
