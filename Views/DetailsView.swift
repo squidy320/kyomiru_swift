@@ -1258,8 +1258,8 @@ struct DetailsView: View {
         }
         
         do {
-            // Call TVDB updates endpoint to check for new episodes
-            let hasUpdates = await appState.services.tvdbClient.checkForUpdates(seriesId: tvdbShowId)
+            // Call TVDB updates endpoint through MetadataService to check for new episodes
+            let hasUpdates = await appState.services.metadataService.checkForTVDBUpdates(seriesId: tvdbShowId)
             UserDefaults.standard.set(Date(), forKey: lastCheckKey)
             return hasUpdates
         } catch {

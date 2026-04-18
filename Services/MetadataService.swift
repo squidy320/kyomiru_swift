@@ -581,6 +581,12 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v9:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:structure:v10:\(mediaId)")
     }
+
+    /// Check if TVDB has updates for a series using the updates API
+    /// Caches the check result for 12 hours per series
+    func checkForTVDBUpdates(seriesId: Int) async -> Bool {
+        return await tvdbClient.checkForUpdates(seriesId: seriesId)
+    }
 }
 
 struct EpisodeMetadata: Equatable, Codable {
