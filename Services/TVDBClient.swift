@@ -186,8 +186,8 @@ final class TVDBClient {
                     return nil
                 }
                 let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                let data = root?["data"] as? [String: Any]
-                return data?["token"] as? String
+                let payload = root?["data"] as? [String: Any]
+                return payload?["token"] as? String
             } catch {
                 return nil
             }
