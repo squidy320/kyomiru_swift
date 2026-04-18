@@ -373,7 +373,7 @@ private extension DiscoveryView {
             featuredHeroLogoURL = initialLogo
         }
 
-        async let backdropTask = appState.services.metadataService.heroBackdropURL(for: media)
+        async let backdropTask = appState.services.metadataService.heroBackdropURL(for: media, preferTextless: true)
         async let logoTask = appState.services.metadataService.logoURL(for: media)
         let resolvedBackdrop = await backdropTask
         let resolvedLogo = await logoTask

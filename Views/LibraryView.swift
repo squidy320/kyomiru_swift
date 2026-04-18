@@ -148,6 +148,7 @@ struct LibraryView: View {
                     .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
+                .ignoresSafeArea(edges: .top)
                 .background(
                     Group {
                         if bannerAtmosphereEnabled {

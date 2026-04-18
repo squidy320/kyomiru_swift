@@ -192,14 +192,22 @@ final class MetadataService {
         return meta?.backdropURL ?? meta?.posterURL
     }
 
-    func heroBackdropURL(for media: AniListMedia, tvdbSeasonNumber: Int? = nil) async -> URL? {
-        let cacheKey = heroBackdropCacheKey(for: media.id)
+    func heroBackdropURL(
+        for media: AniListMedia,
+        tvdbSeasonNumber: Int? = nil,
+        preferTextless: Bool = false
+    ) async -> URL? {
+        let cacheKey = heroBackdropCacheKey(for: media.id, preferTextless: preferTextless)
         if let cached = cachedHeroBackdrop(forKey: cacheKey) {
             return cached
         }
 
         // Try device-optimized backdrop selection first (with optional season support)
-        if let optimized = await deviceOptimizedBackdropURL(for: media, tvdbSeasonNumber: tvdbSeasonNumber) {
+        if let optimized = await deviceOptimizedBackdropURL(
+            for: media,
+            tvdbSeasonNumber: tvdbSeasonNumber,
+            preferTextless: preferTextless
+        ) {
             writeHeroBackdrop(optimized, forKey: cacheKey)
             return optimized
         }
@@ -218,7 +226,8 @@ final class MetadataService {
     /// - Returns: Device-optimized backdrop URL (landscapes for iPad, portraits for iPhone)
     private func deviceOptimizedBackdropURL(
         for media: AniListMedia,
-        tvdbSeasonNumber: Int? = nil
+        tvdbSeasonNumber: Int? = nil,
+        preferTextless: Bool = false
     ) async -> URL? {
         guard let context = await resolveArtworkContext(for: media) else { return nil }
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
@@ -239,8 +248,17 @@ final class MetadataService {
                 ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "banner")
                 ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "poster")
         } else {
-            // iPhone: Use ONLY portrait-oriented artwork (posters first, then banners)
-            // Never use landscape backgrounds on phones
+            if preferTextless {
+                // Discovery banner prefers clean fanart/backgrounds without baked-in title text.
+                return tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "background", preferTextless: true)
+                    ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "banner", preferTextless: true)
+                    ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "poster", preferTextless: true)
+                    ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "background")
+                    ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "banner")
+                    ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "poster")
+            }
+
+            // Details prefers portrait-oriented hero art on phones.
             return tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "poster")
                 ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "banner")
         }
@@ -500,24 +518,25 @@ final class MetadataService {
 
     private func metadataCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:media:v15:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
+            return "tmdb:media:v16:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber):offset:\(overrideMatch.episodeOffset)"
         }
-        return "tmdb:media:v15:\(mediaId)"
+        return "tmdb:media:v16:\(mediaId)"
     }
 
     private func logoCacheKey(for mediaId: Int) -> String {
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:logo:v5:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId)"
+            return "tmdb:logo:v6:manual:\(mediaId):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId)"
         }
-        return "tmdb:logo:v5:\(mediaId)"
+        return "tmdb:logo:v6:\(mediaId)"
     }
 
-    private func heroBackdropCacheKey(for mediaId: Int) -> String {
+    private func heroBackdropCacheKey(for mediaId: Int, preferTextless: Bool = false) -> String {
         let layoutKey = PlatformSupport.prefersTabletLayout ? "tablet" : "phone"
+        let artworkStyle = preferTextless ? "textless" : "default"
         if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
-            return "tmdb:hero-backdrop:v1:manual:\(mediaId):layout:\(layoutKey):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber)"
+            return "tmdb:hero-backdrop:v2:manual:\(mediaId):layout:\(layoutKey):style:\(artworkStyle):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber)"
         }
-        return "tmdb:hero-backdrop:v1:\(mediaId):layout:\(layoutKey)"
+        return "tmdb:hero-backdrop:v2:\(mediaId):layout:\(layoutKey):style:\(artworkStyle)"
     }
 
     private func cachedLogo(forKey key: String) -> URL?? {
@@ -594,6 +613,8 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:media:v14:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v15:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:media:v15:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v16:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:media:v16:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v1:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v2:\(mediaId)")
@@ -604,8 +625,12 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v4:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v5:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v5:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:logo:v6:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:logo:v6:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:hero-backdrop:v1:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:hero-backdrop:v1:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:hero-backdrop:v2:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:hero-backdrop:v2:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v6:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v7:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v8:\(mediaId):")

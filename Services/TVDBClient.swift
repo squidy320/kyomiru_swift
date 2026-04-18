@@ -633,11 +633,7 @@ final class TVDBClient {
             artworkTypeNames: artworkTypeNames,
             matchingAnyOf: ["background", "banner", "fanart"]
         )
-        let logo = bestArtworkURL(
-            in: artworks,
-            artworkTypeNames: artworkTypeNames,
-            matchingAnyOf: ["clearlogo", "logo"]
-        )
+        let logo = bestLogoArtworkURL(in: artworks, artworkTypeNames: artworkTypeNames)
 
         return (poster, backdrop, logo)
     }
@@ -687,6 +683,47 @@ final class TVDBClient {
             }
             .max { lhs, rhs in lhs.score < rhs.score }
         return match?.url
+    }
+
+    private func bestLogoArtworkURL(
+        in artworks: [[String: Any]],
+        artworkTypeNames: [Int: String]
+    ) -> URL? {
+        let descriptors = ["clearlogo", "logo"]
+        let candidates = artworks.compactMap { artwork -> (url: URL, score: Int)? in
+            guard let image = url(in: artwork, keys: ["image", "image_url", "thumbnail"]) else {
+                return nil
+            }
+            let descriptor = artworkDescriptor(for: artwork, artworkTypeNames: artworkTypeNames)
+            guard descriptors.contains(where: { descriptor.contains($0) }) else {
+                return nil
+            }
+
+            let language = translationLanguage(from: artwork)
+            let isClearLogo = descriptor.contains("clearlogo")
+            var score = artworkScore(for: artwork, descriptor: descriptor)
+
+            // For hero logos, prioritize English ClearLogo first, then any other ClearLogo,
+            // then fall back to generic logo assets.
+            if isClearLogo {
+                score += 400
+            }
+            switch language {
+            case "en":
+                score += 500
+            case "ja":
+                score += 200
+            case "", "null":
+                score += 100
+            default:
+                score += 50
+            }
+
+            return (image, score)
+        }
+        .sorted { lhs, rhs in lhs.score > rhs.score }
+
+        return candidates.first?.url
     }
 
     private func artworkScore(for artwork: [String: Any], descriptor: String) -> Int {
