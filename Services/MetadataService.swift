@@ -226,9 +226,10 @@ final class MetadataService {
                 ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "banner")
                 ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "poster")
         } else {
-            // iPhone: Use portrait posters
+            // iPhone: Use ONLY portrait-oriented artwork (posters first, then banners)
+            // Never use landscape backgrounds on phones
             return tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "poster")
-                ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "background", preferTextless: true)
+                ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "banner")
         }
     }
 
