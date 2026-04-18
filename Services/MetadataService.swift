@@ -72,6 +72,10 @@ private struct TMDBLogoCacheEntry: Codable {
     let url: URL?
 }
 
+private struct TMDBHeroBackdropCacheEntry: Codable {
+    let url: URL?
+}
+
 private enum TMDBMetadataCacheResult {
     case hit(TMDBMetadata)
     case negative
@@ -121,7 +125,8 @@ final class MetadataService {
 
     func cachedHeroArtwork(for media: AniListMedia) -> (backdrop: URL?, logo: URL?) {
         let metadata = cachedTMDBMetadata(for: media)
-        let backdrop = metadata?.heroBackdropURL ?? metadata?.backdropURL ?? metadata?.posterURL
+        let cachedHeroBackdrop = cachedHeroBackdrop(forKey: heroBackdropCacheKey(for: media.id)) ?? nil
+        let backdrop = cachedHeroBackdrop ?? metadata?.heroBackdropURL ?? metadata?.backdropURL ?? metadata?.posterURL
         let cachedLogoURL = cachedLogo(forKey: logoCacheKey(for: media.id)) ?? nil
         let logo = metadata?.logoURL ?? cachedLogoURL
         return (backdrop, logo)
@@ -188,14 +193,22 @@ final class MetadataService {
     }
 
     func heroBackdropURL(for media: AniListMedia, tvdbSeasonNumber: Int? = nil) async -> URL? {
+        let cacheKey = heroBackdropCacheKey(for: media.id)
+        if let cached = cachedHeroBackdrop(forKey: cacheKey) {
+            return cached
+        }
+
         // Try device-optimized backdrop selection first (with optional season support)
         if let optimized = await deviceOptimizedBackdropURL(for: media, tvdbSeasonNumber: tvdbSeasonNumber) {
+            writeHeroBackdrop(optimized, forKey: cacheKey)
             return optimized
         }
-        
+
         // Fallback to standard metadata
         let meta = await fetchTMDBMetadata(for: media)
-        return meta?.heroBackdropURL ?? meta?.backdropURL ?? meta?.posterURL
+        let fallback = meta?.heroBackdropURL ?? meta?.backdropURL ?? meta?.posterURL
+        writeHeroBackdrop(fallback, forKey: cacheKey)
+        return fallback
     }
 
     /// Get device-optimized backdrop/poster for full-screen display
@@ -499,6 +512,14 @@ final class MetadataService {
         return "tmdb:logo:v5:\(mediaId)"
     }
 
+    private func heroBackdropCacheKey(for mediaId: Int) -> String {
+        let layoutKey = PlatformSupport.prefersTabletLayout ? "tablet" : "phone"
+        if let overrideMatch = tmdbMatcher.manualOverride(for: mediaId) {
+            return "tmdb:hero-backdrop:v1:manual:\(mediaId):layout:\(layoutKey):type:\(overrideMatch.mediaType ?? "tv"):show:\(overrideMatch.showId):season:\(overrideMatch.seasonNumber)"
+        }
+        return "tmdb:hero-backdrop:v1:\(mediaId):layout:\(layoutKey)"
+    }
+
     private func cachedLogo(forKey key: String) -> URL?? {
         if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.metadataCacheTTL),
            let decoded = try? JSONDecoder().decode(TMDBLogoCacheEntry.self, from: cached) {
@@ -512,9 +533,33 @@ final class MetadataService {
         return nil
     }
 
+    private func cachedHeroBackdrop(forKey key: String) -> URL?? {
+        if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.metadataCacheTTL),
+           let decoded = try? JSONDecoder().decode(TMDBHeroBackdropCacheEntry.self, from: cached) {
+            return decoded.url
+        }
+        if let cached = cacheStore.readJSON(forKey: key, maxAge: Self.negativeMetadataCacheTTL),
+           let negative = try? JSONDecoder().decode(TMDBMetadataNegativeCacheEntry.self, from: cached),
+           negative.missing {
+            return .some(nil)
+        }
+        return nil
+    }
+
     private func writeLogo(_ url: URL?, forKey key: String) {
         if let url {
             let entry = TMDBLogoCacheEntry(url: url)
+            if let data = try? JSONEncoder().encode(entry) {
+                cacheStore.writeJSON(data, forKey: key)
+            }
+        } else {
+            writeNegativeMetadataCache(forKey: key)
+        }
+    }
+
+    private func writeHeroBackdrop(_ url: URL?, forKey key: String) {
+        if let url {
+            let entry = TMDBHeroBackdropCacheEntry(url: url)
             if let data = try? JSONEncoder().encode(entry) {
                 cacheStore.writeJSON(data, forKey: key)
             }
@@ -559,6 +604,8 @@ final class MetadataService {
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v4:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v5:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:logo:v5:manual:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:hero-backdrop:v1:\(mediaId)")
+        cacheStore.removeKeys(withPrefix: "tmdb:hero-backdrop:v1:manual:\(mediaId)")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v6:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v7:\(mediaId):")
         cacheStore.removeKeys(withPrefix: "tmdb:ratings:v8:\(mediaId):")
@@ -828,6 +875,7 @@ final class EpisodeMetadataService {
         provider: Provider = .tvdb,
         session: URLSession = .custom,
         tmdbMatcher: TMDBMatchingService? = nil,
+        cacheManager: MetadataCacheManager = MetadataCacheManager(),
         preferenceStore: EpisodeMetadataPreferenceStore = .shared
     ) {
         self.cacheStore = cacheStore
@@ -838,7 +886,7 @@ final class EpisodeMetadataService {
         let bundleKey = Bundle.main.object(forInfoDictionaryKey: "TVDB_API_KEY") as? String
         let defaultsKey = UserDefaults.standard.string(forKey: "TVDB_API_KEY")
         self.tmdbKey = (bundleKey?.isEmpty == false) ? bundleKey : defaultsKey
-        self.cacheManager = MetadataCacheManager()
+        self.cacheManager = cacheManager
         self.preferenceStore = preferenceStore
     }
 
@@ -872,20 +920,33 @@ final class EpisodeMetadataService {
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
             let structureKey = "tmdb:structure:v10:\(media.id)"
-            guard let cachedStructure = cacheStore.readJSON(forKey: structureKey),
-                  let structured = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cachedStructure) else {
-                return nil
+            if let cachedStructure = cacheStore.readJSON(forKey: structureKey),
+               let structured = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cachedStructure) {
+                let seasonNumber = structured.currentSlice.tmdbSeasonNumber
+                let episodeOffset = structured.currentSlice.episodeOffset
+                let showId = structured.showId
+                let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
+                let showKey = ":show:\(showId)"
+                let absoluteKey = ":abs:\(structured.currentSlice.absoluteStart)-\(structured.currentSlice.absoluteEnd)"
+                let cacheKey = "episode-meta:tmdb:v12:\(media.id)\(showKey):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)\(absoluteKey)"
+                if let cached = cacheStore.readJSON(forKey: cacheKey),
+                   let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
+                    return decoded
+                }
+                let genericCacheKey = "episode-meta:tmdb:v12:\(media.id):show:\(showId):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+                if let cached = cacheStore.readJSON(forKey: genericCacheKey),
+                   let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
+                    return decoded
+                }
             }
-            let seasonNumber = structured.currentSlice.tmdbSeasonNumber
-            let episodeOffset = structured.currentSlice.episodeOffset
-            let showId = structured.showId
-            let offsetKey = episodeOffset != 0 ? ":offset:\(episodeOffset)" : ""
-            let showKey = ":show:\(showId)"
-            let absoluteKey = ":abs:\(structured.currentSlice.absoluteStart)-\(structured.currentSlice.absoluteEnd)"
-            let cacheKey = "episode-meta:tmdb:v12:\(media.id)\(showKey):season:\(seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)\(absoluteKey)"
-            if let cached = cacheStore.readJSON(forKey: cacheKey),
-               let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
-                return decoded
+
+            if let cachedMatch = cacheManager.load(aniListId: media.id) {
+                let offsetKey = cachedMatch.episodeOffset != 0 ? ":offset:\(cachedMatch.episodeOffset)" : ""
+                let genericCacheKey = "episode-meta:tmdb:v12:\(media.id):show:\(cachedMatch.showId):season:\(cachedMatch.seasonNumber):count:\(desiredCount)\(maxKey)\(offsetKey)"
+                if let cached = cacheStore.readJSON(forKey: genericCacheKey),
+                   let decoded = try? JSONDecoder().decode([Int: EpisodeMetadata].self, from: cached) {
+                    return decoded
+                }
             }
             return nil
         }

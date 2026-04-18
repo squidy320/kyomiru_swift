@@ -185,7 +185,8 @@ final class AppServices {
             cacheStore: cacheStore,
             aniListClient: aniListClient,
             provider: .tvdb,
-            tmdbMatcher: tmdbMatchingService
+            tmdbMatcher: tmdbMatchingService,
+            cacheManager: metadataCacheManager
         )
         self.aniSkipService = AniSkipService()
         self.trendingService = TrendingService(cacheStore: cacheStore)
