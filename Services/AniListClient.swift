@@ -31,6 +31,7 @@ final class AniListClient {
         static let viewer: TimeInterval = 60 * 10
         static let trending: TimeInterval = 60 * 10
         static let discoverySections: TimeInterval = 60 * 10
+        static let discoveryTopRatedPool: TimeInterval = 60 * 60 * 6
         static let library: TimeInterval = 60 * 5
         static let browse: TimeInterval = 60 * 10
         static let tracking: TimeInterval = 60 * 5
@@ -48,6 +49,7 @@ final class AniListClient {
     private let rateLimiter = AniListRateLimiter()
     private var cachedTrending: (items: [AniListMedia], expires: Date)?
     private var cachedDiscoverySections: (sort: String, items: [AniListDiscoverySection], expires: Date)?
+    private var cachedDiscoveryTopRatedPool: (items: [AniListMedia], expires: Date)?
     private var cachedLibrarySections: (items: [AniListLibrarySection], expires: Date)?
     private var cachedTrackingEntries: [Int: (entry: AniListTrackingEntry?, expires: Date)] = [:]
     private var cachedAvailability: [Int: (entry: AniListEpisodeAvailability?, expires: Date)] = [:]
@@ -206,6 +208,88 @@ final class AniListClient {
         cachedDiscoverySections = (sort, sections, Date().addingTimeInterval(CacheTTL.discoverySections))
         AppLog.debug(.network, "discovery sections request success count=\(sections.count)")
         return sections
+    }
+
+    func discoveryTopRatedAnimePool(limit: Int = 1000, forceRefresh: Bool = false) async throws -> [AniListMedia] {
+        let cappedLimit = max(1, min(limit, 1000))
+        if !forceRefresh {
+            if let cached = cachedDiscoveryTopRatedPool, cached.expires > Date(), cached.items.count >= cappedLimit {
+                AppLog.debug(.cache, "discovery top-rated pool cache hit")
+                return Array(cached.items.prefix(cappedLimit))
+            }
+            if let cached = cachedDiscoveryTopRatedPoolFromDisk(limit: cappedLimit) {
+                AppLog.debug(.cache, "discovery top-rated pool disk cache hit")
+                cachedDiscoveryTopRatedPool = (cached, Date().addingTimeInterval(CacheTTL.discoveryTopRatedPool))
+                return Array(cached.prefix(cappedLimit))
+            }
+        } else {
+            AppLog.debug(.cache, "discovery top-rated pool cache bypass")
+        }
+
+        let pageSize = 50
+        let pageCount = Int(ceil(Double(cappedLimit) / Double(pageSize)))
+        let mediaFields = """
+          id
+          idMal
+          title { romaji english native }
+          coverImage { extraLarge large }
+          bannerImage
+          averageScore
+          episodes
+          seasonYear
+          startDate { year month day }
+          format
+          status
+          isAdult
+          genres
+          studios(isMain: true) { nodes { name } }
+        """
+
+        var collected: [AniListMedia] = []
+        collected.reserveCapacity(cappedLimit)
+        do {
+            for page in 1...pageCount {
+                let query = """
+                query DiscoveryTopRatedPool($page: Int, $perPage: Int) {
+                  Page(page: $page, perPage: $perPage) {
+                    media(type: ANIME, sort: [SCORE_DESC], isAdult: false) {
+                      \(mediaFields)
+                    }
+                  }
+                }
+                """
+                let data = try await graphql(query: query, variables: ["page": page, "perPage": pageSize])
+                let pageItems = decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
+                collected.append(contentsOf: pageItems)
+                if pageItems.count < pageSize {
+                    break
+                }
+            }
+        } catch {
+            if let stale = cachedDiscoveryTopRatedPoolFromDisk(limit: cappedLimit, allowStale: true) {
+                AppLog.debug(.cache, "discovery top-rated pool stale cache fallback")
+                cachedDiscoveryTopRatedPool = (stale, Date().addingTimeInterval(CacheTTL.staleFallback))
+                return Array(stale.prefix(cappedLimit))
+            }
+            throw error
+        }
+
+        let unique = Array(Dictionary(uniqueKeysWithValues: collected.map { ($0.id, $0) }).values)
+            .sorted { lhs, rhs in
+                let lhsScore = lhs.averageScore ?? 0
+                let rhsScore = rhs.averageScore ?? 0
+                if lhsScore == rhsScore {
+                    return lhs.id < rhs.id
+                }
+                return lhsScore > rhsScore
+            }
+        let trimmed = Array(unique.prefix(cappedLimit))
+        if let data = try? JSONEncoder().encode(trimmed) {
+            cacheStore.writeJSON(data, forKey: discoveryTopRatedPoolCacheKey(limit: cappedLimit))
+        }
+        cachedDiscoveryTopRatedPool = (trimmed, Date().addingTimeInterval(CacheTTL.discoveryTopRatedPool))
+        AppLog.debug(.network, "discovery top-rated pool request success count=\(trimmed.count)")
+        return trimmed
     }
 
 func librarySections(token: String, forceRefresh: Bool = false) async throws -> [AniListLibrarySection] {
@@ -479,6 +563,21 @@ func librarySections(token: String, forceRefresh: Bool = false) async throws -> 
     private func cachedTrendingFromDisk() -> [AniListMedia]? {
         guard let data = cacheStore.readJSON(forKey: "discovery:trending", maxAge: CacheTTL.trending) else { return nil }
         return decodeMediaList(data: data, keyPath: ["data", "Page", "media"])
+    }
+
+    private func cachedDiscoveryTopRatedPoolFromDisk(limit: Int, allowStale: Bool = false) -> [AniListMedia]? {
+        let data = allowStale
+            ? cacheStore.readJSON(forKey: discoveryTopRatedPoolCacheKey(limit: limit))
+            : cacheStore.readJSON(forKey: discoveryTopRatedPoolCacheKey(limit: limit), maxAge: CacheTTL.discoveryTopRatedPool)
+        guard let data,
+              let decoded = try? JSONDecoder().decode([AniListMedia].self, from: data) else {
+            return nil
+        }
+        return decoded
+    }
+
+    private func discoveryTopRatedPoolCacheKey(limit: Int) -> String {
+        "discovery:top-rated-pool:v1:limit:\(limit)"
     }
 
     private func discoverySectionQueryConfig(sectionId: String, sort: String) -> (String, String) {

@@ -9,20 +9,17 @@ struct DiscoveryView: View {
     @State private var sections: [AniListDiscoverySection] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var heroIndex = 0
-    @State private var imdbTrending: [TrendingItem] = []
-    @State private var heroTrending: TrendingItem?
-    @State private var heroAnime: AniListMedia?
+    @State private var featuredMedia: AniListMedia?
+    @State private var featuredHeroBackdropURL: URL?
+    @State private var featuredHeroLogoURL: URL?
     @State private var heroAtmosphere: HeroAtmosphere = .fallback
-    @State private var isLoadingImdbTrending = false
-    @State private var imdbAniListMap: [Int: AniListMedia] = [:]
+    @State private var isLoadingFeaturedBanner = false
     @State private var navigateMedia: AniListMedia?
     @State private var discoveryLoadGeneration = 0
     @State private var launchHeroImageKey: String?
     @State private var launchHeroImageReady = false
     @State private var launchHeroAtmosphereReady = false
     @StateObject private var networkMonitor = NetworkMonitor.shared
-    private let heroTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
     private var coreSections: [AniListDiscoverySection] {
         let order = ["trending", "hotNow", "upcoming", "allTime"]
@@ -63,7 +60,7 @@ struct DiscoveryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        heroCarousel
+                        featuredBanner
                             .ignoresSafeArea(edges: .top)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
@@ -152,6 +149,9 @@ struct DiscoveryView: View {
                 }
                 .ignoresSafeArea(edges: .top)
                 .refreshable {
+                    if featuredMedia == nil {
+                        await loadFeaturedBanner()
+                    }
                     await loadDiscovery(forceRefresh: true)
                 }
                 .navigationTitle("")
@@ -180,18 +180,16 @@ struct DiscoveryView: View {
                let cached = appState.services.aniListClient.cachedDiscoverySectionsSnapshot(sort: discoverySort(), allowStale: true) {
                 sections = cached
             }
-            await loadImdbTrending()
+            await loadFeaturedBanner()
             if sections.isEmpty {
                 await loadDiscovery(forceRefresh: false)
             }
-            appState.markDiscoveryLaunchReady()
-            if heroTrending == nil {
-                updateLaunchHeroState(for: nil)
+            if featuredMedia == nil {
+                await loadFeaturedBanner()
             }
-        }
-        .onChange(of: sections) { _, _ in
-            if heroIndex >= heroItems().count {
-                heroIndex = 0
+            appState.markDiscoveryLaunchReady()
+            if featuredMedia == nil {
+                updateLaunchHeroState(for: nil)
             }
         }
         .onChange(of: librarySortRaw) { _, _ in
@@ -204,51 +202,7 @@ struct DiscoveryView: View {
         }
     }
 
-    private var heroCarousel: AnyView {
-        let items = heroItems()
-        if items.isEmpty {
-            return AnyView(erasing:
-                HeroHeader(
-                    title: "Easygoing Territory Defense",
-                    subtitle: "Top rated, new releases, and hot anime",
-                    imageURL: nil,
-                    media: nil,
-                    pills: [],
-                    tags: [],
-                    height: UIConstants.heroHeight,
-                    fullBleed: true
-                )
-            )
-        }
-
-        return AnyView(erasing:
-            TabView(selection: $heroIndex) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, media in
-                    NavigationLink {
-                        DetailsView(media: media)
-                    } label: {
-                        heroHeader(for: media)
-                    }
-                    .buttonStyle(.plain)
-                    .tag(index)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .frame(height: UIConstants.heroHeight)
-            .onReceive(heroTimer) { _ in
-                guard !items.isEmpty else { return }
-                if appState.settings.reduceMotion {
-                    heroIndex = (heroIndex + 1) % items.count
-                } else {
-                    withAnimation(.easeInOut(duration: 0.4)) {
-                        heroIndex = (heroIndex + 1) % items.count
-                    }
-                }
-            }
-        )
-    }
-
-    private var heroHeader: some View {
+    private var featuredBanner: some View {
         let heroBottomAllowance: CGFloat = (PlatformSupport.prefersTabletLayout ? 72 : 64) * 0.5 + 16
         return GeometryReader { proxy in
             let width = proxy.size.width
@@ -257,7 +211,7 @@ struct DiscoveryView: View {
             let heroImageAlignment: Alignment = isPad ? .center : .bottom
             ZStack(alignment: .bottomLeading) {
                 Group {
-                    if let heroTrending, let url = heroTrending.backdropURL {
+                    if let url = currentHeroImageURL {
                         CachedImage(url: url, onLoaded: handleLaunchHeroImageLoaded(_:)) { image in
                             image
                                 .resizable()
@@ -313,23 +267,38 @@ struct DiscoveryView: View {
                 .frame(height: (height + insetTop) * 0.26)
                 .frame(maxHeight: .infinity, alignment: .bottom)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    if let logo = heroTrending?.logoURL {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Featuring")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(featureLabelForeground)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(featureLabelBackground)
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(featureLabelBorder, lineWidth: 1)
+                        )
+
+                    if let logo = featuredHeroLogoURL {
                         CachedImage(url: logo) { image in
                             image.resizable().scaledToFit()
                         } placeholder: {
                             Color.clear
                         }
-                        .frame(maxWidth: 220)
-                    } else if let title = heroTrending?.title {
+                        .frame(maxWidth: isPad ? 320 : 260, alignment: .leading)
+                    } else if let title = featuredMedia?.title.best {
                         Text(title)
-                            .font(.system(size: 20, weight: .semibold))
+                            .font(.system(size: isPad ? 34 : 26, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
                             .lineLimit(2)
+                            .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 4)
                     }
                 }
                 .padding(.horizontal, UIConstants.standardPadding)
-                .padding(.bottom, 24)
+                .padding(.bottom, 28)
             }
             .frame(width: width, height: height + insetTop)
             .clipped()
@@ -341,87 +310,23 @@ struct DiscoveryView: View {
         }
         .frame(height: UIConstants.heroHeight + heroBottomAllowance)
     }
-
-    private var imdbCarousel: AnyView {
-        if isLoadingImdbTrending {
-            return AnyView(erasing:
-                GlassCard {
-                    Text("Loading trending…")
-                        .foregroundColor(Theme.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            )
-        }
-        if imdbTrending.isEmpty {
-            return heroCarousel
-        }
-
-        return AnyView(erasing:
-            VStack(alignment: .leading, spacing: UIConstants.microPadding) {
-                Text("Trending")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Theme.textSecondary)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: UIConstants.interCardSpacing) {
-                        ForEach(imdbTrending, id: \.id) { item in
-                            Button {
-                                handleImdbTap(item)
-                            } label: {
-                                CinematicTrendingCard(item: item)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, UIConstants.heroTopPadding)
-                }
-                .scrollClipDisabled()
-            }
-            .padding(.top, UIConstants.heroTopPadding)
-        )
-    }
-
-    private func heroHeader(for heroMedia: AniListMedia) -> some View {
-        let match = heroMedia.averageScore ?? 91
-        let rating = heroMedia.averageScore ?? 83
-        let contentRating = heroMedia.isAdult ? "TV-MA" : "TV-14"
-        let pills = [
-            HeroPill(icon: "hand.thumbsup.fill", text: "\(match)% Match"),
-            HeroPill(icon: "star.fill", text: "Score \(rating)%"),
-            HeroPill(icon: "shield.fill", text: contentRating),
-        ]
-        let tags = Array(heroMedia.genres.prefix(2))
-
-        return HeroHeader(
-            title: heroMedia.title.best,
-            subtitle: "Top rated, new releases, and hot anime",
-            imageURL: heroMedia.bannerURL ?? heroMedia.coverURL,
-            media: heroMedia,
-            pills: pills,
-            tags: tags,
-            height: UIConstants.heroHeight,
-            fullBleed: true
-        )
-    }
-
 }
 
 private extension DiscoveryView {
-    var currentHeroMedia: AniListMedia? {
-        let items = heroItems()
-        guard !items.isEmpty else { return nil }
-        return items[min(heroIndex, items.count - 1)]
-    }
-
     var currentHeroImageURL: URL? {
-        currentHeroMedia?.bannerURL ?? currentHeroMedia?.coverURL
+        featuredHeroBackdropURL ?? featuredMedia?.bannerURL ?? featuredMedia?.coverURL
     }
 
-    func heroItems() -> [AniListMedia] {
-        if let trending = sections.first(where: { $0.id == "trending" }) {
-            return Array(trending.items.prefix(5))
-        }
-        let items = sections.first?.items ?? []
-        return Array(items.prefix(5))
+    var featureLabelForeground: Color {
+        bannerAtmosphereEnabled ? activeHeroAtmosphere.topFeather.opacity(0.96) : Color.white.opacity(0.82)
+    }
+
+    var featureLabelBackground: Color {
+        bannerAtmosphereEnabled ? activeHeroAtmosphere.baseBackground.opacity(0.22) : Color.white.opacity(0.08)
+    }
+
+    var featureLabelBorder: Color {
+        bannerAtmosphereEnabled ? activeHeroAtmosphere.bottomFeather.opacity(0.28) : Color.white.opacity(0.12)
     }
 
     @MainActor
@@ -436,6 +341,77 @@ private extension DiscoveryView {
         }
         launchHeroAtmosphereReady = true
         updateLaunchVisualReadiness()
+    }
+
+    func loadFeaturedBanner() async {
+        await MainActor.run {
+            isLoadingFeaturedBanner = true
+            if let existing = appState.discoveryFeaturedMedia {
+                featuredMedia = existing
+            }
+        }
+
+        if let existing = appState.discoveryFeaturedMedia {
+            await resolveFeaturedBannerAssets(for: existing)
+            await MainActor.run {
+                isLoadingFeaturedBanner = false
+            }
+            return
+        }
+
+        do {
+            let pool = try await appState.services.aniListClient.discoveryTopRatedAnimePool(limit: 1000)
+            let randomFeatured = pool.randomElement()
+            await MainActor.run {
+                appState.setDiscoveryFeaturedMedia(randomFeatured)
+                featuredMedia = randomFeatured
+            }
+            if let randomFeatured {
+                await resolveFeaturedBannerAssets(for: randomFeatured)
+            }
+        } catch {
+            AppLog.error(.network, "discovery featured banner load failed \(error.localizedDescription)")
+            if let fallback = featuredMedia ?? sections.first(where: { $0.id == "allTime" })?.items.first ?? sections.first?.items.first {
+                await MainActor.run {
+                    if appState.discoveryFeaturedMedia == nil {
+                        appState.setDiscoveryFeaturedMedia(fallback)
+                    }
+                    featuredMedia = fallback
+                }
+                await resolveFeaturedBannerAssets(for: fallback)
+            }
+        }
+
+        await MainActor.run {
+            isLoadingFeaturedBanner = false
+        }
+    }
+
+    func resolveFeaturedBannerAssets(for media: AniListMedia) async {
+        let cachedArtwork = appState.services.metadataService.cachedHeroArtwork(for: media)
+        let initialBackdrop = cachedArtwork.backdrop ?? media.bannerURL ?? media.coverURL
+        let initialLogo = cachedArtwork.logo
+
+        await MainActor.run {
+            guard featuredMedia?.id == media.id || appState.discoveryFeaturedMedia?.id == media.id else { return }
+            featuredMedia = media
+            featuredHeroBackdropURL = initialBackdrop
+            featuredHeroLogoURL = initialLogo
+        }
+
+        async let backdropTask = appState.services.metadataService.heroBackdropURL(for: media)
+        async let logoTask = appState.services.metadataService.logoURL(for: media)
+        let resolvedBackdrop = await backdropTask
+        let resolvedLogo = await logoTask
+
+        await MainActor.run {
+            guard featuredMedia?.id == media.id || appState.discoveryFeaturedMedia?.id == media.id else { return }
+            featuredMedia = media
+            featuredHeroBackdropURL = resolvedBackdrop ?? initialBackdrop
+            featuredHeroLogoURL = resolvedLogo ?? initialLogo
+        }
+
+        await prefetchFeaturedBannerAssets()
     }
 
     func loadDiscovery(forceRefresh: Bool) async {
@@ -493,92 +469,21 @@ private extension DiscoveryView {
         return item.status.badgeTitle
     }
 
-    func loadImdbTrending() async {
-        await MainActor.run {
-            isLoadingImdbTrending = true
-        }
-        if heroTrending == nil {
-            let randomHero = await appState.services.trendingService.fetchRandomDiscoverAnime(minVoteCount: 50)
-            await MainActor.run {
-                if let randomHero {
-                    heroTrending = randomHero
-                }
-            }
-        }
-        let items = await appState.services.trendingService.fetchTrending()
-        await MainActor.run {
-            imdbTrending = items
-            if heroTrending == nil {
-                heroTrending = items.randomElement()
-            }
-        }
-        if let heroTrending {
-            await prefetchAniListMappings(items: [heroTrending])
-        } else {
-            await prefetchAniListMappings(items: Array(items.prefix(5)))
-        }
-        await MainActor.run {
-            isLoadingImdbTrending = false
-        }
-        await prefetchDiscoveryImages()
-    }
-
-    func prefetchAniListMappings(items: [TrendingItem]) async {
-        for item in items {
-            if imdbAniListMap[item.id] != nil { continue }
-            if let media = (try? await appState.services.aniListClient.searchAnimeByTitle(item.title)) ?? nil {
-                imdbAniListMap[item.id] = media
-            }
-        }
-    }
-
-    func handleImdbTap(_ item: TrendingItem) {
-        if let media = imdbAniListMap[item.id] {
-            navigateMedia = media
-            return
-        }
-        Task {
-            if let media = (try? await appState.services.aniListClient.searchAnimeByTitle(item.title)) ?? nil {
-                imdbAniListMap[item.id] = media
-                navigateMedia = media
-            }
-        }
-    }
-
     func handleHeroTap() {
-        guard let heroTrending else { return }
-        if let media = imdbAniListMap[heroTrending.id] {
-            heroAnime = media
-            navigateMedia = media
-            return
-        }
-        Task {
-            if let media = (try? await appState.services.aniListClient.searchAnimeByTitle(heroTrending.title)) ?? nil {
-                imdbAniListMap[heroTrending.id] = media
-                heroAnime = media
-                navigateMedia = media
-            }
-        }
+        guard let featuredMedia else { return }
+        navigateMedia = featuredMedia
     }
 
-    func prefetchDiscoveryImages(limit: Int = 4) async {
+    func prefetchFeaturedBannerAssets() async {
         guard networkMonitor.isOnWiFi else { return }
-        var urls: [URL] = []
-        let trendingItems = imdbTrending.prefix(limit)
-        for item in trendingItems {
-            if let backdrop = item.backdropURL { urls.append(backdrop) }
-            if let logo = item.logoURL { urls.append(logo) }
-        }
-        if let heroTrending {
-            if let backdrop = heroTrending.backdropURL { urls.append(backdrop) }
-            if let logo = heroTrending.logoURL { urls.append(logo) }
-        }
+        let urls = [featuredHeroBackdropURL, featuredHeroLogoURL, featuredMedia?.bannerURL, featuredMedia?.coverURL]
+            .compactMap { $0 }
         await ImageCache.shared.prefetch(urls: urls)
     }
 
     @MainActor
     func updateLaunchHeroState(for url: URL?) {
-        let hasResolvedHeroSource = heroTrending != nil || !isLoadingImdbTrending
+        let hasResolvedHeroSource = featuredMedia != nil || !isLoadingFeaturedBanner
         launchHeroImageKey = url?.absoluteString
         launchHeroImageReady = hasResolvedHeroSource && url == nil
         launchHeroAtmosphereReady = !bannerAtmosphereEnabled || (hasResolvedHeroSource && url == nil)
@@ -587,7 +492,7 @@ private extension DiscoveryView {
 
     @MainActor
     func handleLaunchHeroImageLoaded(_ url: URL) {
-        guard heroTrending?.backdropURL?.absoluteString == url.absoluteString else { return }
+        guard currentHeroImageURL?.absoluteString == url.absoluteString else { return }
         launchHeroImageReady = true
         updateLaunchVisualReadiness()
     }

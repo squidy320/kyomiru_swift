@@ -19,6 +19,7 @@ final class AppState: ObservableObject {
     @Published private(set) var libraryLaunchReady = false
     @Published private(set) var discoveryVisualLaunchReady = false
     @Published private(set) var libraryVisualLaunchReady = false
+    @Published private(set) var discoveryFeaturedMedia: AniListMedia?
     let services: AppServices
     @Published var authState: AuthState
     private var hasBootstrapped = false
@@ -72,6 +73,10 @@ final class AppState: ObservableObject {
 
     func markDiscoveryLaunchVisualReady() {
         discoveryVisualLaunchReady = true
+    }
+
+    func setDiscoveryFeaturedMedia(_ media: AniListMedia?) {
+        discoveryFeaturedMedia = media
     }
 
     func markLibraryLaunchVisualReady() {
