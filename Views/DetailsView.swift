@@ -1343,7 +1343,7 @@ struct DetailsView: View {
         
         // Try to get TVDB season number from AniMap for season-specific artwork
         var tvdbSeasonNumber: Int? = nil
-        if let match = await appState.services.tmdbMatcher.resolveShowAndSeason(
+        if let match = await appState.services.tmdbMatchingService.resolveShowAndSeason(
             media: media,
             expectedEpisodeCount: media.episodes
         ) {

@@ -155,16 +155,16 @@ final class TVDBClient {
 
     func fetchSeries(_ id: Int) async -> TVDBSeriesRecord? {
         let root = await requestObject(path: "/series/\(id)/extended", queryItems: [URLQueryItem(name: "meta", value: "translations")])
-            ?? requestObject(path: "/series/\(id)")
-        guard let root else { return nil }
+        let fallbackRoot = root == nil ? await requestObject(path: "/series/\(id)") : nil
+        guard let root = root ?? fallbackRoot else { return nil }
         let artworkTypeNames = await artworkTypeNames()
         return parseSeries(from: root, artworkTypeNames: artworkTypeNames)
     }
 
     func fetchMovie(_ id: Int) async -> TVDBMovieRecord? {
         let root = await requestObject(path: "/movies/\(id)/extended", queryItems: [URLQueryItem(name: "meta", value: "translations")])
-            ?? requestObject(path: "/movies/\(id)")
-        guard let root else { return nil }
+        let fallbackRoot = root == nil ? await requestObject(path: "/movies/\(id)") : nil
+        guard let root = root ?? fallbackRoot else { return nil }
         let artworkTypeNames = await artworkTypeNames()
         return parseMovie(from: root, artworkTypeNames: artworkTypeNames)
     }
