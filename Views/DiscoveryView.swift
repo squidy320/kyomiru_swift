@@ -268,20 +268,6 @@ struct DiscoveryView: View {
                 .frame(maxHeight: .infinity, alignment: .bottom)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Featuring")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(featureLabelForeground)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(featureLabelBackground)
-                        )
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(featureLabelBorder, lineWidth: 1)
-                        )
-
                     if let logo = featuredHeroLogoURL {
                         CachedImage(url: logo) { image in
                             image.resizable().scaledToFit()
@@ -315,18 +301,6 @@ struct DiscoveryView: View {
 private extension DiscoveryView {
     var currentHeroImageURL: URL? {
         featuredHeroBackdropURL ?? featuredMedia?.bannerURL ?? featuredMedia?.coverURL
-    }
-
-    var featureLabelForeground: Color {
-        bannerAtmosphereEnabled ? activeHeroAtmosphere.topFeather.opacity(0.96) : Color.white.opacity(0.82)
-    }
-
-    var featureLabelBackground: Color {
-        bannerAtmosphereEnabled ? activeHeroAtmosphere.baseBackground.opacity(0.22) : Color.white.opacity(0.08)
-    }
-
-    var featureLabelBorder: Color {
-        bannerAtmosphereEnabled ? activeHeroAtmosphere.bottomFeather.opacity(0.28) : Color.white.opacity(0.12)
     }
 
     @MainActor

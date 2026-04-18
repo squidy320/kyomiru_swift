@@ -61,32 +61,8 @@ struct LibraryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack(alignment: .top, spacing: UIConstants.standardPadding) {
-                            Button(action: {
-                                if appState.authState.isSignedIn {
-                                    showAlertsSheet = true
-                                } else {
-                                    Task { await appState.authState.signIn() }
-                                }
-                            }) {
-                                avatarView(
-                                    size: PlatformSupport.prefersTabletLayout ? 64 : 56,
-                                    avatarURL: appState.authState.user?.avatarURL
-                                )
-                            }
-                            .buttonStyle(.plain)
-
-                            VStack(alignment: .leading, spacing: 0) {
-                                LibraryTopBar(
-                                    title: "Library",
-                                    subtitle: "Currently watching and synced lists"
-                                )
-                            }
-
-                            Spacer()
-                        }
-                        .padding(UIConstants.standardPadding)
-                        .padding(.top, 12)
+                        libraryBanner
+                            .ignoresSafeArea(edges: .top)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
 
@@ -351,7 +327,7 @@ struct LibraryView: View {
 
     @MainActor
     private func refreshHeroAtmosphere() async {
-        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: appState.authState.user?.avatarURL)
+        let atmosphere = await HeroAtmosphereResolver.shared.atmosphere(for: appState.authState.user?.bannerURL)
         if appState.settings.reduceMotion {
             heroAtmosphere = atmosphere
         } else {
@@ -457,6 +433,109 @@ struct LibraryView: View {
                     .foregroundColor(.white)
                     .font(.system(size: size * 0.32, weight: .semibold))
             )
+    }
+
+    private var libraryBanner: some View {
+        let heroBottomAllowance: CGFloat = (PlatformSupport.prefersTabletLayout ? 72 : 64) * 0.5 + 16
+        return GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let insetTop = proxy.safeAreaInsets.top
+            let bannerURL = appState.authState.user?.bannerURL
+            let imageAlignment: Alignment = isPad ? .center : .center
+
+            ZStack(alignment: .bottomLeading) {
+                Group {
+                    if let bannerURL {
+                        CachedImage(url: bannerURL) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: width, height: height + insetTop, alignment: imageAlignment)
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
+                        Theme.surface
+                    }
+                }
+                .frame(width: width, height: height + insetTop)
+                .clipped()
+
+                LinearGradient(
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.bottomFeather.opacity(0.48), activeHeroAtmosphere.bottomFeather.opacity(0.28), Color.clear]
+                        : [Theme.baseBackground.opacity(0.48), Theme.baseBackground.opacity(0.28), Color.clear],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(width: width, height: (height + insetTop) * 0.66)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+
+                LinearGradient(
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.topFeather.opacity(0.72), activeHeroAtmosphere.topFeather.opacity(0.24), Color.clear]
+                        : [Theme.baseBackground.opacity(0.72), Theme.baseBackground.opacity(0.24), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: (height + insetTop) * 0.30)
+                .frame(maxHeight: .infinity, alignment: .top)
+
+                LinearGradient(
+                    colors: bannerAtmosphereEnabled
+                        ? [activeHeroAtmosphere.topFeather.opacity(0.34), activeHeroAtmosphere.topFeather.opacity(0.14), Color.clear]
+                        : [Theme.baseBackground.opacity(0.34), Theme.baseBackground.opacity(0.14), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: max(52, insetTop + 28))
+                .frame(maxHeight: .infinity, alignment: .top)
+
+                LinearGradient(
+                    colors: bannerAtmosphereEnabled
+                        ? [Color.clear, Color.clear, activeHeroAtmosphere.baseBackground.opacity(0.20), activeHeroAtmosphere.baseBackground.opacity(0.45), activeHeroAtmosphere.baseBackground.opacity(0.70), activeHeroAtmosphere.baseBackground, activeHeroAtmosphere.baseBackground]
+                        : [Color.clear, Color.clear, Theme.baseBackground.opacity(0.20), Theme.baseBackground.opacity(0.45), Theme.baseBackground.opacity(0.70), Theme.baseBackground, Theme.baseBackground],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: (height + insetTop) * 0.26)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+
+                HStack(alignment: .bottom, spacing: UIConstants.standardPadding) {
+                    Button(action: {
+                        if appState.authState.isSignedIn {
+                            showAlertsSheet = true
+                        } else {
+                            Task { await appState.authState.signIn() }
+                        }
+                    }) {
+                        avatarView(
+                            size: PlatformSupport.prefersTabletLayout ? 64 : 56,
+                            avatarURL: appState.authState.user?.avatarURL
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    VStack(alignment: .leading, spacing: UIConstants.microPadding) {
+                        Text("Library")
+                            .font(.system(size: isPad ? 34 : 28, weight: .heavy))
+                            .foregroundColor(Theme.textPrimary)
+                        Text("Currently watching and synced lists")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, UIConstants.standardPadding)
+                .padding(.bottom, 28)
+            }
+            .frame(width: width, height: height + insetTop)
+            .clipped()
+            .offset(y: -insetTop)
+        }
+        .frame(height: UIConstants.heroHeight + heroBottomAllowance)
     }
 
     private func continueWatchingItems() -> [ContinueItem] {
