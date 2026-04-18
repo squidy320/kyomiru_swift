@@ -1153,6 +1153,14 @@ final class EpisodeMetadataService {
         for media: AniListMedia,
         desiredCount: Int
     ) async -> ([Int: EpisodeMetadata], Int, Int, Int, Int, Int, Bool, String?)? {
+        let movieLike = ((media.format ?? "").uppercased().contains("MOVIE"))
+        if movieLike,
+           let target = await tmdbMatcher.resolveArtworkTarget(media: media),
+           target.mediaType == "movie",
+           let movie = await tmdbMatcher.fetchMovieEpisode(showId: target.id) {
+            return ([1: movie], target.id, 1, 0, 1, 1, true, "movie-artwork-target-fetch")
+        }
+
         guard let resolved = await tmdbMatcher.matchShowAndSeason(media: media) else {
             return nil
         }

@@ -283,7 +283,7 @@ final class TMDBMatchingService {
     private func matchViaAniMap(media: AniListMedia) async -> TMDBSeasonMatch? {
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME",
               let mapping = await aniMapClient.mapping(for: media),
-              let target = await resolveAniMapTVDBTarget(mapping: mapping) else {
+              let target = await resolveAniMapTVDBTarget(mapping: mapping, media: media) else {
             return nil
         }
 
@@ -675,7 +675,7 @@ final class TMDBMatchingService {
 
     private func aniMapTarget(for media: AniListMedia) async -> TMDBSearchResult? {
         guard let mapping = await aniMapClient.mapping(for: media),
-              let target = await resolveAniMapTVDBTarget(mapping: mapping) else {
+              let target = await resolveAniMapTVDBTarget(mapping: mapping, media: media) else {
             return nil
         }
 
@@ -690,7 +690,7 @@ final class TMDBMatchingService {
 
     private func resolvedMatchViaAniMap(media: AniListMedia) async -> TMDBResolvedMatch? {
         guard let mapping = await aniMapClient.mapping(for: media),
-              let target = await resolveAniMapTVDBTarget(mapping: mapping) else {
+              let target = await resolveAniMapTVDBTarget(mapping: mapping, media: media) else {
             return nil
         }
 
@@ -785,16 +785,22 @@ final class TMDBMatchingService {
         return offset
     }
 
-    private func resolveAniMapTVDBTarget(mapping: AniMapResolvedMapping) async -> (id: Int, mediaType: String)? {
+    private func resolveAniMapTVDBTarget(mapping: AniMapResolvedMapping, media: AniListMedia? = nil) async -> (id: Int, mediaType: String)? {
         if let tvdbID = mapping.tvdbID {
-            if mapping.mediaType?.uppercased() == "MOVIE" {
+            if mapping.mediaType?.uppercased() == "MOVIE" || (mapping.mediaType == nil && media.map(isMovieLike) == true) {
                 return (tvdbID, "movie")
             }
             return (tvdbID, "tv")
         }
         if let imdbID = mapping.imdbID, !imdbID.isEmpty,
            let target = await tvdbClient.searchRemoteID(imdbID) {
-            return (target.id, target.mediaType)
+            if target.mediaType == "movie" || media.map(isMovieLike) != true {
+                return (target.id, target.mediaType)
+            }
+            if let movie = await tvdbClient.fetchMovie(target.id) {
+                return (movie.id, "movie")
+            }
+            return nil
         }
         return nil
     }
