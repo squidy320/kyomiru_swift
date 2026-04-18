@@ -153,6 +153,48 @@ final class TVDBClient {
         return parseSeason(from: root, artworkTypeNames: artworkTypeNames)
     }
 
+    /// Fetch episode translations for a specific episode
+    /// - Parameters:
+    ///   - episodeId: The TVDB episode ID
+    ///   - language: ISO 639-1 language code (default: "en" for English)
+    /// - Returns: Translation data including name and overview in requested language
+    func fetchEpisodeTranslation(_ episodeId: Int, language: String = "en") async -> (name: String?, overview: String?)? {
+        guard let root = await requestObject(path: "/episodes/\(episodeId)/translations", queryItems: [URLQueryItem(name: "lang", value: language)]) else {
+            // Fallback: try to get it from the extended episode endpoint
+            guard let episodeRoot = await requestObject(path: "/episodes/\(episodeId)/extended") else { return nil }
+            return (
+                name: translatedString(in: episodeRoot, translationKeys: ["nameTranslations", "name"], baseKeys: ["name"]),
+                overview: translatedString(in: episodeRoot, translationKeys: ["overviewTranslations", "overview"], baseKeys: ["overview"])
+            )
+        }
+
+        // Handle the translation response
+        if let translations = root["translations"] as? [[String: Any]] {
+            // Find English translation first
+            let englishTranslation = translations.first(where: { trans in
+                let lang = string(in: trans, keys: ["language", "languageCode"])?.lowercased() ?? ""
+                return lang == "en" || lang == "eng"
+            })
+
+            if let trans = englishTranslation {
+                return (
+                    name: string(in: trans, keys: ["name", "translatedName"]),
+                    overview: string(in: trans, keys: ["overview", "translatedOverview"])
+                )
+            }
+
+            // Fallback to first available translation if English not found
+            if let trans = translations.first {
+                return (
+                    name: string(in: trans, keys: ["name", "translatedName"]),
+                    overview: string(in: trans, keys: ["overview", "translatedOverview"])
+                )
+            }
+        }
+
+        return nil
+    }
+
     private func requestObject(path: String, queryItems: [URLQueryItem] = []) async -> [String: Any]? {
         guard let payload = await request(path: path, queryItems: queryItems) else { return nil }
         return payload as? [String: Any]
@@ -307,19 +349,27 @@ final class TVDBClient {
         let number = int(in: row, keys: ["number", "seasonNumber"]) ?? 0
         let typeName = string(in: row["type"] as? [String: Any], keys: ["name"]) ?? string(in: row, keys: ["type"])
         let episodeCount = int(in: row, keys: ["episodeNumber", "episodeCount"]) ?? ((row["episodes"] as? [[String: Any]])?.count ?? 0)
+        
+        // Detect special types including OVA, ONA, special, etc.
+        let isSpecialType = number == 0 || 
+            (typeName?.localizedCaseInsensitiveContains("special") == true) ||
+            (typeName?.localizedCaseInsensitiveContains("ova") == true) ||
+            (typeName?.localizedCaseInsensitiveContains("ona") == true) ||
+            (typeName?.localizedCaseInsensitiveContains("movie") == true)
+        
         return TVDBSeasonSummary(
             id: id,
             number: number,
             name: translatedString(in: row, translationKeys: ["nameTranslations", "name"], baseKeys: ["name"]),
             airDate: string(in: row, keys: ["firstAired", "year", "aired"]),
             episodeCount: episodeCount,
-            isSpecial: number == 0 || (typeName?.localizedCaseInsensitiveContains("special") == true),
+            isSpecial: isSpecialType,
             typeName: typeName
         )
     }
 
     private func parseEpisode(from row: [String: Any]) -> TVDBEpisodeRecord? {
-        guard let number = int(in: row, keys: ["number", "airedEpisodeNumber", "episodeNumber"]), number > 0 else {
+        guard let number = int(in: row, keys: ["number", "airedEpisodeNumber", "episodeNumber"]), number >= 0 else {
             return nil
         }
         return TVDBEpisodeRecord(
@@ -346,8 +396,8 @@ final class TVDBClient {
             }
         }
 
+        // Keep all seasons including season 0 (specials/OVAs/movies)
         return byNumber.values
-            .filter { $0.number >= 0 }
             .sorted { lhs, rhs in
                 if lhs.number == rhs.number {
                     return rank(lhs.typeName) > rank(rhs.typeName)
@@ -499,14 +549,23 @@ final class TVDBClient {
 
     private func translatedString(from value: Any?) -> String? {
         if let map = value as? [String: Any] {
-            for key in ["eng", "en", "jpn", "ja", "spa", "deu", "fra"] {
+            // First pass: Look for direct English keys
+            for key in ["eng", "en", "english"] {
                 if let text = map[key] as? String, !text.isEmpty {
                     return text
                 }
             }
+            // Second pass: Look for value in English translations
             if let text = map["value"] as? String, !text.isEmpty {
                 return text
             }
+            // Third pass: Check nested structures for English
+            for key in ["eng", "en", "english"] {
+                if let nested = translatedString(from: map[key]) {
+                    return nested
+                }
+            }
+            // Last resort: Any other language
             for nested in map.values {
                 if let text = translatedString(from: nested) {
                     return text
@@ -514,15 +573,31 @@ final class TVDBClient {
             }
         }
         if let list = value as? [[String: Any]] {
-            for language in ["eng", "en", "jpn", "ja", "spa", "deu", "fra"] {
-                if let match = list.first(where: {
-                    translationLanguage(from: $0) == language
-                }) {
+            // First priority: English
+            for language in ["eng", "en", "english"] {
+                if let match = list.first(where: { translationLanguage(from: $0) == language }) {
                     if let text = string(in: match, keys: ["name", "overview", "value", "translation", "translatedName", "translatedOverview"]) {
                         return text
                     }
                 }
             }
+            // Second priority: Romance languages
+            for language in ["spa", "fra", "ita", "por"] {
+                if let match = list.first(where: { translationLanguage(from: $0) == language }) {
+                    if let text = string(in: match, keys: ["name", "overview", "value", "translation", "translatedName", "translatedOverview"]) {
+                        return text
+                    }
+                }
+            }
+            // Third priority: Other languages
+            for language in ["deu", "jpn", "ja", "ja-JP", "zh", "ko"] {
+                if let match = list.first(where: { translationLanguage(from: $0) == language }) {
+                    if let text = string(in: match, keys: ["name", "overview", "value", "translation", "translatedName", "translatedOverview"]) {
+                        return text
+                    }
+                }
+            }
+            // Fallback: first non-empty item
             for item in list {
                 if let text = string(in: item, keys: ["name", "overview", "value", "translation", "translatedName", "translatedOverview"]), !text.isEmpty {
                     return text
@@ -538,15 +613,43 @@ final class TVDBClient {
     private func translationLanguage(from row: [String: Any]) -> String {
         if let language = string(in: row, keys: ["language", "languageCode", "lang"])?.lowercased(),
            !language.isEmpty {
-            return language
+            return normalizeLanguageCode(language)
         }
         if let nested = row["language"] as? [String: Any] {
-            return (string(in: nested, keys: ["code", "language", "locale", "name"]) ?? "").lowercased()
+            let code = (string(in: nested, keys: ["code", "language", "locale", "name"]) ?? "").lowercased()
+            return normalizeLanguageCode(code)
         }
         if let nested = row["translations"] as? [String: Any] {
-            return (string(in: nested, keys: ["language", "languageCode", "lang"]) ?? "").lowercased()
+            let code = (string(in: nested, keys: ["language", "languageCode", "lang"]) ?? "").lowercased()
+            return normalizeLanguageCode(code)
         }
         return ""
+    }
+
+    private func normalizeLanguageCode(_ code: String) -> String {
+        let lower = code.lowercased()
+        switch lower {
+        case "en", "eng", "en-us", "en-gb", "english":
+            return "en"
+        case "ja", "jpn", "ja-jp", "japanese":
+            return "ja"
+        case "es", "spa", "es-es", "spanish":
+            return "spa"
+        case "fr", "fra", "fr-fr", "french":
+            return "fra"
+        case "de", "deu", "de-de", "german":
+            return "deu"
+        case "it", "ita", "it-it", "italian":
+            return "ita"
+        case "pt", "por", "pt-br", "portuguese":
+            return "por"
+        case "zh", "zho", "zh-cn", "zh-tw", "chinese":
+            return "zh"
+        case "ko", "kor", "ko-kr", "korean":
+            return "ko"
+        default:
+            return lower
+        }
     }
 
     private func string(in dict: [String: Any]?, keys: [String]) -> String? {
