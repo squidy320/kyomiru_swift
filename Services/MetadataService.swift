@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 private actor TMDBTaskCoalescer<Key: Hashable, Value> {
     private var inFlight: [Key: Task<Value, Never>] = [:]
@@ -96,6 +97,7 @@ final class MetadataService {
         let showId: Int
         let mediaType: String
         let posterSeasonNumber: Int?
+        let seasonIds: [Int: Int]?  // Maps season number to TVDB season ID
     }
 
     init(
@@ -186,9 +188,63 @@ final class MetadataService {
         return meta?.backdropURL ?? meta?.posterURL
     }
 
-    func heroBackdropURL(for media: AniListMedia) async -> URL? {
+    func heroBackdropURL(for media: AniListMedia, tvdbSeasonNumber: Int? = nil) async -> URL? {
+        // Try device-optimized backdrop selection first (with optional season support)
+        if let optimized = await deviceOptimizedBackdropURL(for: media, tvdbSeasonNumber: tvdbSeasonNumber) {
+            return optimized
+        }
+        
+        // Fallback to standard metadata
         let meta = await fetchTMDBMetadata(for: media)
         return meta?.heroBackdropURL ?? meta?.backdropURL ?? meta?.posterURL
+    }
+
+    /// Get device-optimized backdrop/poster for full-screen display
+    /// - Parameters:
+    ///   - media: The anime media
+    ///   - tvdbSeasonNumber: Optional TVDB season number (from AniMap) for season-specific artwork
+    /// - Returns: Device-optimized backdrop URL
+    private func deviceOptimizedBackdropURL(
+        for media: AniListMedia,
+        tvdbSeasonNumber: Int? = nil
+    ) async -> URL? {
+        guard let context = await resolveArtworkContext(for: media) else { return nil }
+        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
+        
+        let isTablet = PlatformSupport.prefersTabletLayout
+        
+        // Try season-specific artwork first if season number is provided
+        if let seasonNumber = tvdbSeasonNumber,
+           let seasonId = context.seasonIds?[seasonNumber] {
+            let seasonArtworks = await tvdbClient.fetchSeasonArtworks(seasonId)
+            if !seasonArtworks.isEmpty {
+                if isTablet {
+                    // iPad: Use textless background for full-screen display
+                    if let url = tvdbClient.selectBestArtwork(from: seasonArtworks, ofType: "background", preferTextless: true) {
+                        return url
+                    }
+                } else {
+                    // iPhone: Use portrait-optimized poster
+                    if let url = tvdbClient.selectBestArtwork(from: seasonArtworks, ofType: "poster") {
+                        return url
+                    }
+                }
+            }
+        }
+        
+        // Fallback to series-level artwork
+        let seriesArtworks = await tvdbClient.fetchSeriesArtworks(context.showId)
+        guard !seriesArtworks.isEmpty else { return nil }
+        
+        if isTablet {
+            // iPad: Use textless background for full-screen display
+            return tvdbClient.selectBestArtwork(from: seriesArtworks, ofType: "background", preferTextless: true)
+                ?? tvdbClient.selectBestArtwork(from: seriesArtworks, ofType: "poster")
+        } else {
+            // iPhone: Use portrait-optimized poster
+            return tvdbClient.selectBestArtwork(from: seriesArtworks, ofType: "poster")
+                ?? tvdbClient.selectBestArtwork(from: seriesArtworks, ofType: "background", preferTextless: true)
+        }
     }
 
     func logoURL(for media: AniListMedia) async -> URL? {
@@ -280,10 +336,12 @@ final class MetadataService {
     private func resolveArtworkContext(for media: AniListMedia) async -> ResolvedArtworkContext? {
         if let overrideMatch = tmdbMatcher.manualOverride(for: media.id) {
             let mediaType = overrideMatch.mediaType ?? "tv"
+            let seasonIds = mediaType == "tv" ? await buildSeasonIdMap(showId: overrideMatch.showId) : nil
             return ResolvedArtworkContext(
                 showId: overrideMatch.showId,
                 mediaType: mediaType,
-                posterSeasonNumber: mediaType == "tv" ? overrideMatch.seasonNumber : nil
+                posterSeasonNumber: mediaType == "tv" ? overrideMatch.seasonNumber : nil,
+                seasonIds: seasonIds
             )
         }
 
@@ -303,10 +361,12 @@ final class MetadataService {
             } else {
                 posterSeasonNumber = resolved.mediaType == "tv" ? resolved.seasonNumber : nil
             }
+            let seasonIds = resolved.mediaType == "tv" ? await buildSeasonIdMap(showId: resolved.showId) : nil
             return ResolvedArtworkContext(
                 showId: resolved.showId,
                 mediaType: resolved.mediaType,
-                posterSeasonNumber: posterSeasonNumber
+                posterSeasonNumber: posterSeasonNumber,
+                seasonIds: seasonIds
             )
         }
 
@@ -320,14 +380,26 @@ final class MetadataService {
             } else {
                 posterSeasonNumber = target.mediaType == "tv" ? cacheStoreSeasonNumber(for: media.id) : nil
             }
+            let seasonIds = target.mediaType == "tv" ? await buildSeasonIdMap(showId: target.id) : nil
             return ResolvedArtworkContext(
                 showId: target.id,
                 mediaType: target.mediaType,
-                posterSeasonNumber: posterSeasonNumber
+                posterSeasonNumber: posterSeasonNumber,
+                seasonIds: seasonIds
             )
         }
 
         return nil
+    }
+
+    /// Build a mapping from season number to TVDB season ID for season-specific artwork
+    private func buildSeasonIdMap(showId: Int) async -> [Int: Int]? {
+        guard let series = await tvdbClient.fetchSeries(showId) else { return nil }
+        var seasonMap: [Int: Int] = [:]
+        for season in series.seasons {
+            seasonMap[season.number] = season.id
+        }
+        return seasonMap.isEmpty ? nil : seasonMap
     }
 
     private func cacheStoreSeasonNumber(for aniListId: Int) -> Int? {

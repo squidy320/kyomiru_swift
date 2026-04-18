@@ -69,6 +69,7 @@ struct TVDBSeasonSummary {
 }
 
 struct TVDBEpisodeRecord {
+    let id: Int
     let number: Int
     let title: String?
     let summary: String?
@@ -153,15 +154,34 @@ final class TVDBClient {
     }
 
     func fetchSeries(_ id: Int) async -> TVDBSeriesRecord? {
-        guard let root = await requestObject(path: "/series/\(id)/extended", queryItems: [URLQueryItem(name: "meta", value: "translations")]) else { return nil }
+        let root = await requestObject(path: "/series/\(id)/extended", queryItems: [URLQueryItem(name: "meta", value: "translations")])
+            ?? requestObject(path: "/series/\(id)")
+        guard let root else { return nil }
         let artworkTypeNames = await artworkTypeNames()
         return parseSeries(from: root, artworkTypeNames: artworkTypeNames)
     }
 
     func fetchMovie(_ id: Int) async -> TVDBMovieRecord? {
-        guard let root = await requestObject(path: "/movies/\(id)/extended", queryItems: [URLQueryItem(name: "meta", value: "translations")]) else { return nil }
+        let root = await requestObject(path: "/movies/\(id)/extended", queryItems: [URLQueryItem(name: "meta", value: "translations")])
+            ?? requestObject(path: "/movies/\(id)")
+        guard let root else { return nil }
         let artworkTypeNames = await artworkTypeNames()
         return parseMovie(from: root, artworkTypeNames: artworkTypeNames)
+    }
+
+    func fetchSeriesTranslation(_ id: Int, language: String = "eng") async -> (title: String?, summary: String?)? {
+        guard let root = await requestObject(path: "/series/\(id)/translations/\(language)") else { return nil }
+        return localizedPair(from: root)
+    }
+
+    func fetchMovieTranslation(_ id: Int, language: String = "eng") async -> (title: String?, summary: String?)? {
+        guard let root = await requestObject(path: "/movies/\(id)/translations/\(language)") else { return nil }
+        return localizedPair(from: root)
+    }
+
+    func fetchEpisodeTranslation(_ id: Int, language: String = "eng") async -> (title: String?, summary: String?)? {
+        guard let root = await requestObject(path: "/episodes/\(id)/translations/\(language)") else { return nil }
+        return localizedPair(from: root)
     }
 
     func fetchSeason(_ id: Int) async -> TVDBSeasonRecord? {
@@ -170,54 +190,6 @@ final class TVDBClient {
         return parseSeason(from: root, artworkTypeNames: artworkTypeNames)
     }
 
-    /// Fetch episode translations for a specific episode
-    /// - Parameters:
-    ///   - episodeId: The TVDB episode ID
-    ///   - language: ISO 639-1 language code (default: "en" for English)
-    /// - Returns: Translation data including name and overview in requested language
-    func fetchEpisodeTranslation(_ episodeId: Int, language: String = "en") async -> (name: String?, overview: String?)? {
-        guard let root = await requestObject(path: "/episodes/\(episodeId)/translations", queryItems: [URLQueryItem(name: "lang", value: language)]) else {
-            // Fallback: try to get it from the extended episode endpoint
-            guard let episodeRoot = await requestObject(path: "/episodes/\(episodeId)/extended") else { return nil }
-            return (
-                name: translatedString(in: episodeRoot, translationKeys: ["nameTranslations", "name"], baseKeys: ["name"]),
-                overview: translatedString(in: episodeRoot, translationKeys: ["overviewTranslations", "overview"], baseKeys: ["overview"])
-            )
-        }
-
-        // Handle the translation response
-        if let translations = root["translations"] as? [[String: Any]] {
-            // Find English translation first
-            let englishTranslation = translations.first(where: { trans in
-                let lang = string(in: trans, keys: ["language", "languageCode"])?.lowercased() ?? ""
-                return lang == "en" || lang == "eng"
-            })
-
-            if let trans = englishTranslation {
-                return (
-                    name: string(in: trans, keys: ["name", "translatedName"]),
-                    overview: string(in: trans, keys: ["overview", "translatedOverview"])
-                )
-            }
-
-            // Fallback to first available translation if English not found
-            if let trans = translations.first {
-                return (
-                    name: string(in: trans, keys: ["name", "translatedName"]),
-                    overview: string(in: trans, keys: ["overview", "translatedOverview"])
-                )
-            }
-        }
-
-        return nil
-    }
-
-    /// Fetch episodes by season type with language support
-    /// - Parameters:
-    ///   - seriesId: The TVDB series ID
-    ///   - seasonType: Season type (e.g., "official", "dvd", "absolute", "aired")
-    ///   - language: ISO 639-1 language code (optional)
-    /// - Returns: Array of episodes for the specified season type
     func fetchSeriesEpisodesByType(_ seriesId: Int, seasonType: String = "default", language: String? = nil) async -> [TVDBEpisodeRecord] {
         var path = "/series/\(seriesId)/episodes/\(seasonType)"
         if let language {
@@ -232,6 +204,38 @@ final class TVDBClient {
     /// - Returns: Array of available artworks with metadata
     func fetchSeriesArtworks(_ seriesId: Int) async -> [TVDBArtworkRecord] {
         guard let root = await requestObject(path: "/series/\(seriesId)/artworks") else { return [] }
+        let artworkTypeNames = await artworkTypeNames()
+        
+        guard let artworks = root["artworks"] as? [[String: Any]] else { return [] }
+        return artworks.compactMap { artwork in
+            guard let id = int(in: artwork, keys: ["id"]) else { return nil }
+            let typeID = artworkTypeID(in: artwork)
+            let typeName = typeID.flatMap { artworkTypeNames[$0] } ?? ""
+            let language = translationLanguage(from: artwork)
+            let imageURL = url(in: artwork, keys: ["image", "thumbnail"])
+            let score = double(in: artwork, keys: ["score"]) ?? 0
+            let width = int(in: artwork, keys: ["width"])
+            let height = int(in: artwork, keys: ["height"])
+            
+            return TVDBArtworkRecord(
+                id: id,
+                type: typeName,
+                language: language,
+                imageURL: imageURL,
+                score: score,
+                width: width,
+                height: height
+            )
+        }
+    }
+
+    /// Fetch artworks specific to a season
+    /// - Parameters:
+    ///   - seasonId: The TVDB season ID
+    /// - Returns: Array of season-specific artworks
+    func fetchSeasonArtworks(_ seasonId: Int) async -> [TVDBArtworkRecord] {
+        // First try to get from season extended endpoint
+        guard let root = await requestObject(path: "/seasons/\(seasonId)/extended") else { return [] }
         let artworkTypeNames = await artworkTypeNames()
         
         guard let artworks = root["artworks"] as? [[String: Any]] else { return [] }
@@ -459,10 +463,12 @@ final class TVDBClient {
     }
 
     private func parseEpisode(from row: [String: Any]) -> TVDBEpisodeRecord? {
-        guard let number = int(in: row, keys: ["number", "airedEpisodeNumber", "episodeNumber"]), number >= 0 else {
+        guard let id = int(in: row, keys: ["id"]),
+              let number = int(in: row, keys: ["number", "airedEpisodeNumber", "episodeNumber"]), number >= 0 else {
             return nil
         }
         return TVDBEpisodeRecord(
+            id: id,
             number: number,
             title: translatedString(in: row, translationKeys: ["nameTranslations", "name"], baseKeys: ["name"]),
             summary: translatedString(in: row, translationKeys: ["overviewTranslations", "overview"], baseKeys: ["overview"]),
@@ -539,7 +545,7 @@ final class TVDBClient {
         let logo = bestArtworkURL(
             in: artworks,
             artworkTypeNames: artworkTypeNames,
-            matchingAnyOf: ["logo", "clearlogo", "clear art", "clearart"]
+            matchingAnyOf: ["clearlogo", "logo"]
         )
 
         return (poster, backdrop, logo)
@@ -596,7 +602,7 @@ final class TVDBClient {
         var score = 0
         
         // Language priority (English is essential for anime apps)
-        let language = artworkLanguage(for: artwork)
+        let language = translationLanguage(from: artwork)
         switch language {
         case "en":
             score += 100  // Strong preference for English
@@ -610,7 +616,7 @@ final class TVDBClient {
 
         // Type and quality scoring
         if descriptor.contains("official") { score += 40 }
-        if descriptor.contains("clearlogo") || descriptor.contains("clearart") { score += 35 }
+        if descriptor.contains("clearlogo") { score += 35 }
         if descriptor.contains("series") || descriptor.contains("main") { score += 25 }
         if descriptor.contains("textless") { score += 20 }
         if descriptor.contains("alternate") { score -= 5 }
@@ -640,23 +646,63 @@ final class TVDBClient {
     /// - Parameters:
     ///   - artworks: Array of TVDBArtworkRecord from fetchSeriesArtworks
     ///   - type: Type of artwork to select ("poster", "background", "logo", etc.)
+    ///   - preferTextless: Filter to only textless/clean artworks (for iPad full-screen displays)
     /// - Returns: Best matching URL for the requested type
-    func selectBestArtwork(from artworks: [TVDBArtworkRecord], ofType type: String) -> URL? {
+    func selectBestArtwork(from artworks: [TVDBArtworkRecord], ofType type: String, preferTextless: Bool = false) -> URL? {
         let typeDescriptors = normalizeArtworkType(type)
         
-        let candidates = artworks
+        var candidates = artworks
             .filter { artwork in
                 let artworkType = artwork.type.lowercased()
                 return typeDescriptors.contains { artworkType.contains($0) }
             }
-            .sorted { lhs, rhs in
-                // Score based on language, resolution, and TVDB score
-                var lhsScore = scoreArtworkForSelection(lhs)
-                var rhsScore = scoreArtworkForSelection(rhs)
-                return lhsScore > rhsScore
-            }
         
-        return candidates.first?.imageURL
+        // If preferTextless is enabled, prioritize clean artworks
+        if preferTextless {
+            let textlessArtworks = candidates.filter { isTextlessArtwork($0) }
+            // Use textless if available, otherwise fall back to all
+            if !textlessArtworks.isEmpty {
+                candidates = textlessArtworks
+            }
+        }
+        
+        let sorted = candidates.sorted { lhs, rhs in
+            var lhsScore = scoreArtworkForSelection(lhs)
+            var rhsScore = scoreArtworkForSelection(rhs)
+            
+            // Boost score for textless when preferred
+            if preferTextless {
+                if isTextlessArtwork(lhs) { lhsScore += 500 }
+                if isTextlessArtwork(rhs) { rhsScore += 500 }
+            }
+            
+            return lhsScore > rhsScore
+        }
+        
+        return sorted.first?.imageURL
+    }
+    
+    /// Detect if an artwork is textless/clean (no overlaid text)
+    /// - Parameter artwork: The artwork record to check
+    /// - Returns: True if artwork appears to be textless/clean
+    private func isTextlessArtwork(_ artwork: TVDBArtworkRecord) -> Bool {
+        let typeDesc = artwork.type.lowercased()
+        
+        // Strong indicators of textless artwork
+        if typeDesc.contains("textless") { return true }
+        if typeDesc.contains("clean") { return true }
+        
+        // No text if it has no language or is generic
+        if artwork.language.isEmpty || artwork.language == "null" { 
+            return true 
+        }
+        
+        // If it's a high-scoring artwork with generic type, likely clean
+        if artwork.score > 8.0 && (typeDesc.contains("background") || typeDesc.contains("fanart") || typeDesc.contains("banner")) {
+            return true
+        }
+        
+        return false
     }
     
     private func normalizeArtworkType(_ type: String) -> [String] {
@@ -667,8 +713,8 @@ final class TVDBClient {
         if lower.contains("background") || lower.contains("backdrop") || lower.contains("fanart") || lower.contains("banner") {
             return ["background", "backdrop", "fanart", "banner"]
         }
-        if lower.contains("logo") || lower.contains("clearlogo") || lower.contains("clearart") {
-            return ["logo", "clearlogo", "clearart"]
+        if lower.contains("logo") || lower.contains("clearlogo") {
+            return ["clearlogo", "logo"]
         }
         return [lower]
     }
@@ -796,6 +842,12 @@ final class TVDBClient {
             return normalizeLanguageCode(code)
         }
         return ""
+    }
+
+    private func localizedPair(from row: [String: Any]) -> (title: String?, summary: String?) {
+        let title = translatedString(in: row, translationKeys: ["nameTranslations", "name", "titleTranslations", "title"], baseKeys: ["name", "title"])
+        let summary = translatedString(in: row, translationKeys: ["overviewTranslations", "overview"], baseKeys: ["overview", "summary"])
+        return (title, summary)
     }
 
     private func normalizeLanguageCode(_ code: String) -> String {

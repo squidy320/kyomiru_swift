@@ -1340,7 +1340,20 @@ struct DetailsView: View {
 
     private func loadHeroArtwork() async {
         tmdbHeroLookupComplete = false
-        async let backdropTask = appState.services.metadataService.heroBackdropURL(for: media)
+        
+        // Try to get TVDB season number from AniMap for season-specific artwork
+        var tvdbSeasonNumber: Int? = nil
+        if let match = await appState.services.tmdbMatcher.resolveShowAndSeason(
+            media: media,
+            expectedEpisodeCount: media.episodes
+        ) {
+            tvdbSeasonNumber = match.seasonNumber
+        }
+        
+        async let backdropTask = appState.services.metadataService.heroBackdropURL(
+            for: media,
+            tvdbSeasonNumber: tvdbSeasonNumber
+        )
         async let logoTask = appState.services.metadataService.logoURL(for: media)
         let backdrop = await backdropTask
         let logo = await logoTask

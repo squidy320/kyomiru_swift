@@ -1036,15 +1036,20 @@ final class TMDBMatchingService {
                   let season = await tvdbClient.fetchSeason(seasonID) else {
                 return nil
             }
-            let episodes = season.episodes.map { episode in
-                TMDBSeasonDetails.Episode(
-                    number: episode.number,
-                    title: episode.title,
-                    summary: episode.summary,
-                    airDate: episode.airDate,
-                    runtimeMinutes: episode.runtimeMinutes,
-                    stillURL: episode.imageURL,
-                    rating: episode.rating
+            var episodes: [TMDBSeasonDetails.Episode] = []
+            episodes.reserveCapacity(season.episodes.count)
+            for episode in season.episodes {
+                let translated = await localizedTVDBEpisode(episode: episode)
+                episodes.append(
+                    TMDBSeasonDetails.Episode(
+                        number: episode.number,
+                        title: translated.title ?? episode.title,
+                        summary: translated.summary ?? episode.summary,
+                        airDate: episode.airDate,
+                        runtimeMinutes: episode.runtimeMinutes,
+                        stillURL: episode.imageURL,
+                        rating: episode.rating
+                    )
                 )
             }
             return TMDBSeasonDetails(posterURL: season.posterURL, episodes: episodes)
@@ -1071,15 +1076,45 @@ final class TMDBMatchingService {
             guard let movie = await tvdbClient.fetchMovie(movieId) else {
                 return nil
             }
+            let localized = await localizedTVDBMovie(movie: movie, movieID: movieId)
             return TMDBMovieDetails(
-                title: movie.title,
-                summary: movie.summary,
+                title: localized.title ?? movie.title,
+                summary: localized.summary ?? movie.summary,
                 releaseDate: movie.releaseDate,
                 runtimeMinutes: movie.runtimeMinutes,
                 posterURL: movie.posterURL,
                 backdropURL: movie.backdropURL,
                 rating: movie.rating
             )
+        }
+    }
+
+    private func localizedTVDBSeriesTitle(_ current: String, seriesID: Int) async -> String? {
+        guard isLikelyJapaneseText(current) else { return nil }
+        let translation = await tvdbClient.fetchSeriesTranslation(seriesID, language: "eng")
+        return translation?.title?.isEmpty == false ? translation?.title : nil
+    }
+
+    private func localizedTVDBMovie(movie: TVDBMovieRecord, movieID: Int) async -> (title: String?, summary: String?) {
+        guard isLikelyJapaneseText(movie.title) || isLikelyJapaneseText(movie.summary) else {
+            return (nil, nil)
+        }
+        let translation = await tvdbClient.fetchMovieTranslation(movieID, language: "eng")
+        return (translation?.title, translation?.summary)
+    }
+
+    private func localizedTVDBEpisode(episode: TVDBEpisodeRecord) async -> (title: String?, summary: String?) {
+        guard isLikelyJapaneseText(episode.title) || isLikelyJapaneseText(episode.summary) else {
+            return (nil, nil)
+        }
+        let translation = await tvdbClient.fetchEpisodeTranslation(episode.id, language: "eng")
+        return (translation?.title, translation?.summary)
+    }
+
+    private func isLikelyJapaneseText(_ text: String?) -> Bool {
+        guard let text, !text.isEmpty else { return false }
+        return text.unicodeScalars.contains { scalar in
+            (0x3040...0x30FF).contains(scalar.value) || (0x4E00...0x9FFF).contains(scalar.value)
         }
     }
 
@@ -1401,7 +1436,8 @@ final class TMDBMatchingService {
             }
             .sorted { $0.seasonNumber < $1.seasonNumber }
         let total = seasons.reduce(0) { $0 + max($1.episodeCount, 0) }
-        return TMDBShowSummary(showId: showId, mediaType: "tv", title: series.title, numberOfEpisodes: total, seasons: seasons)
+        let localizedTitle = await localizedTVDBSeriesTitle(series.title, seriesID: showId)
+        return TMDBShowSummary(showId: showId, mediaType: "tv", title: localizedTitle ?? series.title, numberOfEpisodes: total, seasons: seasons)
     }
 
     private func selectSeason(
