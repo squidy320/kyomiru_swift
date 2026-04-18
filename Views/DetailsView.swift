@@ -237,8 +237,8 @@ struct DetailsView: View {
                 ipadEpisodeLayout
             } else {
                 ZStack(alignment: .top) {
-                    phoneFixedHeroBanner
-                        .ignoresSafeArea(edges: .top)
+                    phoneFullscreenHeroBackdrop
+                        .ignoresSafeArea()
 
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
@@ -847,6 +847,83 @@ struct DetailsView: View {
             .offset(y: -insetTop)
         }
         .frame(height: detailHeroHeight(for: UIScreen.main.bounds.height))
+    }
+
+    private var phoneFullscreenHeroBackdrop: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let height = proxy.size.height
+            let insetTop = proxy.safeAreaInsets.top
+            let insetBottom = proxy.safeAreaInsets.bottom
+            let fallbackBackdrop = media.bannerURL ?? media.coverURL
+
+            ZStack {
+                Group {
+                    if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
+                        CachedImage(
+                            url: url,
+                            targetSize: CGSize(width: width * 2, height: (height + insetTop + insetBottom) * 2)
+                        ) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(
+                                    width: width,
+                                    height: height + insetTop + insetBottom,
+                                    alignment: .center
+                                )
+                        } placeholder: {
+                            Theme.surface
+                        }
+                    } else {
+                        Theme.surface
+                    }
+                }
+                .frame(width: width, height: height + insetTop + insetBottom)
+                .clipped()
+
+                LinearGradient(
+                    colors: [
+                        activeHeroAtmosphere.topFeather.opacity(0.18),
+                        activeHeroAtmosphere.topFeather.opacity(0.07),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: height + insetTop + insetBottom)
+
+                LinearGradient(
+                    colors: [
+                        Color.clear,
+                        Color.clear,
+                        activeHeroAtmosphere.bottomFeather.opacity(0.14),
+                        activeHeroAtmosphere.bottomFeather.opacity(0.32),
+                        activeHeroAtmosphere.bottomFeather.opacity(0.58),
+                        activeHeroAtmosphere.bottomFeather,
+                        activeHeroAtmosphere.bottomFeather
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: height + insetTop + insetBottom)
+
+                LinearGradient(
+                    colors: [
+                        activeHeroAtmosphere.topFeather.opacity(0.14),
+                        activeHeroAtmosphere.topFeather.opacity(0.05),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width, height: max(44, insetTop + 34))
+                .frame(maxHeight: .infinity, alignment: .top)
+            }
+            .frame(width: width, height: height + insetTop + insetBottom)
+            .clipped()
+            .offset(y: -insetTop)
+        }
     }
 
     private var phoneHeroContentBlock: some View {
