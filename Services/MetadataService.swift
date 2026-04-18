@@ -201,8 +201,8 @@ final class MetadataService {
     /// Get device-optimized backdrop/poster for full-screen display
     /// - Parameters:
     ///   - media: The anime media
-    ///   - tvdbSeasonNumber: Optional TVDB season number for season-specific artwork
-    /// - Returns: Device-optimized backdrop URL
+    ///   - tvdbSeasonNumber: Optional TVDB season number (unused - no season-specific backgrounds available)
+    /// - Returns: Device-optimized backdrop URL (landscapes for iPad, portraits for iPhone)
     private func deviceOptimizedBackdropURL(
         for media: AniListMedia,
         tvdbSeasonNumber: Int? = nil
@@ -210,28 +210,26 @@ final class MetadataService {
         guard let context = await resolveArtworkContext(for: media) else { return nil }
         guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME" else { return nil }
         
+        let isTablet = PlatformSupport.prefersTabletLayout
+        
         // Fetch all artworks with season mapping from series extended response
         let allArtworks = await tvdbClient.extractSeriesArtworksWithSeasonMapping(context.showId)
         guard !allArtworks.isEmpty else { return nil }
         
-        // Try season-specific artwork first if season number is provided
-        if let seasonNumber = tvdbSeasonNumber {
-            let seasonArtworks = tvdbClient.filterArtworksBySeasonNumber(allArtworks, seasonNumber)
-            if !seasonArtworks.isEmpty {
-                // Use poster for full-screen display (both iPad and iPhone)
-                if let url = tvdbClient.selectBestArtwork(from: seasonArtworks, ofType: "poster") {
-                    return url
-                }
-            }
-        }
-        
-        // Fallback to series-level artwork (no season association)
+        // Use series-level artwork (no season association)
         let seriesArtworks = tvdbClient.seriesLevelArtworks(allArtworks)
         let fallbackArtworks = seriesArtworks.isEmpty ? allArtworks : seriesArtworks
         
-        // Use poster for full-screen display (both iPad and iPhone)
-        return tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "poster")
-            ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "background", preferTextless: true)
+        if isTablet {
+            // iPad: Use landscape backgrounds
+            return tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "background", preferTextless: true)
+                ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "banner")
+                ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "poster")
+        } else {
+            // iPhone: Use portrait posters
+            return tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "poster")
+                ?? tvdbClient.selectBestArtwork(from: fallbackArtworks, ofType: "background", preferTextless: true)
+        }
     }
 
     func logoURL(for media: AniListMedia) async -> URL? {

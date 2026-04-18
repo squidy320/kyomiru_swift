@@ -1193,10 +1193,17 @@ struct DetailsView: View {
         isLoading = shouldShowInlineLoading
         errorMessage = nil
         do {
-            if forceRefresh {
+            // Check if TVDB has updates before deciding to refresh
+            var shouldRefresh = forceRefresh
+            if !forceRefresh, let match = await appState.services.tmdbMatchingService.resolveShowAndSeason(media: media, expectedEpisodeCount: media.episodes) {
+                // Use TVDB updates API to check if refresh needed
+                shouldRefresh = await hasNewTVDBUpdates(for: match.showId)
+            }
+            
+            if shouldRefresh {
                 appState.services.metadataService.invalidateTMDBCaches(for: media)
             }
-            let result = try await fetchEpisodesDetached(for: media, forceRefresh: forceRefresh)
+            let result = try await fetchEpisodesDetached(for: media, forceRefresh: shouldRefresh)
             guard loadGeneration == episodeLoadGeneration else { return }
             episodes = result.episodes
             if let cached = appState.services.episodeMetadataService.cachedEpisodes(for: media, episodes: result.episodes) {
@@ -1236,6 +1243,28 @@ struct DetailsView: View {
             errorMessage = "Failed to load episodes."
             AppLog.error(.network, "details episodes load failed mediaId=\(media.id) \(error.localizedDescription)")
             isLoading = false
+        }
+    }
+
+    private func hasNewTVDBUpdates(for tvdbShowId: Int) async -> Bool {
+        let cacheKey = "tvdb_updates_check_\(tvdbShowId)"
+        let lastCheckKey = cacheKey + "_timestamp"
+        
+        // Check if we've checked updates in last 12 hours
+        if let lastCheck = UserDefaults.standard.object(forKey: lastCheckKey) as? Date {
+            if Date().timeIntervalSince(lastCheck) < 43200 { // 12 hours
+                return false // Use cache, don't refresh
+            }
+        }
+        
+        do {
+            // Call TVDB updates endpoint to check for new episodes
+            let hasUpdates = await appState.services.tvdbClient.checkForUpdates(seriesId: tvdbShowId)
+            UserDefaults.standard.set(Date(), forKey: lastCheckKey)
+            return hasUpdates
+        } catch {
+            AppLog.error(.network, "TVDB updates check failed seriesId=\(tvdbShowId) \(error.localizedDescription)")
+            return false // On error, use cache
         }
     }
 
@@ -1329,16 +1358,21 @@ struct DetailsView: View {
             isInitialLoadInProgress = true
             tmdbManualOverride = appState.services.tmdbMatchingService.manualOverride(for: media.id)
             hydrateInitialCachedState()
-            if !episodes.isEmpty {
-                isInitialLoadInProgress = false
-            }
-            async let episodesTask: Void = loadEpisodes(forceRefresh: true)
+            
+            // PRIORITY 1: Load hero artwork first (images load before hiding loading screen)
+            await loadHeroArtwork()
+            guard !Task.isCancelled else { return }
+            
+            // Hero loaded, dismiss loading screen
+            isInitialLoadInProgress = false
+            
+            // PRIORITY 2: Load episodes + related in background
+            async let episodesTask: Void = loadEpisodes(forceRefresh: false)
             async let relatedTask: Void = loadRelated()
-            async let heroTask: Void = loadHeroArtwork()
-            _ = await (episodesTask, relatedTask, heroTask)
+            _ = await (episodesTask, relatedTask)
+            
             guard !Task.isCancelled else { return }
             isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
-            isInitialLoadInProgress = false
         }
     }
 

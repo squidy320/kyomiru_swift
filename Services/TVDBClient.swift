@@ -360,6 +360,25 @@ final class TVDBClient {
         }
     }
 
+    /// Check if a specific series has updates since last refresh
+    /// - Parameter seriesId: The TVDB series ID to check
+    /// - Returns: True if there are new updates for this series
+    func checkForUpdates(seriesId: Int) async -> Bool {
+        let lastCheckKey = "tvdb_series_update_check_\(seriesId)"
+        let lastCheckTime = UserDefaults.standard.integer(forKey: lastCheckKey)
+        
+        // Get updates since last check (or from 24 hours ago if no previous check)
+        let sinceTimestamp = lastCheckTime > 0 ? lastCheckTime : Int(Date().addingTimeInterval(-86400).timeIntervalSince1970)
+        let updates = await fetchUpdates(since: sinceTimestamp)
+        
+        // Update the last check timestamp
+        UserDefaults.standard.set(Int(Date().timeIntervalSince1970), forKey: lastCheckKey)
+        
+        // Check if any updates are for this series (entityType == "series")
+        return updates.contains { 
+            $0.recordId == seriesId && $0.entityType == "series"
+        }
+    }
 
     private func requestObject(path: String, queryItems: [URLQueryItem] = []) async -> [String: Any]? {
         guard let payload = await request(path: path, queryItems: queryItems) else { return nil }
