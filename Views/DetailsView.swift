@@ -1366,10 +1366,16 @@ struct DetailsView: View {
             // Hero loaded, dismiss loading screen
             isInitialLoadInProgress = false
             
-            // PRIORITY 2: Load episodes + related in background
-            async let episodesTask: Void = loadEpisodes(forceRefresh: false)
-            async let relatedTask: Void = loadRelated()
-            _ = await (episodesTask, relatedTask)
+            // PRIORITY 2: Load episodes + related in background ONLY if not cached
+            // If we have cached content from hydration, skip expensive network calls
+            let hasCachedEpisodes = !episodes.isEmpty
+            let hasCachedRelated = !relatedSections.isEmpty
+            
+            if !hasCachedEpisodes || !hasCachedRelated {
+                async let episodesTask: Void = loadEpisodes(forceRefresh: false)
+                async let relatedTask: Void = loadRelated()
+                _ = await (episodesTask, relatedTask)
+            }
             
             guard !Task.isCancelled else { return }
             isBookmarked = (appState.services.libraryStore.item(forExternalId: media.id)?.status ?? .planning) != .planning
@@ -1452,6 +1458,19 @@ struct DetailsView: View {
     private func loadHeroArtwork() async {
         tmdbHeroLookupComplete = false
         
+        // First check if we already have cached artwork from hydration
+        let cached = appState.services.metadataService.cachedHeroArtwork(for: media)
+        if cached.backdrop != nil || cached.logo != nil {
+            tmdbHeroBackdropURL = cached.backdrop
+            tmdbHeroLogoURL = cached.logo
+            tmdbHeroLookupComplete = true
+            let fallback = media.bannerURL ?? media.coverURL
+            let urls = [cached.backdrop, fallback, cached.logo].compactMap { $0 }
+            await ImageCache.shared.prefetch(urls: urls)
+            return
+        }
+        
+        // No cache, fetch fresh data
         // Try to get TVDB season number from AniMap for season-specific artwork
         var tvdbSeasonNumber: Int? = nil
         if let match = await appState.services.tmdbMatchingService.resolveShowAndSeason(
