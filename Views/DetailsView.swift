@@ -634,12 +634,12 @@ struct DetailsView: View {
                 if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
                     CachedImage(
                         url: url,
-                        targetSize: CGSize(width: width, height: height + insetTop)
+                        targetSize: CGSize(width: width * 2, height: (height + insetTop) * 2)
                     ) { image in
                         image
                             .resizable()
                             .scaledToFill()
-                            .frame(width: width, height: height + insetTop, alignment: .bottom)
+                            .frame(width: width, height: height + insetTop, alignment: .center)
                     } placeholder: {
                         Theme.surface
                     }
@@ -685,12 +685,12 @@ struct DetailsView: View {
                     if let url = tmdbHeroBackdropURL ?? fallbackBackdrop {
                         CachedImage(
                             url: url,
-                            targetSize: CGSize(width: width, height: height + insetTop)
+                            targetSize: CGSize(width: width * 2, height: (height + insetTop) * 2)
                         ) { image in
                             image
                                 .resizable()
                                 .scaledToFill()
-                                .frame(width: width, height: height + insetTop, alignment: .bottom)
+                                .frame(width: width, height: height + insetTop, alignment: .center)
                         } placeholder: {
                             Theme.surface
                         }

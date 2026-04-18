@@ -1051,6 +1051,21 @@ final class TMDBMatchingService {
         }
     }
 
+    func fetchMovieEpisode(showId: Int) async -> EpisodeMetadata? {
+        guard let apiKey, !apiKey.isEmpty, apiKey != "CHANGE_ME",
+              let movie = await fetchMovieDetails(movieId: showId, apiKey: apiKey) else {
+            return nil
+        }
+        return EpisodeMetadata(
+            number: 1,
+            title: movie.title,
+            summary: movie.summary,
+            airDate: movie.releaseDate,
+            runtimeMinutes: movie.runtimeMinutes,
+            thumbnailURL: movie.backdropURL ?? movie.posterURL
+        )
+    }
+
     private func fetchMovieDetails(movieId: Int, apiKey: String) async -> TMDBMovieDetails? {
         return await movieDetailRequests.value(for: movieId) { [self] in
             guard let movie = await tvdbClient.fetchMovie(movieId) else {
@@ -1171,6 +1186,16 @@ final class TMDBMatchingService {
                     yearScore = 1.0 - min(Double(abs(startYear - year)) / 3.0, 1.0)
                 } else {
                     yearScore = 0.5
+                }
+
+                if targetKind == .movie {
+                    let hasStrongTitleMatch = titleScore >= 0.72 || exactTitleBonus >= 0.72
+                    if !hasStrongTitleMatch {
+                        continue
+                    }
+                    if let startYear, let year = row.year, abs(startYear - year) > 2, titleScore < 0.9 {
+                        continue
+                    }
                 }
 
                 let typeBias = typeBias(for: mediaType, targetKind: targetKind)

@@ -478,8 +478,7 @@ final class TVDBClient {
     }
 
     private func artworkLanguage(for artwork: [String: Any]) -> String {
-        let language = string(in: artwork, keys: ["language", "languageCode", "lang"]) ?? ""
-        return language.lowercased()
+        translationLanguage(from: artwork)
     }
 
     private func translatedString(in row: [String: Any], translationKeys: [String], baseKeys: [String]) -> String? {
@@ -517,16 +516,15 @@ final class TVDBClient {
         if let list = value as? [[String: Any]] {
             for language in ["eng", "en", "jpn", "ja", "spa", "deu", "fra"] {
                 if let match = list.first(where: {
-                    let lang = (($0["language"] as? String) ?? ($0["languageCode"] as? String) ?? ($0["lang"] as? String) ?? "").lowercased()
-                    return lang == language
+                    translationLanguage(from: $0) == language
                 }) {
-                    if let text = string(in: match, keys: ["name", "overview", "value"]) {
+                    if let text = string(in: match, keys: ["name", "overview", "value", "translation", "translatedName", "translatedOverview"]) {
                         return text
                     }
                 }
             }
             for item in list {
-                if let text = string(in: item, keys: ["name", "overview", "value"]), !text.isEmpty {
+                if let text = string(in: item, keys: ["name", "overview", "value", "translation", "translatedName", "translatedOverview"]), !text.isEmpty {
                     return text
                 }
             }
@@ -535,6 +533,20 @@ final class TVDBClient {
             return text
         }
         return nil
+    }
+
+    private func translationLanguage(from row: [String: Any]) -> String {
+        if let language = string(in: row, keys: ["language", "languageCode", "lang"])?.lowercased(),
+           !language.isEmpty {
+            return language
+        }
+        if let nested = row["language"] as? [String: Any] {
+            return (string(in: nested, keys: ["code", "language", "locale", "name"]) ?? "").lowercased()
+        }
+        if let nested = row["translations"] as? [String: Any] {
+            return (string(in: nested, keys: ["language", "languageCode", "lang"]) ?? "").lowercased()
+        }
+        return ""
     }
 
     private func string(in dict: [String: Any]?, keys: [String]) -> String? {
@@ -583,6 +595,9 @@ final class TVDBClient {
         guard let string = string(in: dict, keys: keys) else { return nil }
         if string.hasPrefix("/") {
             return URL(string: "https://artworks.thetvdb.com\(string)")
+        }
+        if !string.contains("://") {
+            return URL(string: "https://artworks.thetvdb.com/\(string)")
         }
         return URL(string: string)
     }

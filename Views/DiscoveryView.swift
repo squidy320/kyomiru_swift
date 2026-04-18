@@ -63,7 +63,7 @@ struct DiscoveryView: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        heroHeader
+                        heroCarousel
                             .ignoresSafeArea(edges: .top)
 
                         VStack(alignment: .leading, spacing: screenSpacing) {
@@ -197,8 +197,8 @@ struct DiscoveryView: View {
         .onChange(of: librarySortRaw) { _, _ in
             Task { await loadDiscovery(forceRefresh: true) }
         }
-        .task(id: heroTrending?.backdropURL) {
-            let heroURL = heroTrending?.backdropURL
+        .task(id: currentHeroImageURL?.absoluteString) {
+            let heroURL = currentHeroImageURL
             updateLaunchHeroState(for: heroURL)
             await refreshHeroAtmosphere(for: heroURL)
         }
@@ -406,6 +406,16 @@ struct DiscoveryView: View {
 }
 
 private extension DiscoveryView {
+    var currentHeroMedia: AniListMedia? {
+        let items = heroItems()
+        guard !items.isEmpty else { return nil }
+        return items[min(heroIndex, items.count - 1)]
+    }
+
+    var currentHeroImageURL: URL? {
+        currentHeroMedia?.bannerURL ?? currentHeroMedia?.coverURL
+    }
+
     func heroItems() -> [AniListMedia] {
         if let trending = sections.first(where: { $0.id == "trending" }) {
             return Array(trending.items.prefix(5))

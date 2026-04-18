@@ -821,7 +821,7 @@ final class EpisodeMetadataService {
             let maxEpisodeNumber = episodes.map(\.number).max() ?? 0
             let globalNumbering = maxEpisodeNumber >= desiredCount + 5 && maxEpisodeNumber > 0
             let maxKey = globalNumbering ? ":max:\(maxEpisodeNumber)" : ""
-            let structureKey = "tmdb:structure:v7:\(media.id)"
+            let structureKey = "tmdb:structure:v10:\(media.id)"
             guard let cachedStructure = cacheStore.readJSON(forKey: structureKey),
                   let structured = try? JSONDecoder().decode(TMDBAnimeStructureMatch.self, from: cachedStructure) else {
                 return nil
@@ -1031,6 +1031,13 @@ final class EpisodeMetadataService {
             return ([:], 0, preferredSeason ?? 1, 0, 0, 0, false, "missing-key")
         }
 
+        let prefersDirectMatch = prefersDirectTVDBMatch(for: media)
+
+        if prefersDirectMatch,
+           let direct = await directEpisodeMapping(for: media, desiredCount: desiredCount) {
+            return direct
+        }
+
         if let structured = await tmdbMatcher.resolveAnimeStructure(media: media) {
             let mapped = mapAbsoluteEpisodes(
                 structured,
@@ -1048,30 +1055,72 @@ final class EpisodeMetadataService {
             )
         }
 
-        if let resolved = await tmdbMatcher.matchShowAndSeason(media: media) {
-            let seasonMeta = await fetchTMDBSeason(showId: resolved.showId, seasonNumber: resolved.seasonNumber)
-            if !seasonMeta.isEmpty {
-                var mapped: [Int: EpisodeMetadata] = [:]
-                // Apply offset to map season episode numbers to local display numbers (starting at 1)
-                for (number, meta) in seasonMeta {
-                    let adjusted = number - resolved.episodeOffset
-                    if adjusted >= 1 && adjusted <= desiredCount + 5 { // allowance for slight mismatch
-                        let renumbered = EpisodeMetadata(
-                            number: adjusted,
-                            title: meta.title,
-                            summary: meta.summary,
-                            airDate: meta.airDate,
-                            runtimeMinutes: meta.runtimeMinutes,
-                            thumbnailURL: meta.thumbnailURL
-                        )
-                        mapped[adjusted] = renumbered
-                    }
-                }
-                return (mapped, resolved.showId, resolved.seasonNumber, resolved.episodeOffset, 0, 0, !mapped.isEmpty, "resolved-match-direct-fetch")
-            }
+        if let direct = await directEpisodeMapping(for: media, desiredCount: desiredCount) {
+            return direct
         }
 
         return ([:], 0, preferredSeason ?? 1, 0, 0, 0, false, "no-match")
+    }
+
+    private func prefersDirectTVDBMatch(for media: AniListMedia) -> Bool {
+        let format = (media.format ?? "").uppercased()
+        if format.contains("MOVIE") {
+            return true
+        }
+        if format.contains("SPECIAL") || format.contains("OVA") || format.contains("ONA") {
+            return true
+        }
+        let title = media.title.best.lowercased()
+        return title.contains(" ova")
+            || title.contains(" oad")
+            || title.contains(" special")
+            || title.contains(" movie")
+    }
+
+    private func directEpisodeMapping(
+        for media: AniListMedia,
+        desiredCount: Int
+    ) async -> ([Int: EpisodeMetadata], Int, Int, Int, Int, Int, Bool, String?)? {
+        guard let resolved = await tmdbMatcher.matchShowAndSeason(media: media) else {
+            return nil
+        }
+
+        if resolved.mediaType == "movie" {
+            guard let movie = await tmdbMatcher.fetchMovieEpisode(showId: resolved.showId) else {
+                return nil
+            }
+            return ([1: movie], resolved.showId, 1, 0, 1, 1, true, "movie-direct-fetch")
+        }
+
+        let seasonMeta = await fetchTMDBSeason(showId: resolved.showId, seasonNumber: resolved.seasonNumber)
+        guard !seasonMeta.isEmpty else { return nil }
+
+        var mapped: [Int: EpisodeMetadata] = [:]
+        for (number, meta) in seasonMeta {
+            let adjusted = number - resolved.episodeOffset
+            if adjusted >= 1 && adjusted <= desiredCount + 5 {
+                let renumbered = EpisodeMetadata(
+                    number: adjusted,
+                    title: meta.title,
+                    summary: meta.summary,
+                    airDate: meta.airDate,
+                    runtimeMinutes: meta.runtimeMinutes,
+                    thumbnailURL: meta.thumbnailURL
+                )
+                mapped[adjusted] = renumbered
+            }
+        }
+
+        return (
+            mapped,
+            resolved.showId,
+            resolved.seasonNumber,
+            resolved.episodeOffset,
+            0,
+            0,
+            !mapped.isEmpty,
+            "resolved-match-direct-fetch"
+        )
     }
 
     private func fetchTMDBSeason(showId: Int, seasonNumber: Int) async -> [Int: EpisodeMetadata] {
