@@ -317,6 +317,7 @@ final class TVDBClient {
             let score = double(in: artwork, keys: ["score"]) ?? 0
             let width = int(in: artwork, keys: ["width"])
             let height = int(in: artwork, keys: ["height"])
+            let artworkSeasonId = int(in: artwork, keys: ["seasonId"])
             
             return TVDBArtworkRecord(
                 id: id,
@@ -325,7 +326,9 @@ final class TVDBClient {
                 imageURL: imageURL,
                 score: score,
                 width: width,
-                height: height
+                height: height,
+                seasonId: artworkSeasonId,
+                seasonNumber: nil
             )
         }
     }
