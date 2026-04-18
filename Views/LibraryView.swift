@@ -145,7 +145,6 @@ struct LibraryView: View {
                         }
                     }
                     .padding(.horizontal, screenPadding)
-                    .padding(.top, UIConstants.smallPadding)
                     .padding(.bottom, UIConstants.bottomBarHeight)
                 }
                 .ignoresSafeArea(edges: .top)

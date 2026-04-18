@@ -1174,10 +1174,27 @@ final class TMDBMatchingService {
     }
 
     private func findByMAL(malId: Int, targetKind: TMDBTargetKind) async -> TMDBSearchResult? {
-        if targetKind == .movie {
+        guard let hit = await tvdbClient.searchRemoteID(String(malId)) else {
             return nil
         }
-        return nil
+        switch targetKind {
+        case .movie:
+            return hit.mediaType == "movie" ? TMDBSearchResult(
+                id: hit.id,
+                mediaType: hit.mediaType,
+                title: hit.title,
+                posterURL: hit.imageURL,
+                firstAirYear: hit.year
+            ) : nil
+        case .series, .special:
+            return hit.mediaType == "tv" ? TMDBSearchResult(
+                id: hit.id,
+                mediaType: hit.mediaType,
+                title: hit.title,
+                posterURL: hit.imageURL,
+                firstAirYear: hit.year
+            ) : nil
+        }
     }
 
     private func searchShow(titles: [String], startYear: Int?, targetKind: TMDBTargetKind) async -> TMDBSearchResult? {
@@ -2039,8 +2056,10 @@ final class TMDBMatchingService {
         switch targetKind {
         case .movie:
             return ["movie"]
-        case .series, .special:
+        case .series:
             return ["tv"]
+        case .special:
+            return ["tv", "movie"]
         }
     }
 
@@ -2048,8 +2067,10 @@ final class TMDBMatchingService {
         switch targetKind {
         case .movie:
             return mediaType == "movie" ? 1.0 : 0.0
-        case .series, .special:
+        case .series:
             return mediaType == "tv" ? 1.0 : 0.0
+        case .special:
+            return mediaType == "tv" || mediaType == "movie" ? 1.0 : 0.0
         }
     }
 
@@ -2057,8 +2078,10 @@ final class TMDBMatchingService {
         switch targetKind {
         case .movie:
             return mediaType == "movie" ? 2 : 0
-        case .series, .special:
+        case .series:
             return mediaType == "tv" ? 2 : 0
+        case .special:
+            return mediaType == "tv" || mediaType == "movie" ? 2 : 0
         }
     }
 
@@ -2070,7 +2093,12 @@ final class TMDBMatchingService {
         switch targetKind {
         case .movie:
             return mediaType == "movie" && isLikelyAnimeMovie(row)
-        case .series, .special:
+        case .series:
+            return mediaType == "tv"
+        case .special:
+            if mediaType == "movie" {
+                return isLikelyAnimeMovie(row)
+            }
             return mediaType == "tv"
         }
     }

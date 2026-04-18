@@ -3,6 +3,14 @@ import UIKit
 import Kingfisher
 
 struct DiscoveryView: View {
+    private struct FeaturedBannerAsset: Identifiable, Equatable {
+        let media: AniListMedia
+        let backdropURL: URL
+        let logoURL: URL?
+
+        var id: Int { media.id }
+    }
+
     @EnvironmentObject private var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("library.sort") private var librarySortRaw: String = LibrarySortOption.lastUpdated.rawValue
@@ -14,12 +22,15 @@ struct DiscoveryView: View {
     @State private var featuredHeroLogoURL: URL?
     @State private var heroAtmosphere: HeroAtmosphere = .fallback
     @State private var isLoadingFeaturedBanner = false
+    @State private var queuedFeaturedBanners: [FeaturedBannerAsset] = []
+    @State private var featuredBannerPool: [AniListMedia] = []
+    @State private var featuredBannerPoolCursor = 0
+    @State private var isPreparingFeaturedBanners = false
     @State private var navigateMedia: AniListMedia?
     @State private var discoveryLoadGeneration = 0
     @State private var launchHeroImageKey: String?
     @State private var launchHeroImageReady = false
     @State private var launchHeroAtmosphereReady = false
-    @StateObject private var networkMonitor = NetworkMonitor.shared
     private var isPad: Bool { PlatformSupport.prefersTabletLayout }
     private var coreSections: [AniListDiscoverySection] {
         let order = ["trending", "hotNow", "upcoming", "allTime"]
@@ -318,15 +329,22 @@ private extension DiscoveryView {
     }
 
     func loadFeaturedBanner() async {
+        if featuredMedia != nil {
+            await ensureFeaturedBannerBufferIfNeeded()
+            return
+        }
+
         await MainActor.run {
             isLoadingFeaturedBanner = true
-            if let existing = appState.discoveryFeaturedMedia {
-                featuredMedia = existing
-            }
         }
 
         if let existing = appState.discoveryFeaturedMedia {
-            await resolveFeaturedBannerAssets(for: existing)
+            if let asset = await makeFeaturedBannerAsset(for: existing) {
+                await MainActor.run {
+                    applyFeaturedBannerAsset(asset)
+                }
+                await ensureFeaturedBannerBufferIfNeeded()
+            }
             await MainActor.run {
                 isLoadingFeaturedBanner = false
             }
@@ -334,25 +352,21 @@ private extension DiscoveryView {
         }
 
         do {
-            let pool = try await appState.services.aniListClient.discoveryTopRatedAnimePool(limit: 1000)
-            let randomFeatured = pool.randomElement()
-            await MainActor.run {
-                appState.setDiscoveryFeaturedMedia(randomFeatured)
-                featuredMedia = randomFeatured
-            }
-            if let randomFeatured {
-                await resolveFeaturedBannerAssets(for: randomFeatured)
+            try await loadFeaturedBannerPoolIfNeeded()
+            if let asset = await prepareInitialFeaturedBannerAsset() {
+                await MainActor.run {
+                    applyFeaturedBannerAsset(asset)
+                }
+                await ensureFeaturedBannerBufferIfNeeded(force: true)
             }
         } catch {
             AppLog.error(.network, "discovery featured banner load failed \(error.localizedDescription)")
             if let fallback = featuredMedia ?? sections.first(where: { $0.id == "allTime" })?.items.first ?? sections.first?.items.first {
-                await MainActor.run {
-                    if appState.discoveryFeaturedMedia == nil {
-                        appState.setDiscoveryFeaturedMedia(fallback)
+                if let asset = await makeFeaturedBannerAsset(for: fallback) {
+                    await MainActor.run {
+                        applyFeaturedBannerAsset(asset)
                     }
-                    featuredMedia = fallback
                 }
-                await resolveFeaturedBannerAssets(for: fallback)
             }
         }
 
@@ -361,31 +375,21 @@ private extension DiscoveryView {
         }
     }
 
-    func resolveFeaturedBannerAssets(for media: AniListMedia) async {
+    func makeFeaturedBannerAsset(for media: AniListMedia) async -> FeaturedBannerAsset? {
         let cachedArtwork = appState.services.metadataService.cachedHeroArtwork(for: media)
-        let initialBackdrop = cachedArtwork.backdrop ?? media.bannerURL ?? media.coverURL
+        let initialBackdrop = cachedArtwork.backdrop
         let initialLogo = cachedArtwork.logo
-
-        await MainActor.run {
-            guard featuredMedia?.id == media.id || appState.discoveryFeaturedMedia?.id == media.id else { return }
-            featuredMedia = media
-            featuredHeroBackdropURL = initialBackdrop
-            featuredHeroLogoURL = initialLogo
-        }
 
         async let backdropTask = appState.services.metadataService.heroBackdropURL(for: media, preferTextless: true)
         async let logoTask = appState.services.metadataService.logoURL(for: media)
         let resolvedBackdrop = await backdropTask
         let resolvedLogo = await logoTask
+        let finalBackdrop = resolvedBackdrop ?? initialBackdrop ?? media.bannerURL ?? media.coverURL
+        guard let finalBackdrop else { return nil }
+        let finalLogo = resolvedLogo ?? initialLogo
 
-        await MainActor.run {
-            guard featuredMedia?.id == media.id || appState.discoveryFeaturedMedia?.id == media.id else { return }
-            featuredMedia = media
-            featuredHeroBackdropURL = resolvedBackdrop ?? initialBackdrop
-            featuredHeroLogoURL = resolvedLogo ?? initialLogo
-        }
-
-        await prefetchFeaturedBannerAssets()
+        await ImageCache.shared.prefetch(urls: [finalBackdrop, finalLogo].compactMap { $0 })
+        return FeaturedBannerAsset(media: media, backdropURL: finalBackdrop, logoURL: finalLogo)
     }
 
     func loadDiscovery(forceRefresh: Bool) async {
@@ -448,11 +452,127 @@ private extension DiscoveryView {
         navigateMedia = featuredMedia
     }
 
-    func prefetchFeaturedBannerAssets() async {
-        guard networkMonitor.isOnWiFi else { return }
-        let urls = [featuredHeroBackdropURL, featuredHeroLogoURL, featuredMedia?.bannerURL, featuredMedia?.coverURL]
-            .compactMap { $0 }
-        await ImageCache.shared.prefetch(urls: urls)
+    @MainActor
+    func applyFeaturedBannerAsset(_ asset: FeaturedBannerAsset) {
+        appState.setDiscoveryFeaturedMedia(asset.media)
+        featuredMedia = asset.media
+        featuredHeroBackdropURL = asset.backdropURL
+        featuredHeroLogoURL = asset.logoURL
+    }
+
+    @MainActor
+    func popNextFeaturedBannerAsset() -> FeaturedBannerAsset? {
+        guard !queuedFeaturedBanners.isEmpty else { return nil }
+        let asset = queuedFeaturedBanners.removeFirst()
+        return asset
+    }
+
+    func loadFeaturedBannerPoolIfNeeded() async throws {
+        if !featuredBannerPool.isEmpty { return }
+        let pool = try await appState.services.aniListClient.discoveryTopRatedAnimePool(limit: 1000)
+        await MainActor.run {
+            featuredBannerPool = pool.shuffled()
+            featuredBannerPoolCursor = 0
+        }
+    }
+
+    @MainActor
+    func takeNextFeaturedBannerCandidate() -> AniListMedia? {
+        guard !featuredBannerPool.isEmpty else { return nil }
+        if featuredBannerPoolCursor >= featuredBannerPool.count {
+            featuredBannerPool.shuffle()
+            featuredBannerPoolCursor = 0
+        }
+        let media = featuredBannerPool[featuredBannerPoolCursor]
+        featuredBannerPoolCursor += 1
+        return media
+    }
+
+    func prepareInitialFeaturedBannerAsset() async -> FeaturedBannerAsset? {
+        var attempts = 0
+        let limit = max(1, featuredBannerPool.count)
+        while attempts < limit {
+            guard let candidate = await MainActor.run(body: { takeNextFeaturedBannerCandidate() }) else {
+                return nil
+            }
+            if let asset = await makeFeaturedBannerAsset(for: candidate) {
+                return asset
+            }
+            attempts += 1
+        }
+        return nil
+    }
+
+    func ensureFeaturedBannerBufferIfNeeded(force: Bool = false) async {
+        if isPreparingFeaturedBanners { return }
+        if !force && queuedFeaturedBanners.count > 1 { return }
+
+        await MainActor.run {
+            isPreparingFeaturedBanners = true
+        }
+        defer {
+            Task { @MainActor in
+                isPreparingFeaturedBanners = false
+            }
+        }
+
+        do {
+            try await loadFeaturedBannerPoolIfNeeded()
+        } catch {
+            return
+        }
+
+        let batchSize = 10
+        let existingIDs = Set(queuedFeaturedBanners.map(\.id) + [featuredMedia?.id, appState.discoveryFeaturedMedia?.id].compactMap { $0 })
+        var candidates: [AniListMedia] = []
+        var localPool: [AniListMedia] = []
+        var localCursor = 0
+        await MainActor.run {
+            localPool = featuredBannerPool
+            localCursor = featuredBannerPoolCursor
+        }
+
+        var seenIDs = existingIDs
+        var attempts = 0
+        while candidates.count < batchSize && !localPool.isEmpty && attempts < localPool.count * 2 {
+            if localCursor >= localPool.count {
+                localPool.shuffle()
+                localCursor = 0
+            }
+            let media = localPool[localCursor]
+            localCursor += 1
+            attempts += 1
+            if seenIDs.insert(media.id).inserted {
+                candidates.append(media)
+            }
+        }
+
+        var builtAssets: [(index: Int, asset: FeaturedBannerAsset)] = []
+        await withTaskGroup(of: (Int, FeaturedBannerAsset?).self) { group in
+            for (index, media) in candidates.enumerated() {
+                group.addTask {
+                    let asset = await makeFeaturedBannerAsset(for: media)
+                    return (index, asset)
+                }
+            }
+            for await result in group {
+                if let asset = result.1 {
+                    builtAssets.append((result.0, asset))
+                }
+            }
+        }
+
+        let orderedAssets = builtAssets
+            .sorted { $0.index < $1.index }
+            .map(\.asset)
+
+        await MainActor.run {
+            featuredBannerPool = localPool
+            featuredBannerPoolCursor = localCursor
+            for asset in orderedAssets where !queuedFeaturedBanners.contains(where: { $0.id == asset.id }) {
+                queuedFeaturedBanners.append(asset)
+            }
+        }
     }
 
     @MainActor
