@@ -184,7 +184,7 @@ final class AppServices {
         self.episodeMetadataService = EpisodeMetadataService(
             cacheStore: cacheStore,
             aniListClient: aniListClient,
-            provider: .tmdb,
+            provider: .tvdb,
             tmdbMatcher: tmdbMatchingService
         )
         self.aniSkipService = AniSkipService()

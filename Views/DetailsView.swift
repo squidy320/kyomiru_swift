@@ -1366,7 +1366,7 @@ struct DetailsView: View {
                 guard searchGeneration == tmdbMatchSearchGeneration else { return }
                 tmdbMatchCandidates = results
                 if results.isEmpty {
-                    tmdbMatchError = "No TMDB shows found."
+            tmdbMatchError = "No TVDB titles found."
                 }
                 isLoadingTMDBMatch = false
             }
@@ -2227,7 +2227,7 @@ private struct TMDBMatchSheet: View {
                 Section("Current Match") {
                     if let currentOverride {
                         VStack(alignment: .leading, spacing: UIConstants.tinyPadding) {
-                            Text(currentOverride.showTitle ?? "Manual TMDB Override")
+                            Text(currentOverride.showTitle ?? "Manual TVDB Override")
                                 .font(.system(size: 16, weight: .semibold))
                             Text(currentOverride.seasonLabel ?? "\((currentOverride.mediaType ?? "tv") == "movie" ? "Movie" : "Season \(currentOverride.seasonNumber)")")
                                 .font(.system(size: 13))
@@ -2243,7 +2243,7 @@ private struct TMDBMatchSheet: View {
                             dismiss()
                         }
                     } else {
-                        Text("Using automatic TMDB matching.")
+                        Text("Using automatic TVDB matching.")
                             .foregroundColor(.secondary)
                     }
                 }
@@ -2251,7 +2251,7 @@ private struct TMDBMatchSheet: View {
                 if selectedShow == nil {
                     Section("Search") {
                         HStack(spacing: UIConstants.mediumPadding) {
-                            TextField("Search TMDB shows...", text: $query)
+                            TextField("Search TVDB titles...", text: $query)
                                 .textInputAutocapitalization(.words)
                                 .disableAutocorrection(true)
                                 .submitLabel(.search)
@@ -2264,7 +2264,7 @@ private struct TMDBMatchSheet: View {
                     }
 
                     if isLoading {
-                        Text("Searching TMDB…")
+                        Text("Searching TVDB…")
                             .foregroundColor(.secondary)
                     } else if let errorMessage {
                         Text(errorMessage)
@@ -2342,7 +2342,7 @@ private struct TMDBMatchSheet: View {
                                             .font(.system(size: 12))
                                             .foregroundColor(.secondary)
                                         if season.isSynthetic || season.episodeOffset > 0 {
-                                            Text("\(season.mediaType == "movie" ? "TMDB Movie" : "TMDB Season \(season.tmdbSeasonNumber)")\(season.episodeOffset > 0 ? " • Offset \(season.episodeOffset)" : "")")
+                                            Text("\(season.mediaType == "movie" ? "TVDB Movie" : "TVDB Season \(season.tmdbSeasonNumber)")\(season.episodeOffset > 0 ? " • Offset \(season.episodeOffset)" : "")")
                                                 .font(.system(size: 12))
                                                 .foregroundColor(.secondary)
                                         }
@@ -2371,7 +2371,7 @@ private struct TMDBMatchSheet: View {
                     }
                 }
             }
-            .navigationTitle("TMDB Match")
+            .navigationTitle("TVDB Match")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Close") { dismiss() }
@@ -2388,7 +2388,7 @@ private struct TMDBMatchSheet: View {
             let loaded = await loadSeasons(candidate)
             seasons = loaded
             if loaded.isEmpty {
-                seasonError = "No TMDB seasons found."
+                seasonError = "No TVDB seasons found."
             }
             isLoadingSeasons = false
         }

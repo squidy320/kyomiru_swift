@@ -189,8 +189,6 @@ final class AniMapClient {
                 mediaType: entry.media_type
             )
 
-            guard mapping.normalizedTMDBID != nil else { continue }
-
             if let aniListID = entry.anilist_id {
                 byAniList[String(aniListID)] = mapping
             }

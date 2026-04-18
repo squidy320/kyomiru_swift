@@ -472,6 +472,9 @@ actor ImageCache {
 
         let queryHostsToStrip: Set<String> = [
             "image.tmdb.org",
+            "artworks.thetvdb.com",
+            "thetvdb.com",
+            "www.thetvdb.com",
             "s4.anilist.co",
             "img.anili.st",
             "cdn.myanimelist.net"
